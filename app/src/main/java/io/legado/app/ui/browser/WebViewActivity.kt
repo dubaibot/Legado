@@ -12,11 +12,13 @@ import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.view.size
 import io.legado.app.R
@@ -64,6 +66,7 @@ import java.net.URLDecoder
 import androidx.core.graphics.createBitmap
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
+import io.legado.app.help.webView.LocalFileBridge
 
 class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
@@ -83,6 +86,16 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var isfullscreen = false
     private var wasScreenOff = false
     private var needClearHistory = true
+
+    //模块②：网页 <input type="file"> 文件选择回调
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private val openFileChooser = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        fileChooserCallback?.onReceiveValue(uris.toTypedArray())
+        fileChooserCallback = null
+    }
+
     private val saveImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
@@ -241,6 +254,10 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         currentWebView.webChromeClient = CustomWebChromeClient()
         // 添加 JavaScript 接口
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
+        //模块①：注入本地文件桥接
+        currentWebView.addJavascriptInterface(
+            LocalFileBridge(this) { currentWebView }, LocalFileBridge.NAME
+        )
         currentWebView.webViewClient = CustomWebViewClient()
         currentWebView.settings.apply {
             useWideViewPort = true
@@ -420,7 +437,20 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             }
             return false
         }
-        
+
+        //模块②：网页表单 <input type="file"> 支持
+        override fun onShowFileChooser(
+            webView: WebView?,
+            filePathCallback: ValueCallback<Array<Uri>>?,
+            fileChooserParams: WebChromeClient.FileChooserParams?
+        ): Boolean {
+            fileChooserCallback?.onReceiveValue(null)
+            fileChooserCallback = filePathCallback
+            val types = fileChooserParams?.acceptTypes?.takeIf { it.isNotEmpty() } ?: arrayOf("*/*")
+            openFileChooser.launch(types)
+            return true
+        }
+
     }
 
     inner class CustomWebViewClient : WebViewClient() {
@@ -450,7 +480,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             super.onPageStarted(view, url, favicon)
             currentWebView.evaluateJavascript(basicJs, null)
         }
-        
+
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
             val cookieManager = CookieManager.getInstance()
