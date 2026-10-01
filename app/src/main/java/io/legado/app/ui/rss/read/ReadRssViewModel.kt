@@ -209,6 +209,25 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
+    // 模块⑥：批量保存所选图片到目录
+    fun saveImages(urls: List<String>, uri: Uri) {
+        if (urls.isEmpty()) return
+        execute {
+            var index = 1
+            for (url in urls) {
+                val byteArray = webData2bitmap(url) ?: continue
+                val fileName = "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}_$index.jpg"
+                uri.writeBytes(context, fileName, byteArray)
+                index++
+            }
+        }.onError {
+            ACache.get().remove(imagePathKey)
+            context.toastOnUi("保存图片失败:${it.localizedMessage}")
+        }.onSuccess {
+            context.toastOnUi("保存成功 ${urls.size} 张")
+        }
+    }
+
     private suspend fun webData2bitmap(data: String): ByteArray? {
         return if (URLUtil.isValidUrl(data)) {
             okHttpClient.newCallResponseBody {
