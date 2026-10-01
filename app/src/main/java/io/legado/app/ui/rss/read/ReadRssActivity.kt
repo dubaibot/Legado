@@ -16,6 +16,7 @@ import android.view.View
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import android.webkit.SslErrorHandler
@@ -27,7 +28,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.size
 import com.script.rhino.runScriptWithContext
@@ -101,6 +104,7 @@ import java.lang.ref.WeakReference
 import splitties.systemservices.powerManager
 import java.net.URLDecoder
 import androidx.core.graphics.createBitmap
+import io.legado.app.help.webView.LocalFileBridge
 
 /**
  * rss阅读界面
@@ -127,6 +131,16 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             viewModel.saveImage(it.value, uri)
         }
     }
+
+    //模块②：网页 <input type="file"> 文件选择回调
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private val openFileChooser = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        fileChooserCallback?.onReceiveValue(uris.toTypedArray())
+        fileChooserCallback = null
+    }
+
     private val rssJsExtensions by lazy { RssJsExtensions(this, viewModel.rssSource) }
 
     private val refreshNameList: MutableList<String> by lazy { mutableListOf() }
@@ -327,6 +341,10 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         currentWebView.webChromeClient = CustomWebChromeClient()
         //添加屏幕方向控制，网页关闭，openUI
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
+        //模块①：注入本地文件桥接
+        currentWebView.addJavascriptInterface(
+            LocalFileBridge(this) { currentWebView }, LocalFileBridge.NAME
+        )
         currentWebView.webViewClient = CustomWebViewClient()
         currentWebView.setOnLongClickListener {
             val hitTestResult = currentWebView.hitTestResult
@@ -499,7 +517,6 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         super.onDestroy()
     }
 
-
     @Suppress("unused")
     private class JSInterface(activity: ReadRssActivity) {
         private val activityRef: WeakReference<ReadRssActivity> = WeakReference(activity)
@@ -581,6 +598,19 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 }
             }
             return false
+        }
+
+        //模块②：网页表单 <input type="file"> 支持
+        override fun onShowFileChooser(
+            webView: WebView?,
+            filePathCallback: ValueCallback<Array<Uri>>?,
+            fileChooserParams: WebChromeClient.FileChooserParams?
+        ): Boolean {
+            fileChooserCallback?.onReceiveValue(null)
+            fileChooserCallback = filePathCallback
+            val types = fileChooserParams?.acceptTypes?.takeIf { it.isNotEmpty() } ?: arrayOf("*/*")
+            openFileChooser.launch(types)
+            return true
         }
     }
 
