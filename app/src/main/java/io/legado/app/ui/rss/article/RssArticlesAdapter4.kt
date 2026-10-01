@@ -58,7 +58,12 @@ class RssArticlesAdapter4(context: Context, callBack: CallBack) :
             } else {
                 tvTitle.setTextColor(context.getCompatColor(R.color.primaryText))
             }
-            tvPubDate.text = item.pubDate
+            if (item.pubDate.isNullOrBlank()) {
+                tvPubDate.gone()
+            } else {
+                tvPubDate.visible()
+                tvPubDate.text = item.pubDate
+            }
             if (item.image.isNullOrBlank() && !callBack.isGridLayout) {
                 imageView.gone()
             } else {
