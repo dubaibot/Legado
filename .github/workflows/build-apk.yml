@@ -18,7 +18,10 @@ jobs:
           java-version: 17
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          echo "$ANDROID_HOME"
+          ls $ANDROID_HOME
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
 
       - name: Grant execute permission
         run: chmod +x gradlew
