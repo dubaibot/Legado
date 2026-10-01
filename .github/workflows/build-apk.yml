@@ -20,25 +20,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.RELEASE_STORE_BASE64 }}" | base64 -d > $GITHUB_WORKSPACE/myreader.jks
-
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Build Release APK
-        run: |
-          ./gradlew :app:assembleAppRelease --no-daemon \
-            -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC" \
-            -Dorg.gradle.workers.max=2 -Pkotlin.compiler.execution.strategy=in-process \
-            -PRELEASE_STORE_FILE=$GITHUB_WORKSPACE/myreader.jks \
-            -PRELEASE_STORE_PASSWORD=${{ secrets.RELEASE_STORE_PASSWORD }} \
-            -PRELEASE_KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }} \
-            -PRELEASE_KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleAppDebug --no-daemon \
+          -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC" \
+          -Dorg.gradle.workers.max=2 -Pkotlin.compiler.execution.strategy=in-process
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: readingD-apk
-          path: app/build/outputs/apk/app/release/*.apk
+          path: app/build/outputs/apk/app/debug/*.apk
