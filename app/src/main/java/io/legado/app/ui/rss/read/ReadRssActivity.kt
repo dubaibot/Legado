@@ -30,7 +30,6 @@ import android.webkit.WebViewClient
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.annotation.RequiresApi
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.size
 import com.script.rhino.runScriptWithContext
@@ -75,6 +74,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.Jsoup
+import org.json.JSONArray
 import splitties.views.bottomPadding
 import java.io.ByteArrayInputStream
 import java.util.regex.PatternSyntaxException
@@ -125,20 +125,33 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
     private var interfaceInjected: String? = null
     private var needClearHistory = true
-    private val selectImageDir = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            ACache.get().put(imagePathKey, uri.toString())
-            viewModel.saveImage(it.value, uri)
-        }
-    }
 
-    //模块②：网页 <input type="file"> 文件选择回调
+    // 模块②：网页 <input type="file"> 文件选择回调
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private val openFileChooser = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         fileChooserCallback?.onReceiveValue(uris.toTypedArray())
         fileChooserCallback = null
+    }
+
+    // 模块⑥：图片批量选择状态
+    private var isSelectMode = false
+    private val selectedImages = LinkedHashSet<String>()
+    private var totalImgCount = 0
+    private var pendingSaveImages: List<String>? = null
+
+    private val selectImageDir = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let { uri ->
+            ACache.get().put(imagePathKey, uri.toString())
+            val pending = pendingSaveImages
+            if (pending != null) {
+                pendingSaveImages = null
+                viewModel.saveImages(pending, uri)
+            } else {
+                viewModel.saveImage(it.value, uri)
+            }
+        }
     }
 
     private val rssJsExtensions by lazy { RssJsExtensions(this, viewModel.rssSource) }
@@ -176,9 +189,15 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         initView()
         initWebView()
         initLiveData()
+        initSelectActionBar()
         viewModel.initData(intent)
         currentWebView.clearHistory()
         onBackPressedDispatcher.addCallback(this) {
+            // 模块⑥：选择模式下先退出选择模式
+            if (isSelectMode) {
+                exitSelectMode()
+                return@addCallback
+            }
             if (binding.customWebView.size > 0) { //关闭全屏
                 customWebViewCallback?.onCustomViewHidden()
                 return@addCallback
@@ -335,6 +354,78 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
     }
 
+    // 模块⑥：初始化选择操作条
+    private fun initSelectActionBar() {
+        binding.selectActionBar.setMainActionText("保存所选")
+        binding.selectActionBar.inflateMenu(R.menu.rss_read_select)
+        binding.selectActionBar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.menu_save_selected -> saveSelectedImages()
+            }
+            true
+        }
+        binding.selectActionBar.setCallBack(object : SelectActionBar.CallBack {
+            override fun selectAll(selectAll: Boolean) {
+                if (selectAll) {
+                    currentWebView.evaluateJavascript(SELECT_ALL_JS, null)
+                } else {
+                    currentWebView.evaluateJavascript(CLEAR_SELECT_JS, null)
+                }
+            }
+
+            override fun revertSelection() {
+                currentWebView.evaluateJavascript(REVERT_SELECT_JS, null)
+            }
+
+            override fun onClickSelectBarMainAction() {
+                saveSelectedImages()
+            }
+        })
+    }
+
+    // 模块⑥：进入批量选择模式
+    private fun enterSelectMode() {
+        isSelectMode = true
+        selectedImages.clear()
+        binding.selectActionBar.visible()
+        currentWebView.evaluateJavascript("document.querySelectorAll('img').length") { result ->
+            totalImgCount = result.trim().toIntOrNull() ?: 0
+            upSelectCount()
+        }
+        currentWebView.evaluateJavascript(SELECT_JS, null)
+    }
+
+    // 模块⑥：退出批量选择模式
+    private fun exitSelectMode() {
+        isSelectMode = false
+        selectedImages.clear()
+        totalImgCount = 0
+        binding.selectActionBar.gone()
+        currentWebView.evaluateJavascript(CLEAR_SELECT_JS, null)
+    }
+
+    // 模块⑥：更新选择计数
+    private fun upSelectCount() {
+        binding.selectActionBar.upCountView(selectedImages.size, totalImgCount)
+    }
+
+    // 模块⑥：保存所选图片
+    private fun saveSelectedImages() {
+        if (selectedImages.isEmpty()) {
+            toastOnUi("未选择图片")
+            return
+        }
+        pendingSaveImages = selectedImages.toList()
+        val default = arrayListOf<SelectItem<Int>>()
+        val path = ACache.get().getAsString(imagePathKey)
+        if (!path.isNullOrEmpty()) {
+            default.add(SelectItem(path, -1))
+        }
+        selectImageDir.launch {
+            otherActions = default
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
         binding.progressBar.fontColor = accentColor
@@ -345,8 +436,12 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         currentWebView.addJavascriptInterface(
             LocalFileBridge(this) { currentWebView }, LocalFileBridge.NAME
         )
+        //模块⑥：注入图片选择桥接
+        currentWebView.addJavascriptInterface(ImageSelectBridge(), "lycImgSelect")
         currentWebView.webViewClient = CustomWebViewClient()
         currentWebView.setOnLongClickListener {
+            // 模块⑥：选择模式下屏蔽长按菜单
+            if (isSelectMode) return@setOnLongClickListener true
             val hitTestResult = currentWebView.hitTestResult
             if (hitTestResult.type == WebView.HitTestResult.IMAGE_TYPE ||
                 hitTestResult.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
@@ -354,12 +449,14 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                     selector(
                         arrayListOf(
                             SelectItem(getString(R.string.action_save), "save"),
-                            SelectItem(getString(R.string.select_folder), "selectFolder")
+                            SelectItem(getString(R.string.select_folder), "selectFolder"),
+                            SelectItem("批量选择", "selectBatch")
                         )
                     ) { _, charSequence, _ ->
                         when (charSequence.value) {
                             "save" -> saveImage(webPic)
                             "selectFolder" -> selectSaveFolder(null)
+                            "selectBatch" -> enterSelectMode()
                         }
                     }
                     return@setOnLongClickListener true
@@ -515,6 +612,25 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     override fun onDestroy() {
         WebViewPool.release(pooledWebView)
         super.onDestroy()
+    }
+
+    // 模块⑥：图片选择桥接（JS 点击图片后回调）
+    inner class ImageSelectBridge {
+        @JavascriptInterface
+        fun onUpdate(json: String?) {
+            runOnUiThread {
+                selectedImages.clear()
+                json?.let {
+                    runCatching {
+                        val arr = JSONArray(it)
+                        for (i in 0 until arr.length()) {
+                            selectedImages.add(arr.getString(i))
+                        }
+                    }
+                }
+                upSelectCount()
+            }
+        }
     }
 
     @Suppress("unused")
@@ -759,6 +875,10 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                     view.evaluateJavascript(it, null)
                 }
             }
+            // 模块⑥：页面加载完成后若在选择模式，重新注入选择 JS
+            if (isSelectMode) {
+                currentWebView.evaluateJavascript(SELECT_JS, null)
+            }
         }
 
         private fun createEmptyResource(): WebResourceResponse {
@@ -817,6 +937,56 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     companion object {
+        // 模块⑥：选择模式 JS
+        private const val SELECT_JS =
+            "(function(){" +
+                "if(window.__lycSelectInit)return;" +
+                "window.__lycSelectInit=true;" +
+                "window.__lycSelectMap={};" +
+                "window.__lycSelectUpdate=function(){" +
+                "var arr=[];for(var k in window.__lycSelectMap){if(window.__lycSelectMap[k])arr.push(k);}" +
+                "window.lycImgSelect.onUpdate(JSON.stringify(arr));" +
+                "};" +
+                "document.querySelectorAll('img').forEach(function(img){" +
+                "img.style.cursor='pointer';" +
+                "img.addEventListener('click',function(e){" +
+                "e.preventDefault();e.stopPropagation();" +
+                "var u=img.src;" +
+                "if(window.__lycSelectMap[u]){window.__lycSelectMap[u]=false;img.style.outline='none';}" +
+                "else{window.__lycSelectMap[u]=true;img.style.outline='3px solid #FF5722';}" +
+                "window.__lycSelectUpdate();" +
+                "});" +
+                "});" +
+                "})();"
+
+        private const val SELECT_ALL_JS =
+            "(function(){" +
+                "document.querySelectorAll('img').forEach(function(img){" +
+                "window.__lycSelectMap[img.src]=true;" +
+                "img.style.outline='3px solid #FF5722';" +
+                "});" +
+                "window.__lycSelectUpdate();" +
+                "})();"
+
+        private const val CLEAR_SELECT_JS =
+            "(function(){" +
+                "document.querySelectorAll('img').forEach(function(img){" +
+                "window.__lycSelectMap[img.src]=false;" +
+                "img.style.outline='none';" +
+                "});" +
+                "window.__lycSelectUpdate();" +
+                "})();"
+
+        private const val REVERT_SELECT_JS =
+            "(function(){" +
+                "document.querySelectorAll('img').forEach(function(img){" +
+                "var u=img.src;" +
+                "if(window.__lycSelectMap[u]){window.__lycSelectMap[u]=false;img.style.outline='none';}" +
+                "else{window.__lycSelectMap[u]=true;img.style.outline='3px solid #FF5722';}" +
+                "});" +
+                "window.__lycSelectUpdate();" +
+                "})();"
+
         fun start(context: Context, singleTop: Boolean, origin: String, title: String? = null, url: String? = null, startHtml: String? = null) {
             context.startActivity<ReadRssActivity> {
                 putExtra("origin", origin)
