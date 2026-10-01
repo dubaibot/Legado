@@ -20,16 +20,13 @@ jobs:
       - name: Set up Android SDK
         run: |
           echo "$ANDROID_HOME"
-          ls $ANDROID_HOME
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
 
       - name: Grant execute permission
         run: chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew :app:assembleAppDebug --no-daemon \
-          -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC" \
-          -Dorg.gradle.workers.max=2 -Pkotlin.compiler.execution.strategy=in-process
+        run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
