@@ -16,8 +16,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:contentLayout="@layout/view_explore_show_title"
-            app:layout_constraintTop_toTopOf="parent"
-            app:title="@string/discovery" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <HorizontalScrollView
             android:id="@+id/hsv_big_category"
