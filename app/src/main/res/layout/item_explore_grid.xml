@@ -25,26 +25,6 @@
             app:layout_constraintTop_toTopOf="parent"
             tools:ignore="ImageContrastCheck" />
 
-        <TextView
-            android:id="@+id/tv_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_gradient_cover"
-            android:ellipsize="end"
-            android:gravity="start|bottom"
-            android:includeFontPadding="false"
-            android:lines="2"
-            android:paddingStart="4dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="4dp"
-            android:paddingBottom="4dp"
-            android:textColor="@color/md_dark_primary_text"
-            android:textSize="12sp"
-            app:layout_constraintBottom_toBottomOf="@id/iv_cover"
-            app:layout_constraintEnd_toEndOf="@id/iv_cover"
-            app:layout_constraintStart_toStartOf="@id/iv_cover"
-            tools:text="书名" />
-
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/iv_in_bookshelf"
             android:layout_width="wrap_content"
@@ -55,6 +35,31 @@
             app:layout_constraintEnd_toEndOf="@id/iv_cover"
             app:layout_constraintTop_toTopOf="@id/iv_cover"
             tools:ignore="ContentDescription" />
+
+        <TextView
+            android:id="@+id/tv_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="@color/primaryText"
+            android:textSize="14sp"
+            app:layout_constraintTop_toBottomOf="@id/iv_cover"
+            tools:text="书名" />
+
+        <TextView
+            android:id="@+id/tv_author"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="@color/primaryText"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_name"
+            tools:text="作者" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

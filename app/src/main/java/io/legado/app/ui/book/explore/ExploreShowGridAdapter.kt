@@ -39,6 +39,8 @@ class ExploreShowGridAdapter(context: Context, val callBack: ExploreShowAdapter.
     private fun bind(binding: ItemExploreGridBinding, item: SearchBook) {
         binding.run {
             tvName.text = item.name
+            tvAuthor.text = item.author
+            tvAuthor.isVisible = item.author.isNotBlank()
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             ivCover.load(
                 item,
