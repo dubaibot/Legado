@@ -80,7 +80,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = intent.getStringExtra("exploreName")
         viewModel.sourceData.observe(this) {
-            initRecyclerView(it?.exploreStyle == 1)
+            initRecyclerView(
+                it?.exploreStyle == 1 || intent.getBooleanExtra("newStyle", false)
+            )
         }
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }

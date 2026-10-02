@@ -150,7 +150,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 if (AppConfig.isNewExplore) getString(R.string.explore_mode_new)
                 else getString(R.string.explore_mode_traditional)
             if (AppConfig.isNewExplore) {
-                // 界面B落地后启用：startActivity<ExploreNewActivity> { }
+                startActivity<ExploreNewActivity> { }
             }
         }
     }

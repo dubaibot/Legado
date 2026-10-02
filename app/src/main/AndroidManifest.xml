@@ -289,6 +289,10 @@
         <activity
             android:name=".ui.book.explore.ExploreShowActivity"
             android:launchMode="singleTop" />
+        <!-- 新版发现界面 -->
+        <activity
+            android:name=".ui.main.explore.ExploreNewActivity"
+            android:launchMode="singleTop" />
         <!-- 订阅源调试 -->
         <activity
             android:name=".ui.rss.source.debug.RssSourceDebugActivity"
