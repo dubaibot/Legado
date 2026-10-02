@@ -5,15 +5,23 @@ import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.BuildConfig
+import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.help.book.addType
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.source.exploreKinds
+import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
@@ -31,10 +39,15 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val errorTopLiveData = MutableLiveData<String>()
     val pageLiveData = MutableLiveData<Int>()
     val sourceData = MutableLiveData<BookSource?>()
+    val kindsData = MutableLiveData<List<ExploreKind>>()
     private var bookSource: BookSource? = null
-    private var exploreUrl: String? = null
+    var exploreUrl: String? = null
     private var page = 1
     private var books = linkedSetOf<SearchBook>()
+
+    /** 大分类，解析失败或单url时为单个全部 */
+    var kinds: List<ExploreKind> = emptyList()
+        private set
 
     init {
         execute {
@@ -67,8 +80,58 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
             }
             sourceData.postValue(bookSource)
+            loadExploreKinds()
             explore()
         }
+    }
+
+    /**
+     * 解析大分类,失败或单url时兜底为单个全部
+     */
+    private suspend fun loadExploreKinds() {
+        val source = bookSource ?: return
+        val list = source.exploreKinds()
+            .filter { it.type == ExploreKind.Type.url && !it.url.isNullOrBlank() }
+            .filterNot { it.title.startsWith("ERROR:") }
+        kinds = if (list.isEmpty()) {
+            listOf(ExploreKind(title = context.getString(R.string.explore_all), url = source.exploreUrl))
+        } else {
+            list
+        }
+        kindsData.postValue(kinds)
+    }
+
+    /**
+     * 切换大分类,重置分页与数据
+     */
+    fun switchCategory(kind: ExploreKind) {
+        val url = kind.url ?: return
+        exploreUrl = url
+        page = 1
+        books.clear()
+    }
+
+    /**
+     * 当前分类的细分,为与当前分类url不相等的其余分类
+     */
+    fun getSubCategories(currentUrl: String?): List<ExploreKind> {
+        return kinds.filter { it.url != currentUrl }
+    }
+
+    /**
+     * 调整分类选中的分类名
+     */
+    fun getAdjustedCategories(): Set<String> {
+        val sourceUrl = bookSource?.bookSourceUrl ?: return emptySet()
+        return LocalConfig.getExploreAdjust(sourceUrl).split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    fun saveAdjustedCategories(titles: List<String>) {
+        val sourceUrl = bookSource?.bookSourceUrl ?: return
+        LocalConfig.putExploreAdjust(sourceUrl, titles.joinToString(","))
     }
 
     /**
@@ -81,6 +144,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         WebBook.exploreBook(viewModelScope, source, url, page)
             .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
             .onSuccess(IO) { searchBooks ->
+                if (url != exploreUrl) return@onSuccess //已切换分类,丢弃过期数据
                 val newBooks = linkedSetOf<SearchBook>()
                 newBooks.addAll(searchBooks)
                 newBooks.addAll(books)
@@ -89,6 +153,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 pageLiveData.postValue(page)
             }.onError {
+                if (url != exploreUrl) return@onError
                 it.printOnDebug()
                 errorTopLiveData.postValue(it.stackTraceStr)
             }
@@ -107,15 +172,41 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         WebBook.exploreBook(viewModelScope, source, url, page)
             .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
             .onSuccess(IO) { searchBooks ->
+                if (url != exploreUrl) return@onSuccess //已切换分类,丢弃过期数据
                 books.addAll(searchBooks)
                 booksData.postValue(books.toList())
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 pageLiveData.postValue(page)
                 page++
             }.onError {
+                if (url != exploreUrl) return@onError
                 it.printOnDebug()
                 errorLiveData.postValue(it.stackTraceStr)
             }
+    }
+
+    /**
+     * 直读,优先书架内同名书籍,否则临时保存为不入架书籍再读
+     */
+    fun readNow(searchBook: SearchBook, success: (String) -> Unit) {
+        execute {
+            val book = appDb.bookDao.getBook(searchBook.bookUrl)
+                ?: appDb.bookDao.getBook(searchBook.name, searchBook.author)
+                ?: searchBook.toBook().apply {
+                    addType(BookType.notShelf)
+                }
+            if (book.order == 0) {
+                book.order = appDb.bookDao.minOrder - 1
+            }
+            book.save()
+            ReadBook.book = book
+            book.bookUrl
+        }.onSuccess {
+            success(it)
+        }.onError {
+            AppLog.put("发现直读打开书籍失败\n${it.localizedMessage}", it)
+            context.toastOnUi("打开失败:${it.localizedMessage}")
+        }
     }
 
     fun isInBookShelf(book: SearchBook): Boolean {

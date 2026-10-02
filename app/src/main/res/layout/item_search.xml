@@ -33,13 +33,27 @@
         app:layout_constraintLeft_toRightOf="@id/iv_cover"
         app:layout_constraintTop_toTopOf="@id/tv_name" />
 
+    <ImageView
+        android:id="@+id/iv_read_direct"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="4dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/read_direct"
+        android:padding="6dp"
+        android:src="@drawable/ic_read_direct"
+        android:visibility="gone"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <io.legado.app.ui.widget.text.BadgeView
         android:id="@+id/bv_originCount"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="8dp"
         android:scrollbars="none"
-        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintRight_toLeftOf="@id/iv_read_direct"
         app:layout_constraintTop_toTopOf="parent" />
 
     <TextView

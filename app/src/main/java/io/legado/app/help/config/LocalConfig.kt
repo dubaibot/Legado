@@ -135,4 +135,13 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putString("exploreQuickGroups", value)
         }
 
+    // 发现页大分类调整（key=exploreAdjust_{sourceUrl}，逗号分隔分类名，空为全部展示）
+    fun getExploreAdjust(sourceUrl: String): String {
+        return getString("exploreAdjust_$sourceUrl", "") ?: ""
+    }
+
+    fun putExploreAdjust(sourceUrl: String, value: String) {
+        putString("exploreAdjust_$sourceUrl", value)
+    }
+
 }

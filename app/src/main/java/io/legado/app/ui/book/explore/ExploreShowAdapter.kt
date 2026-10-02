@@ -43,6 +43,11 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
             tvName.text = item.name
             tvAuthor.text = context.getString(R.string.author_show, item.author)
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
+            ivReadDirect.visible()
+            ivReadDirect.setImageResource(
+                if (item.readNow) R.drawable.ic_read_direct_on
+                else R.drawable.ic_read_direct
+            )
             if (item.latestChapterTitle.isNullOrEmpty()) {
                 tvLasted.gone()
             } else {
@@ -81,6 +86,18 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
                 callBack.showBookInfo(it)
             }
         }
+        binding.ivReadDirect.setOnClickListener {
+            getItem(holder.bindingAdapterPosition - getHeaderCount())?.let { book ->
+                book.readNow = !book.readNow
+                binding.ivReadDirect.setImageResource(
+                    if (book.readNow) R.drawable.ic_read_direct_on
+                    else R.drawable.ic_read_direct
+                )
+                if (book.readNow) {
+                    callBack.readNow(book)
+                }
+            }
+        }
     }
 
     interface CallBack {
@@ -90,5 +107,10 @@ class ExploreShowAdapter(context: Context, val callBack: CallBack) :
         fun isInBookshelf(book: SearchBook): Boolean
 
         fun showBookInfo(book: SearchBook)
+
+        /**
+         * 直读,进入正文
+         */
+        fun readNow(book: SearchBook)
     }
 }

@@ -3,7 +3,9 @@ package io.legado.app.ui.book.explore
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -13,15 +15,20 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.gone
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 
 /**
  * 发现列表
@@ -31,6 +38,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override val binding by viewBinding(ActivityExploreShowBinding::inflate)
     override val viewModel by viewModels<ExploreShowViewModel>()
 
+    private val isNewStyle: Boolean
+        get() = intent.getBooleanExtra("newStyle", false)
     private val listAdapter by lazy { ExploreShowAdapter(this, this) }
     private val gridAdapter by lazy { ExploreShowGridAdapter(this, this) }
     private var isGridStyle = false
@@ -86,6 +95,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         }
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }
+        viewModel.kindsData.observe(this) { upBigCategoryBar() }
         viewModel.initData(intent)
         viewModel.errorLiveData.observe(this) {
             loadMoreView.error(it)
@@ -198,5 +208,110 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             putExtra("author", book.author)
             putExtra("bookUrl", book.bookUrl)
         }
+    }
+
+    override fun readNow(book: SearchBook) {
+        viewModel.readNow(book) { bookUrl ->
+            startActivity<ReadBookActivity> {
+                putExtra("bookUrl", bookUrl)
+                putExtra("inBookshelf", viewModel.isInBookShelf(book))
+            }
+        }
+    }
+
+    /**
+     * 大分类栏,仅新版发现显示,末尾为调整分类入口
+     */
+    private fun upBigCategoryBar() {
+        if (!isNewStyle) {
+            binding.hsvBigCategory.gone()
+            return
+        }
+        val adjusted = viewModel.getAdjustedCategories()
+        val kinds = if (adjusted.isEmpty()) {
+            viewModel.kinds
+        } else {
+            viewModel.kinds.filter { it.title in adjusted }
+        }
+        if (kinds.isEmpty()) {
+            binding.hsvBigCategory.gone()
+            return
+        }
+        binding.hsvBigCategory.visible()
+        val inflater = layoutInflater
+        binding.llBigCategory.removeAllViews()
+        val currentUrl = viewModel.exploreUrl
+        kinds.forEach { kind ->
+            val tv = inflater.inflate(
+                R.layout.item_quick_group, binding.llBigCategory, false
+            ) as TextView
+            tv.text = kind.title
+            tv.isSelected = kind.url == currentUrl
+            tv.setOnClickListener { onBigCategoryClick(kind) }
+            binding.llBigCategory.addView(tv)
+        }
+        val add = inflater.inflate(
+            R.layout.item_quick_group, binding.llBigCategory, false
+        ) as TextView
+        add.text = "＋"
+        add.setOnClickListener { showAdjustCategoryDialog() }
+        binding.llBigCategory.addView(add)
+    }
+
+    private fun onBigCategoryClick(kind: ExploreKind) {
+        if (kind.url == viewModel.exploreUrl) {
+            showSubCategoryDialog(kind)
+            return
+        }
+        switchCategory(kind)
+    }
+
+    private fun switchCategory(kind: ExploreKind) {
+        viewModel.switchCategory(kind)
+        upBigCategoryBar()
+        adapter.clearItems()
+        loadMoreView.hasMore()
+        scrollToBottom(true)
+    }
+
+    /**
+     * 细分下钻,再点当前分类时展示
+     */
+    private fun showSubCategoryDialog(kind: ExploreKind) {
+        val subKinds = viewModel.getSubCategories(kind.url)
+        if (subKinds.isEmpty()) {
+            toastOnUi(getString(R.string.explore_no_sub_category))
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(kind.title)
+            .setItems(subKinds.map { it.title }.toTypedArray()) { _, which ->
+                switchCategory(subKinds[which])
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * 调整分类,按 sourceUrl 记录勾选的分类名,空为全部展示
+     */
+    private fun showAdjustCategoryDialog() {
+        val allKinds = viewModel.kinds
+        if (allKinds.isEmpty()) return
+        val selected = viewModel.getAdjustedCategories()
+        val checked = BooleanArray(allKinds.size) { allKinds[it].title in selected }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.explore_adjust_category)
+            .setMultiChoiceItems(allKinds.map { it.title }.toTypedArray(), checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                viewModel.saveAdjustedCategories(
+                    allKinds.filterIndexed { index, _ -> checked[index] }.map { it.title }
+                )
+                upBigCategoryBar()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 }

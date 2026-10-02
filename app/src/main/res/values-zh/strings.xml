@@ -805,6 +805,10 @@
     <string name="explore_mode_new">新版</string>
     <string name="explore_quick_group_config">配置快捷分组</string>
     <string name="explore_quick_group_title">配置快捷分组入口</string>
+    <string name="explore_all">全部</string>
+    <string name="explore_no_sub_category">无细分</string>
+    <string name="explore_adjust_category">调整分类</string>
+    <string name="read_direct">直读</string>
     <string name="page_key_set_help">将焦点放到输入框按下物理按键会自动录入键值，多个按键会自动用英文逗号隔开。</string>
     <string name="theme_name">主题名称</string>
     <string name="auto_clear_expired">自动清除过期搜索数据</string>

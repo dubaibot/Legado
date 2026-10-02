@@ -62,6 +62,11 @@ data class SearchBook(
     @IgnoredOnParcel
     override var tocHtml: String? = null
 
+    /** 直读标记,仅内存使用 */
+    @Ignore
+    @IgnoredOnParcel
+    var readNow: Boolean = false
+
     override fun equals(other: Any?) = other is SearchBook && other.bookUrl == bookUrl
 
     override fun hashCode() = bookUrl.hashCode()
