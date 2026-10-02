@@ -26,6 +26,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
+import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
@@ -75,6 +76,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         initSearchView()
         initRecyclerView()
         initGroupData()
+        initQuickGroupBar()
+        initModeSwitch()
         upExploreData()
     }
 
@@ -114,6 +117,42 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 }
             }
         })
+    }
+
+    private fun initQuickGroupBar() {
+        ExploreQuickGroups.setupQuickGroupBar(
+            container = binding.llQuickGroup,
+            inflater = layoutInflater,
+            onClickGroup = { group ->
+                searchView.setQuery("group:$group", true)
+            },
+            onLongClickGroup = { group ->
+                startActivity<BookSourceActivity> {
+                    putExtra("group", group)
+                }
+                true
+            },
+            onConfig = {
+                ExploreQuickGroups.showQuickGroupConfigDialog(requireContext(), appDb.bookSourceDao) {
+                    initQuickGroupBar()
+                }
+            }
+        )
+    }
+
+    private fun initModeSwitch() {
+        binding.tvExploreModeSwitch.text =
+            if (AppConfig.isNewExplore) getString(R.string.explore_mode_new)
+            else getString(R.string.explore_mode_traditional)
+        binding.tvExploreModeSwitch.setOnClickListener {
+            AppConfig.isNewExplore = !AppConfig.isNewExplore
+            binding.tvExploreModeSwitch.text =
+                if (AppConfig.isNewExplore) getString(R.string.explore_mode_new)
+                else getString(R.string.explore_mode_traditional)
+            if (AppConfig.isNewExplore) {
+                // 界面B落地后启用：startActivity<ExploreNewActivity> { }
+            }
+        }
     }
 
     private fun initGroupData() {
@@ -168,6 +207,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     override fun onResume() {
         super.onResume()
         adapter.upResumed(true)
+        initQuickGroupBar()
     }
 
     override fun onPause() {

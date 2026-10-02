@@ -243,6 +243,15 @@ interface BookSourceDao {
     )
     val allEnabledGroupsUnProcessed: List<String>
 
+    @get:Query(
+        """select distinct bookSourceGroup from book_sources 
+        where enabledExplore = 1 
+        and trim(exploreUrl) <> '' 
+        and trim(bookSourceGroup) <> ''
+        order by customOrder"""
+    )
+    val exploreGroupsUnProcessed: List<String>
+
     @Query("select * from book_sources where bookSourceUrl = :key")
     fun getBookSource(key: String): BookSource?
 
@@ -351,6 +360,8 @@ interface BookSourceDao {
     fun allGroups(): List<String> = dealGroups(allGroupsUnProcessed)
 
     fun allEnabledGroups(): List<String> = dealGroups(allEnabledGroupsUnProcessed)
+
+    fun exploreGroups(): List<String> = dealGroups(exploreGroupsUnProcessed)
 
     fun flowGroups(): Flow<List<String>> {
         return flowGroupsUnProcessed().map { list ->

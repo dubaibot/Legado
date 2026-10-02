@@ -803,6 +803,10 @@
     <string name="rss_source_empty">Empty now!</string>
     <string name="explore_empty">Empty now!</string>
     <string name="explore_style">样式</string>
+    <string name="explore_mode_traditional">Traditional</string>
+    <string name="explore_mode_new">New</string>
+    <string name="explore_quick_group_config">Configure quick groups</string>
+    <string name="explore_quick_group_title">Configure quick group entries</string>
     <string name="page_key_set_help">Focusing on the input box and pressing a physical key will automatically enter the value of the key, and multiple keys will be automatically separated by commas.</string>
     <string name="theme_name">Theme name</string>
     <string name="auto_clear_expired">"Clear expired search histories automatically "</string>

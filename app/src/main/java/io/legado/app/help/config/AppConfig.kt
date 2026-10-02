@@ -822,5 +822,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     val autoUpdateVariant get() = appCtx.getPrefBoolean("autoUpdateVariant", true)
+
+    // 是否使用新版发现（默认 false = 传统）
+    var isNewExplore: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.isNewExplore, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.isNewExplore, value)
+        }
 }
 

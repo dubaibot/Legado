@@ -128,4 +128,11 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putBoolean("appCrash", value)
         }
 
+    // 发现页快捷分组（逗号分隔分组名，顺序即展示顺序）
+    var exploreQuickGroups: String
+        get() = getString("exploreQuickGroups", "") ?: ""
+        set(value) {
+            putString("exploreQuickGroups", value)
+        }
+
 }

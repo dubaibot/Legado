@@ -163,6 +163,9 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         initRecyclerView()
         initSearchView()
         upBookSource()
+        intent.getStringExtra("group")?.let {
+            searchView.setQuery("group:$it", true)
+        }
         initLiveDataGroup()
         initSelectActionBar()
         resumeCheckSource()
