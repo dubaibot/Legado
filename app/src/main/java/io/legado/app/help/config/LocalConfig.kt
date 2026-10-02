@@ -144,4 +144,17 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
         putString("exploreAdjust_$sourceUrl", value)
     }
 
+    // 发现新版书签显示名（key=exploreSourceName_{sourceUrl}，空为书源名）
+    fun getExploreSourceName(sourceUrl: String): String {
+        return getString("exploreSourceName_$sourceUrl", "") ?: ""
+    }
+
+    fun putExploreSourceName(sourceUrl: String, value: String) {
+        if (value.isBlank()) {
+            remove("exploreSourceName_$sourceUrl")
+        } else {
+            putString("exploreSourceName_$sourceUrl", value)
+        }
+    }
+
 }

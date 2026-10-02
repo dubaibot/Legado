@@ -80,4 +80,11 @@ class ExploreNewActivity : VMBaseActivity<ActivityExploreNewBinding, ExploreNewV
             putExtra("newStyle", true)
         }
     }
+
+    override fun editBookmark(source: BookSourcePart): Boolean {
+        ExploreQuickGroups.showEditSourceNameDialog(this, layoutInflater, source) {
+            adapter.notifyDataSetChanged()
+        }
+        return true
+    }
 }

@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.explore
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.view.LayoutInflater
 import android.widget.LinearLayout
@@ -7,7 +8,10 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import io.legado.app.R
 import io.legado.app.data.dao.BookSourceDao
+import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.lib.dialogs.alert
 
 object ExploreQuickGroups {
 
@@ -24,10 +28,6 @@ object ExploreQuickGroups {
             .filter { it.isNotBlank() }
 
         if (groups.isEmpty()) {
-            val tv = inflater.inflate(R.layout.item_quick_group, container, false) as TextView
-            tv.text = container.context.getString(R.string.explore_quick_group_config)
-            tv.setOnClickListener { onConfig() }
-            container.addView(tv)
             return
         }
 
@@ -43,6 +43,36 @@ object ExploreQuickGroups {
         add.text = "＋"
         add.setOnClickListener { onConfig() }
         container.addView(add)
+    }
+
+    /**
+     * 编辑书签显示名,空值恢复为书源名
+     */
+    @SuppressLint("InflateParams")
+    fun showEditSourceNameDialog(
+        context: Context,
+        inflater: LayoutInflater,
+        source: BookSourcePart,
+        onSaved: () -> Unit
+    ) {
+        val alertBinding = DialogEditTextBinding.inflate(inflater).apply {
+            editView.hint = context.getString(R.string.name)
+            editView.setText(
+                LocalConfig.getExploreSourceName(source.bookSourceUrl)
+                    .ifBlank { source.bookSourceName }
+            )
+        }
+        context.alert(titleResource = R.string.explore_edit_source_name) {
+            customView { alertBinding.root }
+            okButton {
+                LocalConfig.putExploreSourceName(
+                    source.bookSourceUrl,
+                    alertBinding.editView.text?.toString()?.trim() ?: ""
+                )
+                onSaved()
+            }
+            cancelButton()
+        }
     }
 
     fun showQuickGroupConfigDialog(

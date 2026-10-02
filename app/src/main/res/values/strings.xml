@@ -807,6 +807,8 @@
     <string name="explore_mode_new">New</string>
     <string name="explore_quick_group_config">Configure quick groups</string>
     <string name="explore_quick_group_title">Configure quick group entries</string>
+    <string name="explore_mode_switch">Switch explore mode</string>
+    <string name="explore_edit_source_name">Edit source name</string>
     <string name="explore_all">All</string>
     <string name="explore_no_sub_category">No sub categories</string>
     <string name="explore_adjust_category">Adjust categories</string>

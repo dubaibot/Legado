@@ -17,13 +17,15 @@
 
     <HorizontalScrollView
         android:id="@+id/hsv_quick_group"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:scrollbars="none"
         android:background="@color/background"
+        android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/title_bar"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/tv_explore_mode_switch">
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible">
 
         <LinearLayout
             android:id="@+id/ll_quick_group"
@@ -37,22 +39,6 @@
 
     </HorizontalScrollView>
 
-    <!-- 传统/新版 切换：放第二行右侧，避免遮挡标题栏分组菜单图标 -->
-    <TextView
-        android:id="@+id/tv_explore_mode_switch"
-        android:layout_width="wrap_content"
-        android:layout_height="0dp"
-        android:gravity="center"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:text="@string/explore_mode_traditional"
-        android:textColor="@color/primaryText"
-        android:textSize="13sp"
-        app:layout_constraintTop_toBottomOf="@id/title_bar"
-        app:layout_constraintBottom_toBottomOf="@id/hsv_quick_group"
-        app:layout_constraintEnd_toEndOf="parent" />
-
     <io.legado.app.ui.widget.recycler.RecyclerViewAtPager2
         android:id="@+id/rv_find"
         android:layout_width="match_parent"
@@ -60,6 +46,15 @@
         app:layout_constraintTop_toBottomOf="@+id/hsv_quick_group"
         app:layout_constraintBottom_toBottomOf="parent"
         tools:listitem="@layout/item_find_book" />
+
+    <io.legado.app.ui.widget.recycler.RecyclerViewAtPager2
+        android:id="@+id/rv_grid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@+id/hsv_quick_group"
+        app:layout_constraintBottom_toBottomOf="parent"
+        tools:listitem="@layout/item_explore_source" />
 
     <TextView
         android:id="@+id/tv_empty_msg"
