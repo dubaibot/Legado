@@ -9,6 +9,8 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemExploreGridBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.gone
+import io.legado.app.utils.visible
 
 /**
  * 发现列表三列网格样式
@@ -41,6 +43,12 @@ class ExploreShowGridAdapter(context: Context, val callBack: ExploreShowAdapter.
             tvName.text = item.name
             tvAuthor.text = item.author
             tvAuthor.isVisible = item.author.isNotBlank()
+            if (item.latestChapterTitle.isNullOrEmpty()) {
+                tvLasted.gone()
+            } else {
+                tvLasted.text = item.latestChapterTitle
+                tvLasted.visible()
+            }
             ivInBookshelf.isVisible = callBack.isInBookshelf(item)
             ivCover.load(
                 item,

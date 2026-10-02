@@ -37,6 +37,26 @@
             tools:ignore="ContentDescription" />
 
         <TextView
+            android:id="@+id/tv_lasted"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_gradient_cover"
+            android:ellipsize="end"
+            android:gravity="end|bottom"
+            android:includeFontPadding="false"
+            android:paddingStart="4dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="3dp"
+            android:singleLine="true"
+            android:textColor="@color/md_dark_primary_text"
+            android:textSize="10sp"
+            app:layout_constraintBottom_toBottomOf="@id/iv_cover"
+            app:layout_constraintEnd_toEndOf="@id/iv_cover"
+            app:layout_constraintStart_toStartOf="@id/iv_cover"
+            tools:text="最新章节" />
+
+        <TextView
             android:id="@+id/tv_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
