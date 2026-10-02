@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatSpinner
 import androidx.collection.LruCache
 import androidx.core.view.children
+import androidx.core.view.isGone
 import com.google.android.flexbox.FlexboxLayout
 import com.script.rhino.runScriptWithContext
 import io.legado.app.R
@@ -63,8 +64,11 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.set
 import kotlin.text.isNullOrEmpty
 
-class ExploreAdapter(context: Context, val callBack: CallBack) :
-    RecyclerAdapter<BookSourcePart, ItemFindBookBinding>(context) {
+class ExploreAdapter(
+    context: Context,
+    val callBack: CallBack,
+    private val headerGone: Boolean = false
+) : RecyclerAdapter<BookSourcePart, ItemFindBookBinding>(context) {
     companion object {
         val exploreInfoMapList = LruCache<String, InfoMap>(99)
     }
@@ -89,6 +93,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         payloads: MutableList<Any>
     ) {
         binding.run {
+            llTitle.isGone = headerGone
             if (holder.layoutPosition == itemCount - 1) {
                 root.setPadding(16.dpToPx(), 12.dpToPx(), 16.dpToPx(), 12.dpToPx())
             } else {
@@ -611,6 +616,15 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
             notifyItemChanged(oldExIndex)
             true
         }
+    }
+
+    /**
+     * 展开指定行渲染kinds,供侧边页复用
+     */
+    fun expand(position: Int) {
+        exIndex = position
+        scrollTo = position
+        notifyItemChanged(position, false)
     }
 
     fun onPause() {

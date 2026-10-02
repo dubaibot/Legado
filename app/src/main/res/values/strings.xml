@@ -812,6 +812,8 @@
     <string name="explore_all">All</string>
     <string name="explore_no_sub_category">No sub categories</string>
     <string name="explore_adjust_category">Adjust categories</string>
+    <string name="explore_add_big_category">Add to main categories</string>
+    <string name="explore_add_sub_category">Add sub category for %1$s</string>
     <string name="read_direct">Read now</string>
     <string name="page_key_set_help">Focusing on the input box and pressing a physical key will automatically enter the value of the key, and multiple keys will be automatically separated by commas.</string>
     <string name="theme_name">Theme name</string>

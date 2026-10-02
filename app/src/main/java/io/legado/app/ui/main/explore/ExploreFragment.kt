@@ -75,6 +75,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var exploreFlowJob: Job? = null
     private var gridFlowJob: Job? = null
     private var groupsMenu: SubMenu? = null
+    private var lastQuickGroup: String? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -107,6 +108,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 } else {
                     upExploreData(newText)
                 }
+                upQuickGroupHighlight()
                 return false
             }
         })
@@ -130,10 +132,20 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.rvGrid.adapter = gridAdapter
     }
 
+    /**
+     * 当前选中的快捷分组,由搜索条件 group: 前缀推导,不持久化
+     */
+    private fun currentQuickGroup(): String? {
+        val query = searchView.query?.toString() ?: return null
+        return if (query.startsWith("group:")) query.removePrefix("group:") else null
+    }
+
     private fun initQuickGroupBar() {
+        lastQuickGroup = currentQuickGroup()
         ExploreQuickGroups.setupQuickGroupBar(
             container = binding.llQuickGroup,
             inflater = layoutInflater,
+            currentGroup = currentQuickGroup(),
             onClickGroup = { group ->
                 searchView.setQuery("group:$group", true)
             },
@@ -150,6 +162,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }
         )
         binding.hsvQuickGroup.isVisible = binding.llQuickGroup.childCount > 0
+    }
+
+    /**
+     * 搜索条件变化后刷新快捷分组高亮,分组未变时跳过
+     */
+    private fun upQuickGroupHighlight() {
+        val current = currentQuickGroup()
+        if (current == lastQuickGroup) {
+            return
+        }
+        initQuickGroupBar()
     }
 
     /**

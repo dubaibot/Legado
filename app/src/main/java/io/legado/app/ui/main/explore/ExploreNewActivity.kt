@@ -24,6 +24,11 @@ class ExploreNewActivity : VMBaseActivity<ActivityExploreNewBinding, ExploreNewV
 
     private val adapter by lazy { ExploreNewSourceAdapter(this, this) }
 
+    /**
+     * 当前选中的快捷分组,由点击推导,不持久化
+     */
+    private var currentGroup: String? = null
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.rvSource.layoutManager = GridLayoutManager(this, 3)
         binding.rvSource.adapter = adapter
@@ -39,7 +44,10 @@ class ExploreNewActivity : VMBaseActivity<ActivityExploreNewBinding, ExploreNewV
         ExploreQuickGroups.setupQuickGroupBar(
             container = binding.llGroup,
             inflater = layoutInflater,
+            currentGroup = currentGroup,
             onClickGroup = { group ->
+                currentGroup = group
+                initGroupBar()
                 viewModel.loadSources(group)
             },
             onLongClickGroup = { group ->
@@ -60,7 +68,11 @@ class ExploreNewActivity : VMBaseActivity<ActivityExploreNewBinding, ExploreNewV
         val firstGroup = LocalConfig.exploreQuickGroups.split(",")
             .map { it.trim() }
             .firstOrNull { it.isNotBlank() }
-        firstGroup?.let { viewModel.loadSources(it) }
+        firstGroup?.let {
+            currentGroup = it
+            initGroupBar()
+            viewModel.loadSources(it)
+        }
     }
 
     override fun openExplore(source: BookSourcePart) {

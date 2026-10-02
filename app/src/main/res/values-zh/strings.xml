@@ -810,6 +810,8 @@
     <string name="explore_all">全部</string>
     <string name="explore_no_sub_category">无细分</string>
     <string name="explore_adjust_category">调整分类</string>
+    <string name="explore_add_big_category">添加到大分类</string>
+    <string name="explore_add_sub_category">添加到「%1$s」的细分类</string>
     <string name="read_direct">直读</string>
     <string name="page_key_set_help">将焦点放到输入框按下物理按键会自动录入键值，多个按键会自动用英文逗号隔开。</string>
     <string name="theme_name">主题名称</string>

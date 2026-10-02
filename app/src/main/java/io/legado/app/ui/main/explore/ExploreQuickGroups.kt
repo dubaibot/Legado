@@ -18,6 +18,7 @@ object ExploreQuickGroups {
     fun setupQuickGroupBar(
         container: LinearLayout,
         inflater: LayoutInflater,
+        currentGroup: String? = null,
         onClickGroup: (String) -> Unit,
         onLongClickGroup: (String) -> Boolean,
         onConfig: () -> Unit
@@ -34,6 +35,7 @@ object ExploreQuickGroups {
         groups.forEach { group ->
             val tv = inflater.inflate(R.layout.item_quick_group, container, false) as TextView
             tv.text = group
+            tv.isSelected = group == currentGroup
             tv.setOnClickListener { onClickGroup(group) }
             tv.setOnLongClickListener { onLongClickGroup(group) }
             container.addView(tv)
