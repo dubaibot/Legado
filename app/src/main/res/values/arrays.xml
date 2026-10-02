@@ -197,6 +197,11 @@
 		<item>beta_releaseS_version</item>
 	</string-array>
 
+	<string-array name="explore_style">
+		<item>List</item>
+		<item>Grid</item>
+	</string-array>
+
 	<string-array name="tip_color">
 		<item>Same color as content</item>
 		<item>Customize</item>

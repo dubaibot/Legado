@@ -1,6 +1,4 @@
 # 更新日志
-欢迎关注公众号[阅读Plus]即时了解软件更新资讯  
-<img src="https://open.weixin.qq.com/qr/code?username=legado_plus" width="200">
 
 ## cronet版本: 128.0.6613.40
 

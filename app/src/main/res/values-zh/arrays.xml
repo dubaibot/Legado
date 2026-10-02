@@ -110,6 +110,11 @@
         <item>自定义</item>
     </string-array>
 
+    <string-array name="explore_style">
+        <item>列表</item>
+        <item>三列</item>
+    </string-array>
+
     <string-array name="tip_divider_color">
         <item>默认</item>
         <item>跟随内容</item>

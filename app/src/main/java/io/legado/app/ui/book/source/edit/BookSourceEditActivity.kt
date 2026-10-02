@@ -295,6 +295,7 @@ class BookSourceEditActivity :
         bs.let {
             binding.cbIsEnable.isChecked = it.enabled
             binding.cbIsEnableExplore.isChecked = it.enabledExplore
+            binding.spExploreStyle.setSelection(it.exploreStyle)
             binding.cbIsEnableCookie.isChecked = it.enabledCookieJar ?: false
             binding.spType.setSelection(
                 when (it.bookSourceType) {
@@ -426,6 +427,7 @@ class BookSourceEditActivity :
         val source = viewModel.bookSource?.copy() ?: BookSource()
         source.enabled = binding.cbIsEnable.isChecked
         source.enabledExplore = binding.cbIsEnableExplore.isChecked
+        source.exploreStyle = binding.spExploreStyle.selectedItemPosition
         source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
         source.bookSourceType = when (binding.spType.selectedItemPosition) {
             4 -> BookSourceType.video

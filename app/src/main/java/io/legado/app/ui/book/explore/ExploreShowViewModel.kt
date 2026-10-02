@@ -30,6 +30,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val errorLiveData = MutableLiveData<String>()
     val errorTopLiveData = MutableLiveData<String>()
     val pageLiveData = MutableLiveData<Int>()
+    val sourceData = MutableLiveData<BookSource?>()
     private var bookSource: BookSource? = null
     private var exploreUrl: String? = null
     private var page = 1
@@ -65,6 +66,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             if (bookSource == null && sourceUrl != null) {
                 bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
             }
+            sourceData.postValue(bookSource)
             explore()
         }
     }

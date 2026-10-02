@@ -5,10 +5,13 @@ import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.core.os.bundleOf
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
@@ -28,7 +31,11 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     override val binding by viewBinding(ActivityExploreShowBinding::inflate)
     override val viewModel by viewModels<ExploreShowViewModel>()
 
-    private val adapter by lazy { ExploreShowAdapter(this, this) }
+    private val listAdapter by lazy { ExploreShowAdapter(this, this) }
+    private val gridAdapter by lazy { ExploreShowGridAdapter(this, this) }
+    private var isGridStyle = false
+    private val adapter: RecyclerAdapter<SearchBook, out ViewBinding>
+        get() = if (isGridStyle) gridAdapter else listAdapter
     private val loadMoreView by lazy { LoadMoreView(this) }
     private val loadMoreViewTop by lazy { LoadMoreView(this) }
     private var oldPage = -1
@@ -72,7 +79,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = intent.getStringExtra("exploreName")
-        initRecyclerView()
+        viewModel.sourceData.observe(this) {
+            initRecyclerView(it?.exploreStyle == 1)
+        }
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }
         viewModel.initData(intent)
@@ -82,16 +91,28 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.errorTopLiveData.observe(this) {
             loadMoreViewTop.error(it)
         }
-        viewModel.upAdapterLiveData.observe(this) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
-        }
         viewModel.pageLiveData.observe(this) {
             menuPage.title = getString(R.string.menu_page, it)
         }
     }
 
-    private fun initRecyclerView() {
-        binding.recyclerView.addItemDecoration(VerticalDivider(this))
+    private fun initRecyclerView(isGrid: Boolean) {
+        isGridStyle = isGrid
+        if (isGrid) {
+            val gridLayoutManager = GridLayoutManager(this, 3)
+            gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int): Int {
+                    //Header和Footer占满整行
+                    val isHeaderOrFooter = position < adapter.getHeaderCount()
+                            || position >= adapter.itemCount - adapter.getFooterCount()
+                    return if (isHeaderOrFooter) gridLayoutManager.spanCount else 1
+                }
+            }
+            binding.recyclerView.layoutManager = gridLayoutManager
+        } else {
+            binding.recyclerView.layoutManager = LinearLayoutManager(this)
+            binding.recyclerView.addItemDecoration(VerticalDivider(this))
+        }
         binding.recyclerView.adapter = adapter
         binding.recyclerView.applyNavigationBarPadding()
         adapter.addFooterView {
@@ -102,6 +123,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             if (!loadMoreView.isLoading) {
                 scrollToBottom(true)
             }
+        }
+        viewModel.upAdapterLiveData.observe(this) {
+            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
         }
         binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {

@@ -82,6 +82,9 @@ data class BookSource(
     var exploreUrl: String? = null,
     // 发现筛选规则
     var exploreScreen: String? = null,
+    // 发现页展示样式: 0列表 1三列
+    @ColumnInfo(defaultValue = "0")
+    var exploreStyle: Int = 0,
     // 发现规则
     var ruleExplore: ExploreRule? = null,
     // 搜索url
