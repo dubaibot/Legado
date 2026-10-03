@@ -46,10 +46,11 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val pageLiveData = MutableLiveData<Int>()
     val sourceData = MutableLiveData<BookSource?>()
 
-    /** 分类树三栏:一级/二级/三级 */
+    /** 分类树(总览全量渲染信号) */
     val treeData = MutableLiveData<List<ExploreCatNode>>()
-    val l2Data = MutableLiveData<List<ExploreCatNode>>()
-    val l3Data = MutableLiveData<List<ExploreCatNode>>()
+
+    /** 双视图模式:true=书单列表,false=分类总览(仅initData决定初值,后续由界面切换) */
+    val showListLiveData = MutableLiveData<Boolean>()
 
     /** 节点失效提示与button执行完成提示 */
     val nodeInvalidLiveData = MutableLiveData<ExploreCatNode>()
@@ -157,11 +158,19 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             if (intentUrl != null) {
                 locateByUrl(intentUrl)
             }
-            if (currentL1 == null && currentL2 == null && currentL3 == null) {
-                locateFirst()
-            }
+            val located = hasCurrent()
+            showListLiveData.postValue(located)
             upBars()
-            reloadCurrent()
+            if (located) {
+                reloadCurrent()
+            } else {
+                execute {
+                    exploreUrl = null
+                    page = 1
+                    books.clear()
+                    booksData.postValue(emptyList())
+                }
+            }
         }
     }
 
@@ -294,31 +303,77 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    /** 三栏数据 */
-    fun l1Kinds(): List<ExploreCatNode> = tree
-
-    fun l2Kinds(): List<ExploreCatNode> {
-        currentL1?.let { return it.children }
-        if (isFlatPreset) {
-            return flatPreset
-        }
-        return emptyList()
+    /** 总览根节点:工作树,未编辑无树时为平铺预填 */
+    fun overviewNodes(): List<ExploreCatNode> {
+        return if (tree.isEmpty() && !edited) flatPreset else tree
     }
 
-    fun l3Kinds(): List<ExploreCatNode> = currentL2?.children ?: emptyList()
+    /** 是否有当前定位(决定列表模式可用性) */
+    fun hasCurrent(): Boolean {
+        return currentL1 != null || currentL2 != null || currentL3 != null
+    }
+
+    /** 顶栏下拉分组:按控件标题聚合树中所有select选项实例(保遍历序) */
+    data class SelectGroup(val kindTitle: String, val nodes: List<ExploreCatNode>)
+
+    fun selectGroups(): List<SelectGroup> {
+        val map = linkedMapOf<String, MutableList<ExploreCatNode>>()
+        fun collect(nodes: List<ExploreCatNode>) {
+            nodes.forEach { node ->
+                if (node.type == Type.select) {
+                    map.getOrPut(node.kindTitle) { mutableListOf() }.add(node)
+                }
+                collect(node.children)
+            }
+        }
+        collect(overviewNodes())
+        return map.map { SelectGroup(it.key, it.value) }
+    }
+
+    /**
+     * 总览点击节点:树中定位(同步父级引用)并按语义拉书;
+     * 已是当前定位返回false不重载
+     */
+    fun selectNode(node: ExploreCatNode): Boolean {
+        val current = currentL3 ?: currentL2 ?: currentL1
+        if (current != null && current.sameRefAs(node)) {
+            return false
+        }
+        for (l1 in tree) {
+            if (l1.sameRefAs(node)) {
+                currentL1 = l1
+                currentL2 = null
+                currentL3 = null
+                upBars()
+                reloadCurrent()
+                return true
+            }
+            for (l2 in l1.children) {
+                if (l2.sameRefAs(node)) {
+                    currentL1 = l1
+                    currentL2 = l2
+                    currentL3 = null
+                    upBars()
+                    reloadCurrent()
+                    return true
+                }
+                for (l3 in l2.children) {
+                    if (l3.sameRefAs(node)) {
+                        currentL1 = l1
+                        currentL2 = l2
+                        currentL3 = l3
+                        upBars()
+                        reloadCurrent()
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
 
     private fun upBars() {
         treeData.postValue(tree)
-        l2Data.postValue(l2Kinds())
-        l3Data.postValue(l3Kinds())
-    }
-
-    /** 定位树中第一个一级项(一级空时取第一个二级项) */
-    private fun locateFirst() {
-        currentL1 = tree.firstOrNull()
-        if (currentL1 == null) {
-            currentL2 = l2Kinds().firstOrNull()
-        }
     }
 
     /** intent url在树或平铺预填中定位,并同步父级引用 */
@@ -348,40 +403,6 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 }
             }
         }
-    }
-
-    /** 点击一级:高亮+下级栏重置+按节点语义拉书;再点已高亮项无操作返回false */
-    fun selectL1(node: ExploreCatNode): Boolean {
-        if (node == currentL1 && currentL2 == null && currentL3 == null) {
-            return false
-        }
-        currentL1 = node
-        currentL2 = null
-        currentL3 = null
-        upBars()
-        reloadCurrent()
-        return true
-    }
-
-    fun selectL2(node: ExploreCatNode): Boolean {
-        if (node == currentL2 && currentL3 == null) {
-            return false
-        }
-        currentL2 = node
-        currentL3 = null
-        upBars()
-        reloadCurrent()
-        return true
-    }
-
-    fun selectL3(node: ExploreCatNode): Boolean {
-        if (node == currentL3) {
-            return false
-        }
-        currentL3 = node
-        upBars()
-        reloadCurrent()
-        return true
     }
 
     /**
@@ -703,9 +724,8 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         currentL1 = null
         currentL2 = null
         currentL3 = null
-        locateFirst()
         upBars()
-        reloadCurrent()
+        showListLiveData.postValue(false)
     }
 
     /** 清空:全部置空,置编辑标志不再预填 */
@@ -720,6 +740,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         currentL2 = null
         currentL3 = null
         upBars()
+        showListLiveData.postValue(false)
         execute {
             exploreUrl = null
             page = 1
@@ -750,12 +771,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 || it.type == Type.select
     }
 
-    /** 关闭筛选页:当前定位被删除时重新定位并拉书 */
+    /** 定位被删除(筛选关闭/弹窗删除):回到分类总览模式 */
     fun onFilterClosed() {
-        if (currentL1 == null && currentL2 == null && currentL3 == null) {
-            locateFirst()
-            upBars()
-            reloadCurrent()
+        if (!hasCurrent()) {
+            showListLiveData.postValue(false)
         }
     }
 

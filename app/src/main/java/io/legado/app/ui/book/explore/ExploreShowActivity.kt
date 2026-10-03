@@ -1,11 +1,13 @@
 package io.legado.app.ui.book.explore
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.HorizontalScrollView
+import android.widget.ArrayAdapter
+import android.widget.ListPopupWindow
 import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.activity.viewModels
@@ -16,6 +18,8 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
+import com.google.android.flexbox.FlexWrap
+import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -35,14 +39,12 @@ import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 
 /**
- * 发现列表:三栏平铺分类树 + 分类编辑弹窗(页签网格toggle构建)
+ * 发现页:顶栏select下拉+分组胶囊总览选分类,点胶囊切书单列表,菜单弹窗编辑树
  */
 class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreShowViewModel>(),
     ExploreShowAdapter.CallBack {
@@ -77,8 +79,15 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         onBackPressedDispatcher.addCallback(this) {
-            finish()
+            if (binding.contentView.isVisible) {
+                showCats()
+            } else {
+                finish()
+            }
         }
+        //初始模式预判,减少intent直达书单时的闪烁
+        upUiMode(intent.getStringExtra("exploreUrl") != null)
+        binding.svCats.applyNavigationBarPadding()
         //post到附加完成后执行,确保setSupportActionBar已完成
         binding.titleBar.post { initTitleView() }
         viewModel.sourceData.observe(this) { source ->
@@ -94,13 +103,14 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }
         viewModel.treeData.observe(this) {
-            upL1Bar()
+            //列表模式下定位被删(弹窗操作)时回总览
+            if (binding.contentView.isVisible && !viewModel.hasCurrent()) {
+                showCats()
+            }
+            upOverview()
         }
-        viewModel.l2Data.observe(this) {
-            upL2Bar()
-        }
-        viewModel.l3Data.observe(this) {
-            upL3Bar()
+        viewModel.showListLiveData.observe(this) { showList ->
+            upUiMode(showList == true)
         }
         viewModel.nodeInvalidLiveData.observe(this) {
             toastOnUi(R.string.explore_node_invalid)
@@ -159,13 +169,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         return super.onCompatOptionsItemSelected(item)
     }
 
-    /** 副标题显示当前分类名,无分类时隐藏 */
+    /** 副标题显示当前分类名,仅列表模式显示 */
     private fun updateSubtitle() {
         val subtitle = viewModel.currentL3?.name
             ?: viewModel.currentL2?.name
             ?: viewModel.currentL1?.name
         tvSubtitle?.let {
-            it.isVisible = subtitle != null
+            it.isVisible = subtitle != null && binding.contentView.isVisible
             it.text = subtitle
         }
     }
@@ -320,86 +330,154 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     /**
-     * 列表页三栏chip:高亮当前定位,点击切换联动刷新下级栏;再点已高亮项无操作
+     * 双视图切换:总览(分组胶囊)与书单列表
      */
-    private fun upL1Bar() = upBar(
-        binding.hsvBigCategory, binding.llBigCategory,
-        viewModel.l1Kinds(), viewModel.currentL1
-    ) { viewModel.selectL1(it) }
-
-    private fun upL2Bar() = upBar(
-        binding.hsvSubCategory, binding.llSubCategory,
-        viewModel.l2Kinds(), viewModel.currentL2
-    ) { viewModel.selectL2(it) }
-
-    private fun upL3Bar() = upBar(
-        binding.hsvThirdCategory, binding.llThirdCategory,
-        viewModel.l3Kinds(), viewModel.currentL3
-    ) { viewModel.selectL3(it) }
-
-    private fun upBar(
-        scrollView: HorizontalScrollView,
-        container: ViewGroup,
-        nodes: List<ExploreCatNode>,
-        current: ExploreCatNode?,
-        onSelect: (ExploreCatNode) -> Boolean
-    ) {
-        if (nodes.isEmpty()) {
-            scrollView.gone()
-            return
-        }
-        scrollView.visible()
-        container.removeAllViews()
-        val names = ExploreCatNode.displayNames(nodes)
-        var selectedView: TextView? = null
-        nodes.forEachIndexed { index, node ->
-            val tv = layoutInflater.inflate(
-                R.layout.item_quick_group, container, false
-            ) as TextView
-            tv.text = names[index]
-            tv.isSelected = current == node
-            tv.setOnClickListener {
-                if (onSelect(node)) {
-                    clearAndReload()
-                }
-            }
-            container.addView(tv)
-            if (tv.isSelected) {
-                selectedView = tv
-            }
-        }
-        selectedView?.let { ensureChipVisible(scrollView, it) }
-        if (titleInited) {
-            updateSubtitle()
-        }
+    private fun upUiMode(showList: Boolean) {
+        binding.svCats.isVisible = !showList
+        binding.contentView.isVisible = showList
+        updateSubtitle()
     }
 
-    /** 高亮chip滚动到可见 */
-    private fun ensureChipVisible(scrollView: HorizontalScrollView, chip: TextView) {
-        scrollView.post {
-            val target = (chip.left - 16.dpToPx()).coerceAtLeast(0)
-            if (chip.left < scrollView.scrollX + 8.dpToPx()
-                || chip.right > scrollView.scrollX + scrollView.width - 8.dpToPx()
-            ) {
-                scrollView.smoothScrollTo(target, 0)
-            }
-        }
+    private fun showList() {
+        upUiMode(true)
+    }
+
+    private fun showCats() {
+        upUiMode(false)
+    }
+
+    /** 总览渲染:顶栏select下拉+分组胶囊 */
+    private fun upOverview() {
+        upSelectBar()
+        upCats()
     }
 
     /**
-     * 切分类复位分页现场:页码回到第1页,顶部回滚视图高度归零,防止旧页码列表错误前置
+     * 顶栏select下拉:按控件标题分组,chip显示"控件:当前值",
+     * 点击弹选项列表,选中即定位该选项实例并切列表
      */
-    private fun clearAndReload() {
-        oldPage = -1
-        isClearAll = false
-        val layoutParams = loadMoreViewTop.layoutParams
-        if (layoutParams != null && layoutParams.height != 0) {
-            layoutParams.height = 0
-            loadMoreViewTop.layoutParams = layoutParams
+    private fun upSelectBar() {
+        val groups = viewModel.selectGroups()
+        binding.llSelect.removeAllViews()
+        binding.hsvSelect.isVisible = groups.isNotEmpty()
+        val currentRef = listOfNotNull(
+            viewModel.currentL1, viewModel.currentL2, viewModel.currentL3
+        )
+        groups.forEach { group ->
+            val tv = layoutInflater.inflate(
+                R.layout.item_explore_select, binding.llSelect, false
+            ) as TextView
+            val current = group.nodes.firstOrNull { node ->
+                currentRef.any { it.sameRefAs(node) }
+            }
+            tv.text = getString(
+                R.string.explore_select_value,
+                group.kindTitle,
+                current?.option ?: group.nodes.first().option ?: group.nodes.first().name
+            )
+            tv.setOnClickListener { anchor ->
+                showSelectPopup(tv, group)
+            }
+            binding.llSelect.addView(tv)
         }
-        adapter.clearItems()
-        loadMoreView.hasMore()
-        scrollToBottom(true)
+    }
+
+    private fun showSelectPopup(anchor: View, group: ExploreShowViewModel.SelectGroup) {
+        val names = group.nodes.map { it.option ?: it.name }
+        val popup = ListPopupWindow(this)
+        popup.setAdapter(ArrayAdapter(this, R.layout.item_text_common, names))
+        popup.setAnchorView(anchor)
+        popup.width = maxOf(anchor.width, 120.dpToPx())
+        popup.setOnItemClickListener { _, _, position, _ ->
+            popup.dismiss()
+            group.nodes.getOrNull(position)?.let { node ->
+                if (viewModel.selectNode(node)) {
+                    showList()
+                }
+            }
+        }
+        popup.show()
+    }
+
+    /**
+     * 分类总览:分支节点渲染组标题大胶囊,叶子(url/button)按字数聚簇换行;
+     * select节点已在顶栏,总览不重复渲染;点叶子定位分类,url类切书单列表
+     */
+    private fun upCats() {
+        binding.llCats.removeAllViews()
+        val cluster = mutableListOf<ExploreCatNode>()
+
+        fun flush() {
+            if (cluster.isEmpty()) return
+            val names = ExploreCatNode.displayNames(cluster)
+            val fbx = FlexboxLayout(this)
+            fbx.flexWrap = FlexWrap.WRAP
+            cluster.forEachIndexed { index, node ->
+                val tv = layoutInflater.inflate(
+                    R.layout.item_quick_group, fbx, false
+                ) as TextView
+                tv.text = names[index]
+                tv.isSelected = isCurrentNode(node)
+                tv.setOnClickListener {
+                    if (viewModel.selectNode(node)
+                        && node.type != ExploreKind.Type.button
+                    ) {
+                        showList()
+                    }
+                }
+                fbx.addView(
+                    tv,
+                    FlexboxLayout.LayoutParams(
+                        FlexboxLayout.LayoutParams.WRAP_CONTENT,
+                        FlexboxLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        //item_quick_group自带右距,补上行距保证多行不贴边
+                        topMargin = 8.dpToPx()
+                    }
+                )
+            }
+            binding.llCats.addView(fbx)
+            cluster.clear()
+        }
+
+        fun render(nodes: List<ExploreCatNode>) {
+            nodes.forEach { node ->
+                when {
+                    node.type == ExploreKind.Type.select -> Unit
+                    node.children.isNotEmpty() -> {
+                        flush()
+                        addGroupTitle(node.name)
+                        render(node.children)
+                    }
+                    node.type == ExploreCatNode.TYPE_HEADER -> Unit
+                    else -> cluster.add(node)
+                }
+            }
+        }
+
+        render(viewModel.overviewNodes())
+        flush()
+        if (binding.llCats.childCount == 0) {
+            val tv = TextView(this)
+            tv.text = getString(R.string.explore_cats_empty)
+            tv.gravity = Gravity.CENTER
+            tv.setPadding(0, 100.dpToPx(), 0, 0)
+            binding.llCats.addView(tv)
+        }
+    }
+
+    private fun addGroupTitle(name: String) {
+        val tv = layoutInflater.inflate(
+            R.layout.item_explore_group, binding.llCats, false
+        ) as TextView
+        tv.text = name
+        binding.llCats.addView(tv)
+    }
+
+    private fun isCurrentNode(node: ExploreCatNode): Boolean {
+        return listOfNotNull(
+            viewModel.currentL1, viewModel.currentL2, viewModel.currentL3
+        ).any { it.sameRefAs(node) }
     }
 
     /**
