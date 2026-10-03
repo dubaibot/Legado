@@ -14,7 +14,14 @@ static def releaseTime() {
 
 def name = "myreader"
 def version = "3.26.100100"
-def gitCommits = Integer.parseInt('git rev-list HEAD --count'.execute().text.trim())
+def gitCommits = 0
+try {
+    def result = 'git rev-list HEAD --count'.execute().text.trim()
+    if (result && result.isNumber()) {
+        gitCommits = Integer.parseInt(result)
+    }
+} catch (Exception ignored) {
+}
 
 android {
     compileSdk = compile_sdk_version
@@ -43,7 +50,7 @@ android {
         applicationId "com.myreader.reader"
         minSdk 21
         targetSdk 36
-        versionCode 10001
+        versionCode Math.max(10001, 10000 + gitCommits)
         versionName version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         project.ext.set("archivesBaseName", name + "_" + version)
@@ -94,6 +101,15 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
     }
+    // 按 ABI 拆分安装包：产出 universal 通用包与 arm 精简包，减小下载体积
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a'
+            universalApk true
+        }
+    }
     //noinspection GrDeprecatedAPIUsage
     flavorDimensions = ['mode']
     productFlavors {
@@ -106,7 +122,14 @@ android {
     android.applicationVariants.configureEach { variant ->
         variant.outputs.configureEach {
             def flavor = variant.productFlavors[0].name
-            outputFileName = "${name}_${flavor}_${defaultConfig.versionName}.apk"
+            def abiPart = "_universal"
+            def outputDirName = output.dirName ?: ""
+            if (outputDirName.contains("armeabi-v7a")) {
+                abiPart = "_armeabi-v7a"
+            } else if (outputDirName.contains("arm64-v8a")) {
+                abiPart = "_arm64-v8a"
+            }
+            outputFileName = "${name}_${flavor}_${defaultConfig.versionName}${abiPart}.apk"
         }
     }
 
