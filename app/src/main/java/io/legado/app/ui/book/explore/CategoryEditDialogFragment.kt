@@ -3,6 +3,7 @@ package io.legado.app.ui.book.explore
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.ListPopupWindow
@@ -12,6 +13,7 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -147,57 +149,74 @@ class CategoryEditDialogFragment : BaseDialogFragment(R.layout.dialog_category_e
         }
     }
 
-    /** 分类网格:url分类toggle挂载,select控件弹选项列表按选项挂载 */
+    /** 分类网格:按面板分段标题分组展示,url分类toggle挂载,select控件弹选项列表按选项挂载 */
     private fun upGrid() {
-        val fbx = binding.fbxGrid
-        fbx.removeAllViews()
-        val kinds = viewModel.gridKinds()
+        val ll = binding.llGrid
+        ll.removeAllViews()
         val noParent = currentLevel > 1 && viewModel.parentChips(currentLevel).isEmpty()
         binding.tvHint.text = when {
             noParent && currentLevel == 2 -> getString(R.string.explore_need_parent_l1)
             noParent -> getString(R.string.explore_need_parent_l2)
             else -> getString(R.string.explore_grid_hint)
         }
-        kinds.forEach { kind ->
-            val tv = layoutInflater.inflate(
-                R.layout.item_quick_group, fbx, false
-            ) as TextView
-            tv.text = kind.title.ifBlank {
-                getString(R.string.explore_unnamed_category)
+        viewModel.panelGroups().forEach { group ->
+            group.title?.let { title ->
+                val tvTitle = layoutInflater.inflate(
+                    R.layout.item_explore_group, ll, false
+                ) as TextView
+                tvTitle.text = title
+                ll.addView(tvTitle)
             }
-            tv.isEnabled = !noParent
-            tv.alpha = if (noParent) 0.4f else 1f
-            tv.isSelected = when (kind.type) {
-                ExploreKind.Type.url -> viewModel.refAtLevel(currentLevel, kind, null)
-                else -> viewModel.refKindAtLevel(currentLevel, kind)
+            if (group.kinds.isEmpty()) {
+                return@forEach
             }
-            tv.setOnClickListener {
-                if (kind.type == ExploreKind.Type.select) {
-                    showOptionPopup(tv, kind)
-                } else {
-                    viewModel.toggleAtLevel(currentLevel, kind, null, currentParent())
-                    upAll()
-                }
+            val fbx = FlexboxLayout(requireContext())
+            fbx.flexWrap = FlexWrap.WRAP
+            group.kinds.forEach { kind ->
+                fbx.addView(buildKindChip(fbx, kind, noParent))
             }
-            tv.setOnLongClickListener {
-                val node = viewModel.nodeAtLevel(currentLevel, kind, null)
-                if (node != null && tv.isSelected) {
-                    showNodeInfo(node)
-                    true
-                } else {
-                    false
-                }
+            ll.addView(fbx)
+        }
+    }
+
+    private fun buildKindChip(parent: ViewGroup, kind: ExploreKind, noParent: Boolean): TextView {
+        val tv = layoutInflater.inflate(
+            R.layout.item_quick_group, parent, false
+        ) as TextView
+        tv.text = kind.title.ifBlank {
+            getString(R.string.explore_unnamed_category)
+        }
+        tv.isEnabled = !noParent
+        tv.alpha = if (noParent) 0.4f else 1f
+        tv.isSelected = when (kind.type) {
+            ExploreKind.Type.url -> viewModel.refAtLevel(currentLevel, kind, null)
+            else -> viewModel.refKindAtLevel(currentLevel, kind)
+        }
+        tv.setOnClickListener {
+            if (kind.type == ExploreKind.Type.select) {
+                showOptionPopup(tv, kind)
+            } else {
+                viewModel.toggleAtLevel(currentLevel, kind, null, currentParent())
+                upAll()
             }
-            fbx.addView(
-                tv,
-                FlexboxLayout.LayoutParams(
-                    FlexboxLayout.LayoutParams.WRAP_CONTENT,
-                    FlexboxLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    //item_quick_group 自带右距,补上行距保证多行不贴边
-                    topMargin = 8.dpToPx()
-                }
-            )
+        }
+        tv.setOnLongClickListener {
+            val node = viewModel.nodeAtLevel(currentLevel, kind, null)
+            if (node != null && tv.isSelected) {
+                showNodeInfo(node)
+                true
+            } else {
+                false
+            }
+        }
+        return tv.apply {
+            layoutParams = FlexboxLayout.LayoutParams(
+                FlexboxLayout.LayoutParams.WRAP_CONTENT,
+                FlexboxLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                //item_quick_group 自带右距,补上行距保证多行不贴边
+                topMargin = 8.dpToPx()
+            }
         }
     }
 
