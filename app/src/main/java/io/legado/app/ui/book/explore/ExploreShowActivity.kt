@@ -6,23 +6,16 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.SearchView
 import androidx.core.os.bundleOf
-import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
-import androidx.drawerlayout.widget.DrawerLayout
-import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
-import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -37,7 +30,6 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.search.SearchActivity
-import io.legado.app.ui.main.explore.ExploreKindRenderer
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
@@ -50,7 +42,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 
 /**
- * 发现列表:三栏平铺分类树 + 筛选页(已选分类/筛选设置/传统发现面板)
+ * 发现列表:三栏平铺分类树 + 分类编辑弹窗(页签网格toggle构建)
  */
 class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreShowViewModel>(),
     ExploreShowAdapter.CallBack {
@@ -83,47 +75,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     private var searchMenuItem: MenuItem? = null
     private var categoryMenuItem: MenuItem? = null
 
-    /** 筛选页两个渲染器:筛选设置区(完整交互)/传统发现面板(点击弹添加菜单) */
-    private val filterRenderer by lazy {
-        ExploreKindRenderer(this, lifecycleScope, object : ExploreKindRenderer.Callback {
-            override fun onKindClick(view: View, sourceUrl: String, kind: ExploreKind) {
-            }
-
-            override fun onSelectOptionClick(
-                view: View, sourceUrl: String, kind: ExploreKind, option: String
-            ) {
-            }
-
-            override fun onRequestRefresh(sourceUrl: String) {
-                viewModel.onPanelChanged()
-            }
-        })
-    }
-    private val panelRenderer by lazy {
-        ExploreKindRenderer(this, lifecycleScope, object : ExploreKindRenderer.Callback {
-            override fun onKindClick(view: View, sourceUrl: String, kind: ExploreKind) {
-                showAddMenu(view, kind, null)
-            }
-
-            override fun onSelectOptionClick(
-                view: View, sourceUrl: String, kind: ExploreKind, option: String
-            ) {
-                showAddMenu(view, kind, option)
-            }
-
-            override fun onRequestRefresh(sourceUrl: String) {
-                viewModel.onPanelChanged()
-            }
-        })
-    }
-
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         onBackPressedDispatcher.addCallback(this) {
-            if (binding.drawerLayout.isDrawerOpen(GravityCompat.END)) {
-                binding.drawerLayout.closeDrawer(GravityCompat.END)
-            } else {
-                finish()
-            }
+            finish()
         }
         //post到附加完成后执行,确保setSupportActionBar已完成
         binding.titleBar.post { initTitleView() }
@@ -141,33 +95,18 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.addBooksData.observe(this) { upDataTop(it) }
         viewModel.treeData.observe(this) {
             upL1Bar()
-            if (isFilterOpen()) {
-                upFilterSelected()
-            }
         }
         viewModel.l2Data.observe(this) {
             upL2Bar()
-            if (isFilterOpen()) {
-                upFilterSelected()
-            }
         }
         viewModel.l3Data.observe(this) {
             upL3Bar()
-            if (isFilterOpen()) {
-                upFilterSelected()
-            }
         }
         viewModel.nodeInvalidLiveData.observe(this) {
             toastOnUi(R.string.explore_node_invalid)
         }
         viewModel.nodeExecutedLiveData.observe(this) {
             toastOnUi(R.string.explore_node_executed)
-        }
-        viewModel.panelRefreshLiveData.observe(this) {
-            if (isFilterOpen()) {
-                upFilterSettings()
-                upFilterPanel()
-            }
         }
         viewModel.kindsLoadedLiveData.observe(this) {
             //exploreKinds异步解析完成,补刷筛选按钮可见性(菜单创建时通常还未加载完)
@@ -183,7 +122,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.pageLiveData.observe(this) {
             tvPage?.text = getString(R.string.menu_page, it)
         }
-        initDrawerListener()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -216,7 +154,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.menu_category) {
-            openFilterDrawer()
+            CategoryEditDialogFragment().show(supportFragmentManager, "categoryEdit")
         }
         return super.onCompatOptionsItemSelected(item)
     }
@@ -412,7 +350,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         }
         scrollView.visible()
         container.removeAllViews()
-        val names = displayNames(nodes)
+        val names = ExploreCatNode.displayNames(nodes)
         var selectedView: TextView? = null
         nodes.forEachIndexed { index, node ->
             val tv = layoutInflater.inflate(
@@ -462,230 +400,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         adapter.clearItems()
         loadMoreView.hasMore()
         scrollToBottom(true)
-    }
-
-    //==================== 筛选页 ====================
-
-    private fun isFilterOpen(): Boolean {
-        return binding.drawerLayout.isDrawerOpen(GravityCompat.END)
-    }
-
-    /**
-     * 筛选页:已选分类三栏 + 清空重建/清空 + 筛选设置 + 传统发现面板
-     */
-    private fun openFilterDrawer() {
-        if (!viewModel.hasExploreKinds) {
-            return
-        }
-        if (viewModel.sourceData.value == null) {
-            return
-        }
-        upFilterSelected()
-        upFilterSettings()
-        upFilterPanel()
-        binding.drawerLayout.openDrawer(GravityCompat.END)
-    }
-
-    private fun initDrawerListener() {
-        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
-            override fun onDrawerClosed(drawerView: View) {
-                ExploreKindRenderer.saveInfoMaps()
-                viewModel.onFilterClosed()
-            }
-        })
-        binding.drawerPanel.btnResetPreset.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle(R.string.explore_reset_preset)
-                .setMessage(R.string.explore_reset_preset_confirm)
-                .setPositiveButton(R.string.ok) { _, _ ->
-                    viewModel.resetToPreset()
-                    upFilterSelected()
-                }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
-        }
-        binding.drawerPanel.btnClearAll.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle(R.string.explore_clear_all)
-                .setMessage(R.string.explore_clear_all_confirm)
-                .setPositiveButton(R.string.ok) { _, _ ->
-                    viewModel.clearAll()
-                    upFilterSelected()
-                }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
-        }
-    }
-
-    /**
-     * 已选分类三栏:chip点击设为当前定位,长按弹引用信息+删除,栏末尾「＋」提示
-     */
-    private fun upFilterSelected() {
-        upSelectedBar(
-            binding.drawerPanel.fbxL1, viewModel.l1Kinds(), 1
-        )
-        upSelectedBar(
-            binding.drawerPanel.fbxL2, viewModel.l2Kinds(), 2,
-            viewModel.currentL1, null
-        )
-        upSelectedBar(
-            binding.drawerPanel.fbxL3, viewModel.l3Kinds(), 3,
-            viewModel.currentL1, viewModel.currentL2
-        )
-    }
-
-    private fun upSelectedBar(
-        fbx: FlexboxLayout,
-        nodes: List<ExploreCatNode>,
-        level: Int,
-        l1: ExploreCatNode? = null,
-        l2: ExploreCatNode? = null
-    ) {
-        fbx.removeAllViews()
-        val names = displayNames(nodes)
-        nodes.forEachIndexed { index, node ->
-            val tv = layoutInflater.inflate(
-                R.layout.item_quick_group, fbx, false
-            ) as TextView
-            tv.text = names[index]
-            //高亮当前定位,添加二级/三级的目标父级以此为准
-            tv.isSelected = when (level) {
-                1 -> viewModel.currentL1?.let { node.sameRefAs(it) } == true
-                2 -> viewModel.currentL2?.let { node.sameRefAs(it) } == true
-                else -> viewModel.currentL3?.let { node.sameRefAs(it) } == true
-            }
-            tv.setOnClickListener {
-                when (level) {
-                    1 -> viewModel.selectL1(node)
-                    2 -> viewModel.selectL2(node)
-                    else -> viewModel.selectL3(node)
-                }
-                upFilterSelected()
-            }
-            tv.setOnLongClickListener {
-                showNodeDialog(node, level, l1, l2)
-                true
-            }
-            fbx.addView(tv)
-        }
-        val plus = layoutInflater.inflate(
-            R.layout.item_quick_group, fbx, false
-        ) as TextView
-        plus.text = "＋"
-        plus.setOnClickListener {
-            //滚动定位到传统发现面板,引导用户从面板选分类添加
-            binding.drawerPanel.svFilter.smoothScrollTo(0, binding.drawerPanel.fbxPanel.top)
-            toastOnUi(R.string.explore_plus_hint)
-        }
-        fbx.addView(plus)
-    }
-
-    /**
-     * 长按节点:展示完整引用信息,可删除(父级删除连带子级由remove实现)
-     */
-    private fun showNodeDialog(
-        node: ExploreCatNode,
-        level: Int,
-        l1: ExploreCatNode?,
-        l2: ExploreCatNode?
-    ) {
-        val refInfo = buildString {
-            append(getString(R.string.explore_node_ref_info))
-            append("\n")
-            append("type: ${node.type}")
-            append("\nkind: ${node.kindTitle}")
-            node.url?.takeIf { it.isNotBlank() }?.let { append("\nurl: $it") }
-            node.option?.let { append("\noption: $it") }
-            node.action?.takeIf { it.isNotBlank() }?.let { append("\naction: ${it.take(300)}") }
-        }
-        AlertDialog.Builder(this)
-            .setTitle(node.name)
-            .setMessage(refInfo)
-            .setPositiveButton(R.string.explore_node_delete) { _, _ ->
-                when (level) {
-                    1 -> viewModel.removeL1(node)
-                    2 -> l1?.let { viewModel.removeL2(it, node) }
-                    else -> {
-                        if (l1 != null && l2 != null) {
-                            viewModel.removeL3(l1, l2, node)
-                        }
-                    }
-                }
-                upFilterSelected()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    /** 筛选设置区:select/text/toggle完整交互,改动即存 */
-    private fun upFilterSettings() {
-        val sourceUrl = viewModel.sourceData.value?.bookSourceUrl ?: return
-        filterRenderer.render(
-            binding.drawerPanel.fbxFilter,
-            viewModel.filterSettingKinds(),
-            sourceUrl,
-            ExploreKindRenderer.Mode.FILTER_SETTINGS
-        )
-    }
-
-    /** 传统发现面板:点击弹添加菜单 */
-    private fun upFilterPanel() {
-        val sourceUrl = viewModel.sourceData.value?.bookSourceUrl ?: return
-        panelRenderer.render(
-            binding.drawerPanel.fbxPanel,
-            viewModel.panelKinds(),
-            sourceUrl,
-            ExploreKindRenderer.Mode.PANEL_ADD
-        )
-    }
-
-    /**
-     * 添加分类菜单:添加一级始终可用;二级/三级按辖域过滤+跳级禁用
-     */
-    private fun showAddMenu(anchor: View, kind: ExploreKind, option: String?) {
-        val popup = PopupMenu(this, anchor)
-        val mAdd1 = popup.menu.add(R.string.explore_add_level_one)
-        //实际挂靠父级与addNode的fallback一致,标题明示目标避免"总是加到第一个"困惑
-        val l2Parent = viewModel.currentL1 ?: viewModel.l1Kinds().firstOrNull()
-        val l3Parent = viewModel.currentL2 ?: l2Parent?.children?.firstOrNull()
-        val mAdd2 = popup.menu.add(
-            l2Parent?.name?.let { getString(R.string.explore_add_level_two_to, it) }
-                ?: getString(R.string.explore_add_level_two)
-        )
-        val l2Scope = viewModel.scopeCandidates(l2Parent)
-        mAdd2.isEnabled =
-            l2Scope.isNotEmpty() && viewModel.scopeContains(l2Scope, kind, option)
-        val mAdd3 = popup.menu.add(
-            l3Parent?.name?.let { getString(R.string.explore_add_level_three_to, it) }
-                ?: getString(R.string.explore_add_level_three)
-        )
-        val l3Scope = viewModel.scopeCandidates(l3Parent)
-        mAdd3.isEnabled =
-            l3Scope.isNotEmpty() && viewModel.scopeContains(l3Scope, kind, option)
-        popup.menu.add(R.string.explore_cancel)
-        popup.setOnMenuItemClickListener { item ->
-            when (item) {
-                mAdd1 -> viewModel.addNode(1, kind, option)
-                mAdd2 -> viewModel.addNode(2, kind, option)
-                mAdd3 -> viewModel.addNode(3, kind, option)
-            }
-            upFilterSelected()
-            true
-        }
-        popup.show()
-    }
-
-    /** 同名称不同引用显示"名称（序号）" */
-    private fun displayNames(nodes: List<ExploreCatNode>): List<String> {
-        val groups = nodes.groupBy { it.name }
-        return nodes.map { node ->
-            val group = groups[node.name].orEmpty()
-            if (group.size > 1) {
-                "${node.name}（${group.indexOf(node) + 1}）"
-            } else {
-                node.name
-            }
-        }
     }
 
     /**

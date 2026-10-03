@@ -830,6 +830,14 @@
     <string name="explore_add_level_three">添加三级</string>
     <string name="explore_add_level_two_to">添加二级到「%1$s」</string>
     <string name="explore_add_level_three_to">添加三级到「%1$s」</string>
+    <string name="explore_category_edit_title">分类设置</string>
+    <string name="explore_tab_level_one">一级分类</string>
+    <string name="explore_tab_level_two">二级分类</string>
+    <string name="explore_tab_level_three">三级分类</string>
+    <string name="explore_source_login">书源登录</string>
+    <string name="explore_grid_hint">点击分类添加到当前层级，再次点击移除，长按查看引用信息</string>
+    <string name="explore_need_parent_l1">请先在一级页签添加分类</string>
+    <string name="explore_need_parent_l2">请先添加二级分类</string>
     <string name="explore_cancel">取消</string>
     <string name="explore_plus_hint">已定位到传统发现面板，点击分类项即可添加</string>
     <string name="explore_node_invalid">该分类已失效，请重新添加</string>

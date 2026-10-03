@@ -437,7 +437,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                     return null
                 }
                 //执行选项action切换语境(写入源变量)
-                infoMap[kind.title] = node.option ?: return null
+                infoMap[kind.title] = node.option
                 infoMap.save()
                 evalJs(kind.action, infoMap)
                 findSelectDefaultUrl(kind)
@@ -527,93 +527,113 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         return globalPick?.url
     }
 
-    /**
-     * 辖域候选:节点可挂下一级的候选集合,空列表表示不可作父级或辖域为空
-     * 分段标题→段内全部可选项;select选项→同select值域其他选项;url→面板全量;button/text→无
-     */
-    fun scopeCandidates(node: ExploreCatNode?): List<Pair<ExploreKind, String?>> {
-        if (node == null) {
-            return emptyList()
-        }
-        return when (node.type) {
-            ExploreCatNode.TYPE_HEADER -> headerSegmentCandidates(node.kindTitle)
-            Type.select -> selectSiblingCandidates(node)
-            Type.url -> panelAllCandidates()
-            else -> emptyList()
-        }
+    /** 层级成员存在判断(引用级,含option) */
+    fun refAtLevel(level: Int, kind: ExploreKind, option: String?): Boolean {
+        return existsAtLevel(level, kind.toCatNode(option))
     }
 
-    /** 辖域包含判断:url按地址+标题,select选项按控件标题+选项名,button按标题 */
-    fun scopeContains(
-        candidates: List<Pair<ExploreKind, String?>>,
-        kind: ExploreKind,
-        option: String?
-    ): Boolean {
-        return candidates.any { (k, opt) ->
-            k.title == kind.title && k.url == kind.url && opt == option
-        }
-    }
-
-    private fun collectCandidate(kind: ExploreKind, result: MutableList<Pair<ExploreKind, String?>>) {
-        when (kind.type) {
-            Type.url -> if (!kind.url.isNullOrBlank() && !kind.title.startsWith("ERROR:")) {
-                result.add(kind to null)
-            }
-
-            Type.select -> kind.chars?.filterNotNull()?.forEach {
-                result.add(kind to it)
-            }
-
-            Type.button -> result.add(kind to null)
-        }
-    }
-
-    /** 分段标题段内候选:该标题之后至下一标题之间的可选项 */
-    private fun headerSegmentCandidates(headerTitle: String): List<Pair<ExploreKind, String?>> {
-        val result = mutableListOf<Pair<ExploreKind, String?>>()
-        var inSeg = false
-        for (kind in rawKinds) {
-            if (isHeaderKind(kind)) {
-                if (inSeg) {
-                    break
-                }
-                if (kind.title == headerTitle) {
-                    inSeg = true
-                }
-                continue
-            }
-            if (inSeg) {
-                collectCandidate(kind, result)
+    /** 层级成员存在判断(select控件任意选项) */
+    fun refKindAtLevel(level: Int, kind: ExploreKind): Boolean {
+        return when (level) {
+            1 -> tree.any { sameRefIgnoreOption(it, kind) }
+            2 -> tree.any { l1 -> l1.children.any { sameRefIgnoreOption(it, kind) } }
+            else -> tree.any { l1 ->
+                l1.children.any { l2 -> l2.children.any { sameRefIgnoreOption(it, kind) } }
             }
         }
-        return result
     }
 
-    /** select选项的辖域:同一select值域内其他选项 */
-    private fun selectSiblingCandidates(node: ExploreCatNode): List<Pair<ExploreKind, String?>> {
-        val kind = findKind(node) ?: return emptyList()
-        return kind.chars?.filterNotNull()
-            ?.filter { it != node.option }
-            ?.map { kind to it }
-            ?: emptyList()
+    /** 弹窗:可挂靠父级候选,二级页签列全部一级,三级页签列全部二级 */
+    fun parentChips(level: Int): List<ExploreCatNode> = when (level) {
+        2 -> tree
+        3 -> tree.flatMap { it.children }
+        else -> emptyList()
     }
 
-    /** url分类的辖域:同面板全部可选项(B方案) */
-    private fun panelAllCandidates(): List<Pair<ExploreKind, String?>> {
-        val result = mutableListOf<Pair<ExploreKind, String?>>()
-        for (kind in rawKinds) {
-            collectCandidate(kind, result)
+    /** 弹窗:按kind+option定位层级中已存在的节点(引用信息/删除用) */
+    fun nodeAtLevel(level: Int, kind: ExploreKind, option: String?): ExploreCatNode? {
+        val probe = kind.toCatNode(option)
+        return when (level) {
+            1 -> tree.firstOrNull { probe.sameRefAs(it) }
+            2 -> tree.asSequence().flatMap { it.children }.firstOrNull { probe.sameRefAs(it) }
+            else -> tree.asSequence()
+                .flatMap { it.children }
+                .flatMap { it.children }
+                .firstOrNull { probe.sameRefAs(it) }
         }
-        return result
     }
 
-    /**
-     * 添加节点(筛选页面板菜单确认后),自动持久化并置编辑标志
-     * level1:加入一级;level2:挂currentL1(空取第一个一级);level3:挂currentL2(空取当前一级第一个二级)
-     */
-    fun addNode(level: Int, kind: ExploreKind, option: String?): Boolean {
+    /** 弹窗:层级成员toggle,存在则移除,否则挂到parent下 */
+    fun toggleAtLevel(level: Int, kind: ExploreKind, option: String?, parent: ExploreCatNode?) {
+        val probe = kind.toCatNode(option)
+        if (existsAtLevel(level, probe)) {
+            removeFromLevel(level, probe)
+        } else {
+            addToLevel(level, probe, parent)
+        }
+    }
+
+    /** 弹窗:移除层级成员,当前定位引用被删时同步清空 */
+    fun removeFromLevel(level: Int, ref: ExploreCatNode) {
         ensureEdited()
-        val node = kind.toCatNode(option)
+        when (level) {
+            1 -> {
+                tree = tree.filterNot { ref.sameRefAs(it) }
+                if (currentL1?.sameRefAs(ref) == true) {
+                    currentL1 = null
+                    currentL2 = null
+                    currentL3 = null
+                }
+            }
+
+            2 -> {
+                tree = tree.map {
+                    it.copy(children = it.children.filterNot { c -> ref.sameRefAs(c) })
+                }
+                if (currentL2?.sameRefAs(ref) == true) {
+                    currentL2 = null
+                    currentL3 = null
+                }
+            }
+
+            3 -> {
+                tree = tree.map { l1 ->
+                    l1.copy(
+                        children = l1.children.map { l2 ->
+                            l2.copy(children = l2.children.filterNot { c -> ref.sameRefAs(c) })
+                        }
+                    )
+                }
+                if (currentL3?.sameRefAs(ref) == true) {
+                    currentL3 = null
+                }
+            }
+        }
+        persist()
+        upBars()
+    }
+
+    private fun existsAtLevel(level: Int, probe: ExploreCatNode): Boolean {
+        return when (level) {
+            1 -> tree.any { probe.sameRefAs(it) }
+            2 -> tree.any { l1 -> l1.children.any { probe.sameRefAs(it) } }
+            else -> tree.any { l1 ->
+                l1.children.any { l2 -> l2.children.any { probe.sameRefAs(it) } }
+            }
+        }
+    }
+
+    /** select控件在层级内的引用比较:忽略option */
+    private fun sameRefIgnoreOption(node: ExploreCatNode, kind: ExploreKind): Boolean {
+        return node.type == kind.type
+                && node.kindTitle == kind.title
+                && node.url == kind.url
+                && node.action == kind.action
+    }
+
+    /** 显式父级挂载:一级入树顶,二级挂指定一级,三级挂指定二级(其一级自动定位) */
+    private fun addToLevel(level: Int, node: ExploreCatNode, parent: ExploreCatNode?) {
+        ensureEdited()
         when (level) {
             1 -> {
                 tree = tree + node
@@ -623,94 +643,36 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             }
 
             2 -> {
-                val parent = currentL1 ?: tree.firstOrNull() ?: return false
+                val l1 = parent?.let { p -> tree.firstOrNull { it.sameRefAs(p) } } ?: return
                 tree = tree.map {
-                    if (it.sameRefAs(parent)) {
+                    if (it.sameRefAs(l1)) {
                         it.copy(children = it.children + node)
                     } else {
                         it
                     }
                 }
-                currentL1 = tree.firstOrNull { it.sameRefAs(parent) }
             }
 
             3 -> {
-                val l1 = currentL1 ?: tree.firstOrNull() ?: return false
-                val l2 = currentL2 ?: l1.children.firstOrNull() ?: return false
-                tree = tree.map { l1n ->
-                    if (l1n.sameRefAs(l1)) {
-                        l1n.copy(children = l1n.children.map { l2n ->
-                            if (l2n.sameRefAs(l2)) {
-                                l2n.copy(children = l2n.children + node)
-                            } else {
-                                l2n
+                val l1 = parent?.let { p ->
+                    tree.firstOrNull { top -> top.children.any { it.sameRefAs(p) } }
+                } ?: return
+                tree = tree.map { top ->
+                    if (top.sameRefAs(l1)) {
+                        top.copy(
+                            children = top.children.map { l2 ->
+                                if (l2.sameRefAs(parent)) {
+                                    l2.copy(children = l2.children + node)
+                                } else {
+                                    l2
+                                }
                             }
-                        })
+                        )
                     } else {
-                        l1n
+                        top
                     }
                 }
-                currentL1 = tree.firstOrNull { it.sameRefAs(l1) }
-                currentL2 = currentL1?.children?.firstOrNull { it.sameRefAs(l2) }
             }
-        }
-        persist()
-        upBars()
-        return true
-    }
-
-    /** 删除一级(连带子级) */
-    fun removeL1(node: ExploreCatNode) {
-        ensureEdited()
-        tree = tree.filterNot { it.sameRefAs(node) }
-        if (currentL1?.sameRefAs(node) == true) {
-            currentL1 = null
-            currentL2 = null
-            currentL3 = null
-        }
-        persist()
-        upBars()
-    }
-
-    /** 删除二级(连带三级) */
-    fun removeL2(l1: ExploreCatNode, node: ExploreCatNode) {
-        ensureEdited()
-        tree = tree.map {
-            if (it.sameRefAs(l1)) {
-                it.copy(children = it.children.filterNot { c -> c.sameRefAs(node) })
-            } else {
-                it
-            }
-        }
-        if (currentL1?.sameRefAs(l1) == true && currentL2?.sameRefAs(node) == true) {
-            currentL2 = null
-            currentL3 = null
-        }
-        persist()
-        upBars()
-    }
-
-    /** 删除三级 */
-    fun removeL3(l1: ExploreCatNode, l2: ExploreCatNode, node: ExploreCatNode) {
-        ensureEdited()
-        tree = tree.map { l1n ->
-            if (l1n.sameRefAs(l1)) {
-                l1n.copy(children = l1n.children.map { l2n ->
-                    if (l2n.sameRefAs(l2)) {
-                        l2n.copy(children = l2n.children.filterNot { c -> c.sameRefAs(node) })
-                    } else {
-                        l2n
-                    }
-                })
-            } else {
-                l1n
-            }
-        }
-        if (currentL1?.sameRefAs(l1) == true
-            && currentL2?.sameRefAs(l2) == true
-            && currentL3?.sameRefAs(node) == true
-        ) {
-            currentL3 = null
         }
         persist()
         upBars()
@@ -775,15 +737,18 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    /** 筛选设置区kinds:select/toggle(不渲染text搜索框) */
+    /** 筛选设置kinds:select/toggle/button(text搜索框不渲染) */
     fun filterSettingKinds(): List<ExploreKind> {
         return rawKinds.filter {
-            it.type == Type.select || it.type == Type.toggle
+            it.type == Type.select || it.type == Type.toggle || it.type == Type.button
         }
     }
 
-    /** 传统发现面板kinds:全部原样 */
-    fun panelKinds(): List<ExploreKind> = rawKinds
+    /** 弹窗分类网格kinds:url分类+select控件(点选项作分类) */
+    fun gridKinds(): List<ExploreKind> = rawKinds.filter {
+        (it.type == Type.url && !it.url.isNullOrBlank() && !it.title.startsWith("ERROR:"))
+                || it.type == Type.select
+    }
 
     /** 关闭筛选页:当前定位被删除时重新定位并拉书 */
     fun onFilterClosed() {

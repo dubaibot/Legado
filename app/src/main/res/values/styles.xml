@@ -82,6 +82,20 @@
         <item name="android:textSize">20sp</item>
     </style>
 
+    <style name="ExploreCategoryTab">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/bg_quick_group</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingTop">7dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:paddingBottom">7dp</item>
+        <item name="android:textColor">@color/quick_group_text</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
     //*******************Widget Style**********************************//
 
     <style name="Style.Shadow.Top" parent="android:Widget">

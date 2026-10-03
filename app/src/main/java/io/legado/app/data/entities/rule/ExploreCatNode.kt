@@ -17,6 +17,19 @@ data class ExploreCatNode(
     companion object {
         /** 分段标题节点(预填产物):无url,点击加载段首子级url */
         const val TYPE_HEADER = "header"
+
+        /** 同名称不同引用显示"名称（序号）" */
+        fun displayNames(nodes: List<ExploreCatNode>): List<String> {
+            val groups = nodes.groupBy { it.name }
+            return nodes.map { node ->
+                val group = groups[node.name].orEmpty()
+                if (group.size > 1) {
+                    "${node.name}（${group.indexOf(node) + 1}）"
+                } else {
+                    node.name
+                }
+            }
+        }
     }
 
     /** 引用同一性:显示名+类型+全部引用字段一致才视为同一节点(同名不同引用允许共存) */

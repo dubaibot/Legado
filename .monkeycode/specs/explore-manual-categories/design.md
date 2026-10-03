@@ -213,3 +213,39 @@
 1. select 选项作为二级节点后，其三级的候选范围仍受同一 select 值域约束（严格限定的自然延伸）
 2. 书源切换站点/模式导致整个面板结构变化时，已存树可能全部失效，但按决策保留显示、点击时逐个提示
 3. 预填与用户树的关系：预填只出现在首次、且从未手动编辑时；「清空重建」可主动触预填
+
+---
+
+## 十五、v2 追加：分类编辑弹窗（2026-10-03 拍板）
+
+用户反馈 280dp 侧滑抽屉过窄、分类挤压。参照全宽弹窗+页签+胶囊网格多选模式重构编辑入口。
+
+### 15.1 结构（自上而下）
+
+1. 标题栏「分类设置」+ 右上角关闭
+2. 功能入口行：「筛选设置」「书源登录」，条件显示
+   - 筛选设置：`filterSettingKinds()` 非空时显示；点击弹二级弹窗（复用 FILTER_SETTINGS 渲染，改动即存+执行 action，关闭后 onPanelChanged 刷新网格）
+   - 书源登录：`loginUrl`/`loginUi` 非空时显示；跳转 `SourceLoginActivity(key=sourceUrl, type="bookSource")`
+3. 层级页签：「一级分类」「二级分类」「三级分类」三选一
+4. 父级选择行（仅二/三级页签）：横滑 chips；二级页签列全部一级、三级页签列全部二级；默认第一个，紫色高亮当前
+5. 分类网格：全部 url 分类胶囊流式排布 + select 类型项（点击弹选项列表，选项作为「选项分类」挂当前层级）；已属于当前层级 = 主色高亮
+6. 底部按钮行：「清空重建」「清空」（保留确认弹窗与预填逻辑）
+
+### 15.2 交互
+
+- 点击 url 胶囊：toggle 当前层级成员；二级挂父级选择行当前选中一级、三级同理
+- 跳级保护：无父级时网格置灰并提示「请先添加一级/二级分类」
+- 长按已选胶囊：引用信息弹窗（可删除）
+- 关闭弹窗：saveInfoMaps + onFilterClosed（沿用现状语义）
+
+### 15.3 移除项
+
+- DrawerLayout 侧滑抽屉与 view_explore_show_drawer 使用（布局文件暂留）
+- 「＋」chip、showAddMenu 弹菜单添加（被 toggle 网格取代）
+
+### 15.4 技术要点
+
+- 新增 `CategoryEditDialogFragment` + `dialog_category_edit.xml`；筛选设置二级弹窗同文件
+- ViewModel：`addNode` 改显式父级参数；新增 `refAtLevel`/`toggleAtLevel`/`parentChips(level)`；`filterSettingKinds` 加入 button 类型
+- Activity：菜单「筛选」改弹窗，移除抽屉相关方法
+- 列表页三栏、预填/edited、失效校验、持久化、定位逻辑全部沿用

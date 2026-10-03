@@ -1,108 +1,94 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".ui.book.explore.ExploreShowActivity">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <io.legado.app.ui.widget.TitleBar
+        android:id="@+id/title_bar"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toTopOf="parent" />
 
-        <io.legado.app.ui.widget.TitleBar
-            android:id="@+id/title_bar"
-            android:layout_width="match_parent"
+    <HorizontalScrollView
+        android:id="@+id/hsv_big_category"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:overScrollMode="never"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/title_bar">
+
+        <LinearLayout
+            android:id="@+id/ll_big_category"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toTopOf="parent" />
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
 
-        <HorizontalScrollView
-            android:id="@+id/hsv_big_category"
-            android:layout_width="match_parent"
+    </HorizontalScrollView>
+
+    <HorizontalScrollView
+        android:id="@+id/hsv_sub_category"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:overScrollMode="never"
+        android:paddingBottom="4dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/hsv_big_category">
+
+        <LinearLayout
+            android:id="@+id/ll_sub_category"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:overScrollMode="never"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
-            android:scrollbars="none"
-            android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/title_bar">
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
 
-            <LinearLayout
-                android:id="@+id/ll_big_category"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp" />
+    </HorizontalScrollView>
 
-        </HorizontalScrollView>
+    <HorizontalScrollView
+        android:id="@+id/hsv_third_category"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:overScrollMode="never"
+        android:paddingBottom="4dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/hsv_sub_category">
 
-        <HorizontalScrollView
-            android:id="@+id/hsv_sub_category"
-            android:layout_width="match_parent"
+        <LinearLayout
+            android:id="@+id/ll_third_category"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:overScrollMode="never"
-            android:paddingBottom="4dp"
-            android:scrollbars="none"
-            android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/hsv_big_category">
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
 
-            <LinearLayout
-                android:id="@+id/ll_sub_category"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp" />
+    </HorizontalScrollView>
 
-        </HorizontalScrollView>
+    <io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout
+        android:id="@+id/content_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/hsv_third_category">
 
-        <HorizontalScrollView
-            android:id="@+id/hsv_third_category"
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_view"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:overScrollMode="never"
-            android:paddingBottom="4dp"
-            android:scrollbars="none"
-            android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/hsv_sub_category">
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+            tools:listitem="@layout/item_search" />
 
-            <LinearLayout
-                android:id="@+id/ll_third_category"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp" />
+    </io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout>
 
-        </HorizontalScrollView>
-
-        <io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout
-            android:id="@+id/content_view"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/hsv_third_category">
-
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recycler_view"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:clipToPadding="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-                tools:listitem="@layout/item_search" />
-
-        </io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout>
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <include
-        android:id="@+id/drawer_panel"
-        layout="@layout/view_explore_show_drawer"
-        android:layout_width="280dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="end" />
-
-</androidx.drawerlayout.widget.DrawerLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
