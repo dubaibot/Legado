@@ -836,6 +836,7 @@
     <string name="explore_tab_level_three">三级分类</string>
     <string name="explore_source_login">书源登录</string>
     <string name="explore_grid_hint">点击分类添加到当前层级，再次点击移除，长按查看引用信息</string>
+    <string name="explore_unnamed_category">未命名分类</string>
     <string name="explore_need_parent_l1">请先在一级页签添加分类</string>
     <string name="explore_need_parent_l2">请先添加二级分类</string>
     <string name="explore_cancel">取消</string>

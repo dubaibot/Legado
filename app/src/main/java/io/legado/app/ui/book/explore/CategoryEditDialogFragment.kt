@@ -12,6 +12,7 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.rule.ExploreCatNode
@@ -161,7 +162,9 @@ class CategoryEditDialogFragment : BaseDialogFragment(R.layout.dialog_category_e
             val tv = layoutInflater.inflate(
                 R.layout.item_quick_group, fbx, false
             ) as TextView
-            tv.text = kind.title
+            tv.text = kind.title.ifBlank {
+                getString(R.string.explore_unnamed_category)
+            }
             tv.isEnabled = !noParent
             tv.alpha = if (noParent) 0.4f else 1f
             tv.isSelected = when (kind.type) {
@@ -185,7 +188,16 @@ class CategoryEditDialogFragment : BaseDialogFragment(R.layout.dialog_category_e
                     false
                 }
             }
-            fbx.addView(tv)
+            fbx.addView(
+                tv,
+                FlexboxLayout.LayoutParams(
+                    FlexboxLayout.LayoutParams.WRAP_CONTENT,
+                    FlexboxLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    //item_quick_group 自带右距,补上行距保证多行不贴边
+                    topMargin = 8.dpToPx()
+                }
+            )
         }
     }
 

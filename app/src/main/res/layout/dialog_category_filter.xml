@@ -27,7 +27,8 @@
             android:paddingStart="12dp"
             android:paddingTop="10dp"
             android:paddingEnd="12dp"
-            android:paddingBottom="14dp" />
+            android:paddingBottom="14dp"
+            app:flexWrap="wrap" />
 
     </androidx.core.widget.NestedScrollView>
 
