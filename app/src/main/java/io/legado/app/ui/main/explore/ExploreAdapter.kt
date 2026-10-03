@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.appcompat.widget.AppCompatSpinner
 import androidx.collection.LruCache
 import androidx.core.view.children
@@ -72,6 +73,20 @@ class ExploreAdapter(
     companion object {
         val exploreInfoMapList = LruCache<String, InfoMap>(99)
     }
+
+    /**
+     * 管理模式:非null时渲染为管理样式,候选url分类可toggle选中,其余分类压暗禁点,非url控件禁用
+     */
+    class ManageChecker(
+        val candidateTitles: Set<String>,
+        private val checkedTitles: Set<String>,
+        val onToggle: (title: String) -> Boolean
+    ) {
+        fun isChecked(title: String): Boolean = checkedTitles.contains(title)
+    }
+
+    var manageChecker: ManageChecker? = null
+
     private val recycler = arrayListOf<TextView>()
     private val textRecycler = arrayListOf<AutoCompleteTextView>()
     private val selectRecycler = arrayListOf<LinearLayout>()
@@ -193,6 +208,24 @@ class ExploreAdapter(
                                 tv.text = "err"
                             }
                         }
+                        //管理模式:候选分类toggle选中,其余分类压暗禁点
+                        manageChecker?.let { manage ->
+                            if (kind.title in manage.candidateTitles) {
+                                tv.background =
+                                    AppCompatResources.getDrawable(context, R.drawable.bg_quick_group)
+                                tv.setTextColor(
+                                    AppCompatResources.getColorStateList(context, R.color.quick_group_text)
+                                )
+                                tv.isSelected = manage.isChecked(kind.title)
+                                tv.setOnClickListener {
+                                    tv.isSelected = manage.onToggle(kind.title)
+                                }
+                            } else {
+                                tv.isEnabled = false
+                                tv.alpha = 0.4f
+                            }
+                            return@forEach
+                        }
                         tv.setOnClickListener {// 辅助触发无障碍功能正常
                             val url = kind.url ?: return@setOnClickListener
                             if (kind.title.startsWith("ERROR:")) {
@@ -263,6 +296,12 @@ class ExploreAdapter(
                             callBack.scope.launch(IO) {
                                 evalButtonClick(action, source, infoMap, title, sourceJsExtensions)
                             }
+                        }
+                        //管理模式:非url控件保留展示,禁用
+                        if (manageChecker != null) {
+                            tv.isEnabled = false
+                            tv.alpha = 0.4f
+                            return@forEach
                         }
                         tv.setOnTouchListener { view, event ->
                             when (event.action) {
@@ -344,6 +383,12 @@ class ExploreAdapter(
                         }
                         ti.setTag(R.id.text_watcher, watcher)
                         ti.addTextChangedListener(watcher)
+                        //管理模式:非url控件保留展示,禁用
+                        if (manageChecker != null) {
+                            ti.isEnabled = false
+                            ti.alpha = 0.4f
+                            return@forEach
+                        }
                     }
 
                     Type.toggle -> {
@@ -400,6 +445,12 @@ class ExploreAdapter(
                             callBack.scope.launch(IO) {
                                 evalButtonClick(action, source, infoMap, title, sourceJsExtensions)
                             }
+                        }
+                        //管理模式:非url控件保留展示,禁用
+                        if (manageChecker != null) {
+                            tv.isEnabled = false
+                            tv.alpha = 0.4f
+                            return@forEach
                         }
                         tv.setOnTouchListener { view, event ->
                             when (event.action) {
@@ -481,6 +532,12 @@ class ExploreAdapter(
                         }
                         val i = chars.indexOf(char)
                         selector.setSelectionSafely(i)
+                        //管理模式:非url控件保留展示,禁用
+                        if (manageChecker != null) {
+                            sl.isEnabled = false
+                            sl.alpha = 0.4f
+                            return@forEach
+                        }
                         selector.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                             var isInitializing = true
                             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {

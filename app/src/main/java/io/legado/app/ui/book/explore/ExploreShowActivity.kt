@@ -1,14 +1,21 @@
 package io.legado.app.ui.book.explore
 
 import android.os.Bundle
+import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.view.ViewGroup
+import android.widget.HorizontalScrollView
 import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.ActionMenuView
+import androidx.appcompat.widget.SearchView
 import androidx.core.os.bundleOf
 import androidx.core.view.GravityCompat
+import androidx.core.view.children
+import androidx.core.view.isVisible
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -20,6 +27,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
 import io.legado.app.lib.theme.primaryTextColor
@@ -31,9 +39,9 @@ import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 
@@ -54,20 +62,27 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     private val loadMoreViewTop by lazy { LoadMoreView(this) }
     private var oldPage = -1
     private var isClearAll = false
+    private var topHeaderAdded = false
 
-    private val tvPage by lazy {
-        binding.titleBar.findViewById<TextView>(R.id.tv_page)
-    }
-    private val tvTitle by lazy {
-        binding.titleBar.findViewById<TextView>(R.id.tv_title)
-    }
+    /** 自定义标题视图,toolbar附加完成后inflate */
+    private var titleInited = false
+
+    private val titleView: View?
+        get() = binding.titleBar.toolbar.findViewById(R.id.explore_title_root)
+    private val tvPage: TextView?
+        get() = binding.titleBar.toolbar.findViewById(R.id.tv_page)
+    private val tvTitle: TextView?
+        get() = binding.titleBar.toolbar.findViewById(R.id.tv_title)
+    private val tvSubtitle: TextView?
+        get() = binding.titleBar.toolbar.findViewById(R.id.tv_subtitle)
+
     private var searchMenuItem: MenuItem? = null
+    private var categoryMenuItem: MenuItem? = null
 
-    /**
-     * 侧边页模式,null为添加大分类,非null为给该大分类添加细分类
-     */
-    private var drawerSubBig: CatRef? = null
+    /** 侧边页模式,false为传统发现分类面板,true为大分类管理 */
+    private var drawerModeManage = false
     private var drawerInited = false
+    private val manageChecked = linkedSetOf<String>()
     private val drawerAdapter by lazy {
         ExploreAdapter(this, object : ExploreAdapter.CallBack {
             override val scope = lifecycleScope
@@ -92,18 +107,28 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             }
         }
         //post到附加完成后执行,确保setSupportActionBar已完成
-        binding.titleBar.post { initMenu() }
-        tvPage.setOnClickListener { changePage() }
+        binding.titleBar.post { initTitleView() }
         viewModel.sourceData.observe(this) { source ->
             initRecyclerView(
                 source?.exploreStyle == 1 || intent.getBooleanExtra("newStyle", false)
             )
-            tvTitle.text = source?.bookSourceName ?: intent.getStringExtra("exploreName")
+            if (titleInited) {
+                tvTitle?.text = source?.bookSourceName ?: intent.getStringExtra("exploreName")
+            }
+            //source异步加载完成,补刷搜索按钮可见性
             searchMenuItem?.isVisible = !source?.searchUrl.isNullOrBlank()
+            setupCategoryLongClick()
         }
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }
-        viewModel.catsData.observe(this) { upBigCategoryBar() }
+        viewModel.bigKindsData.observe(this) { bigs ->
+            categoryMenuItem?.isVisible = bigs.isNotEmpty()
+            upBigCategoryBar()
+            upSubCategoryBar()
+            if (titleInited) {
+                updateSubtitle()
+            }
+        }
         viewModel.initData(intent)
         viewModel.errorLiveData.observe(this) {
             loadMoreView.error(it)
@@ -112,39 +137,108 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             loadMoreViewTop.error(it)
         }
         viewModel.pageLiveData.observe(this) {
-            tvPage.text = getString(R.string.menu_page, it)
+            tvPage?.text = getString(R.string.menu_page, it)
+        }
+        initDrawerListener()
+    }
+
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.explore_show, menu)
+        searchMenuItem = menu.findItem(R.id.menu_search)
+        categoryMenuItem = menu.findItem(R.id.menu_category)
+        initSearchView()
+        val source = viewModel.sourceData.value
+        searchMenuItem?.isVisible = !source?.searchUrl.isNullOrBlank()
+        categoryMenuItem?.isVisible = viewModel.bigKindsData.value?.isNotEmpty() == true
+        return super.onCompatCreateOptionsMenu(menu)
+    }
+
+    /**
+     * 方案A标题栏:[←][第N页] [书源名居中+副标题] [搜索][三横]
+     * 页码与标题用toolbar内自定义视图,搜索与三横走标准menu
+     */
+    private fun initTitleView() {
+        val toolbar = binding.titleBar.toolbar
+        toolbar.title = null
+        layoutInflater.inflate(R.layout.view_explore_show_title, toolbar, true)
+        titleInited = true
+        tvPage?.text = getString(R.string.menu_page, 1)
+        tvPage?.setOnClickListener { changePage() }
+        tvTitle?.text = viewModel.sourceData.value?.bookSourceName
+            ?: intent.getStringExtra("exploreName")
+        updateSubtitle()
+        binding.titleBar.setColorFilter(primaryTextColor)
+        setupCategoryLongClick()
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.menu_category) {
+            openDrawer()
+        }
+        return super.onCompatOptionsItemSelected(item)
+    }
+
+    /** 副标题显示当前分类名,无分类树时隐藏 */
+    private fun updateSubtitle() {
+        val subtitle = viewModel.currentSub?.title ?: viewModel.currentBig?.kind?.title
+        tvSubtitle?.let {
+            it.isVisible = subtitle != null
+            it.text = subtitle
         }
     }
 
     /**
-     * 标题栏右侧:书内搜索(有searchUrl才显示)与侧边页入口
+     * 搜索按钮对齐订阅源:有searchUrl才显示,展开时隐藏标题视图,提交搜当前书源
      */
-    private fun initMenu() {
-        val menu = binding.titleBar.menu
-        val source = viewModel.sourceData.value
-        searchMenuItem = menu.add(getString(R.string.search)).apply {
-            setIcon(R.drawable.ic_search)
-            isVisible = !source?.searchUrl.isNullOrBlank()
-            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-            setOnMenuItemClickListener {
-                gotoSearch()
-                true
+    private fun initSearchView() {
+        val searchView = searchMenuItem?.actionView as? SearchView ?: return
+        searchView.isSubmitButtonEnabled = true
+        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean {
+                searchView.clearFocus()
+                val source = viewModel.sourceData.value ?: return true
+                if (!query.isNullOrBlank()) {
+                    SearchActivity.start(this@ExploreShowActivity, source, query)
+                }
+                return true
+            }
+
+            override fun onQueryTextChange(newText: String?): Boolean {
+                return false
+            }
+        })
+        searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                searchView.isIconified = true
             }
         }
-        menu.add(getString(R.string.explore_add_big_category)).apply {
-            setIcon(R.drawable.ic_menu)
-            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-            setOnMenuItemClickListener {
-                openDrawer(null)
-                true
+        searchMenuItem?.setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
+            override fun onMenuItemActionExpand(item: MenuItem): Boolean {
+                titleView?.isVisible = false
+                return true
             }
-        }
-        binding.titleBar.setColorFilter(primaryTextColor)
+
+            override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
+                titleView?.isVisible = true
+                setupCategoryLongClick()
+                return true
+            }
+        })
     }
 
-    private fun gotoSearch() {
-        val source = viewModel.sourceData.value ?: return
-        SearchActivity.start(this, source)
+    /**
+     * 三横长按为大分类管理,menu item无长按事件,对toolbar内的动作视图注册
+     */
+    private fun setupCategoryLongClick() {
+        binding.titleBar.toolbar.post {
+            val menuView = binding.titleBar.toolbar.children
+                .firstOrNull { it is ActionMenuView } as? ActionMenuView
+            val itemView = menuView?.children?.lastOrNull { it !is SearchView }
+            itemView?.setOnLongClickListener {
+                openManageDrawer()
+                true
+            }
+        }
     }
 
     private fun initRecyclerView(isGrid: Boolean) {
@@ -259,99 +353,200 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     /**
-     * 大分类栏,仅展示用户添加过的,未添加时显示默认分类
+     * 大分类栏:高亮currentBig,长按进管理侧边页
      */
     private fun upBigCategoryBar() {
-        val cats = viewModel.barCats()
-        if (cats.isEmpty()) {
+        val bigs = viewModel.bigKindsData.value ?: emptyList()
+        if (bigs.isEmpty()) {
             binding.hsvBigCategory.gone()
             return
         }
         binding.hsvBigCategory.visible()
-        val inflater = layoutInflater
         binding.llBigCategory.removeAllViews()
-        cats.forEach { cat ->
+        val inflater = layoutInflater
+        var selectedView: TextView? = null
+        bigs.forEach { big ->
             val tv = inflater.inflate(
                 R.layout.item_quick_group, binding.llBigCategory, false
             ) as TextView
-            tv.text = cat.t
-            tv.isSelected = viewModel.currentIs(cat)
-            tv.setOnClickListener { onBigCategoryClick(cat) }
+            tv.text = big.kind.title
+            tv.isSelected = viewModel.currentBig == big
+            tv.setOnClickListener { onBigCategoryClick(big) }
             tv.setOnLongClickListener {
-                openDrawer(cat)
+                openManageDrawer()
                 true
             }
             binding.llBigCategory.addView(tv)
+            if (tv.isSelected) {
+                selectedView = tv
+            }
         }
+        selectedView?.let { ensureChipVisible(binding.hsvBigCategory, it) }
     }
 
-    private fun onBigCategoryClick(cat: CatRef) {
-        if (viewModel.currentIs(cat)) {
-            showSubCategoryDialog(cat)
+    private fun onBigCategoryClick(big: BigKind) {
+        val current = viewModel.currentBig
+        if (current == big && viewModel.currentSub == null) { //再点高亮大分类,无操作
             return
         }
-        switchCategory(cat)
+        //选中或回本级:currentSub复位,按大分类本级url拉书
+        viewModel.selectBig(big)
+        clearAndReload()
+        upBigCategoryBar()
+        upSubCategoryBar()
     }
 
-    private fun switchCategory(cat: CatRef) {
-        viewModel.switchCategory(cat)
-        upBigCategoryBar()
+    /**
+     * 细分栏:当前大分类有细分才显示,高亮currentSub
+     */
+    private fun upSubCategoryBar() {
+        val subs = viewModel.currentBig?.subKinds ?: emptyList()
+        if (subs.isEmpty()) {
+            binding.hsvSubCategory.gone()
+            return
+        }
+        binding.hsvSubCategory.visible()
+        binding.llSubCategory.removeAllViews()
+        val inflater = layoutInflater
+        var selectedView: TextView? = null
+        subs.forEach { sub ->
+            val tv = inflater.inflate(
+                R.layout.item_quick_group, binding.llSubCategory, false
+            ) as TextView
+            tv.text = sub.title
+            tv.textSize = 12f
+            tv.isSelected = viewModel.currentSub == sub
+            tv.setOnClickListener { onSubCategoryClick(sub) }
+            binding.llSubCategory.addView(tv)
+            if (tv.isSelected) {
+                selectedView = tv
+            }
+        }
+        selectedView?.let { ensureChipVisible(binding.hsvSubCategory, it) }
+    }
+
+    private fun onSubCategoryClick(sub: ExploreKind) {
+        if (viewModel.currentSub == sub) { //再点当前细分,无操作
+            return
+        }
+        viewModel.selectSub(sub)
+        clearAndReload()
+        upSubCategoryBar()
+    }
+
+    /** 高亮chip滚动到可见 */
+    private fun ensureChipVisible(scrollView: HorizontalScrollView, chip: TextView) {
+        scrollView.post {
+            val target = (chip.left - 16.dpToPx()).coerceAtLeast(0)
+            if (chip.left < scrollView.scrollX + 8.dpToPx()
+                || chip.right > scrollView.scrollX + scrollView.width - 8.dpToPx()
+            ) {
+                scrollView.smoothScrollTo(target, 0)
+            }
+        }
+    }
+
+    /**
+     * 切分类复位分页现场:页码回到第1页,顶部回滚视图高度归零,防止旧页码列表错误前置
+     */
+    private fun clearAndReload() {
+        oldPage = -1
+        isClearAll = false
+        val layoutParams = loadMoreViewTop.layoutParams
+        if (layoutParams != null && layoutParams.height != 0) {
+            layoutParams.height = 0
+            loadMoreViewTop.layoutParams = layoutParams
+        }
         adapter.clearItems()
         loadMoreView.hasMore()
         scrollToBottom(true)
     }
 
     /**
-     * 细分下钻,再点当前分类时展示
+     * 侧边页关闭:infoMap落盘;管理模式提交白名单
      */
-    private fun showSubCategoryDialog(big: CatRef) {
-        val subs = viewModel.subCategoriesOf(big)
-        if (subs.isEmpty()) {
-            toastOnUi(getString(R.string.explore_no_sub_category))
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle(big.t)
-            .setItems(subs.map { it.t }.toTypedArray()) { _, which ->
-                viewModel.loadKind(subs[which])
-                adapter.clearItems()
-                loadMoreView.hasMore()
-                scrollToBottom(true)
+    private fun initDrawerListener() {
+        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerClosed(drawerView: View) {
+                drawerAdapter.onPause()
+                if (drawerModeManage) {
+                    drawerModeManage = false
+                    drawerAdapter.manageChecker = null
+                    val changed = viewModel.applyManageSelection(manageChecked.toList())
+                    manageChecked.clear()
+                    if (changed) {
+                        clearAndReload()
+                    }
+                }
             }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
+        })
     }
 
     /**
-     * 侧边页,复用发现页kinds渲染,url分类点击即添加
+     * 点三横:传统发现分类面板,点击行为与传统发现相同
      */
-    private fun openDrawer(subBig: CatRef?) {
-        drawerSubBig = subBig
-        binding.drawerPanel.titleDrawer.title =
-            if (subBig == null) {
-                getString(R.string.explore_add_big_category)
-            } else {
-                getString(R.string.explore_add_sub_category, subBig.t)
-            }
-        if (!drawerInited) {
-            val source = viewModel.sourceData.value ?: return
-            val part = appDb.bookSourceDao.getBookSourcePart(source.bookSourceUrl) ?: return
-            binding.drawerPanel.rvDrawerKinds.layoutManager = LinearLayoutManager(this)
-            binding.drawerPanel.rvDrawerKinds.adapter = drawerAdapter
-            drawerAdapter.setItems(listOf(part))
-            drawerAdapter.expand(0)
-            drawerInited = true
+    private fun openDrawer() {
+        if (viewModel.sourceData.value == null) {
+            return
         }
+        drawerModeManage = false
+        drawerAdapter.manageChecker = null
+        binding.drawerPanel.titleDrawer.title = getString(R.string.explore_category_list)
+        prepareDrawerAdapter()
         binding.drawerLayout.openDrawer(GravityCompat.END)
     }
 
-    private fun onDrawerKindClick(title: String, url: String?) {
-        val u = url?.takeIf { it.isNotBlank() } ?: return
-        val big = drawerSubBig
-        if (big == null) {
-            viewModel.addBigCategory(title, u)
-        } else {
-            viewModel.addSubCategory(big, title, u)
+    /**
+     * 长按chip或三横:大分类管理,点候选toggle,关闭时生效
+     */
+    private fun openManageDrawer() {
+        if (viewModel.bigKindsData.value.isNullOrEmpty()) {
+            return
+        }
+        drawerModeManage = true
+        manageChecked.clear()
+        manageChecked.addAll(viewModel.bigKindsData.value?.map { it.kind.title } ?: emptyList())
+        drawerAdapter.manageChecker = ExploreAdapter.ManageChecker(
+            candidateTitles = viewModel.bigCandidates.map { it.title }.toSet(),
+            checkedTitles = manageChecked,
+            onToggle = { title ->
+                if (!manageChecked.remove(title)) {
+                    manageChecked.add(title)
+                }
+                manageChecked.contains(title)
+            }
+        )
+        binding.drawerPanel.titleDrawer.title = getString(R.string.explore_adjust_category)
+        prepareDrawerAdapter()
+        binding.drawerLayout.openDrawer(GravityCompat.END)
+    }
+
+    private fun prepareDrawerAdapter() {
+        val source = viewModel.sourceData.value ?: return
+        val part = appDb.bookSourceDao.getBookSourcePart(source.bookSourceUrl) ?: return
+        if (!drawerInited) {
+            binding.drawerPanel.rvDrawerKinds.layoutManager = LinearLayoutManager(this)
+            binding.drawerPanel.rvDrawerKinds.adapter = drawerAdapter
+            drawerInited = true
+        }
+        //每次打开重渲染,保证两种模式样式正确
+        drawerAdapter.setItems(listOf(part))
+        drawerAdapter.expand(0)
+    }
+
+    /**
+     * 侧边页使用模式点击url分类:切到该分类拉书并关闭侧边页
+     */
+    private fun onDrawerKindClick(title: String, exploreUrl: String?) {
+        if (drawerModeManage) {
+            return
+        }
+        val url = exploreUrl?.takeIf { it.isNotBlank() } ?: return
+        if (viewModel.selectFromUrl(title, url)) {
+            binding.drawerLayout.closeDrawer(GravityCompat.END)
+            clearAndReload()
+            upBigCategoryBar()
+            upSubCategoryBar()
         }
     }
 
@@ -367,15 +562,18 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             .setValue(page)
             .show {
                 if (page != it) {
-                    if (oldPage == -1 && it != 1) { //初次添加头
-                        adapter.addHeaderView {
-                            ViewLoadMoreBinding.bind(loadMoreViewTop)
-                        }
-                    } else if (it != 1) { //把头显示出来
-                        val layoutParams = loadMoreViewTop.layoutParams
-                        if (layoutParams?.height == 0) {
-                            layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                            loadMoreViewTop.layoutParams = layoutParams
+                    if (it != 1) {
+                        if (!topHeaderAdded) { //初次添加头
+                            topHeaderAdded = true
+                            adapter.addHeaderView {
+                                ViewLoadMoreBinding.bind(loadMoreViewTop)
+                            }
+                        } else { //把头显示出来
+                            val layoutParams = loadMoreViewTop.layoutParams
+                            if (layoutParams?.height == 0) {
+                                layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                                loadMoreViewTop.layoutParams = layoutParams
+                            }
                         }
                     }
                     oldPage = it

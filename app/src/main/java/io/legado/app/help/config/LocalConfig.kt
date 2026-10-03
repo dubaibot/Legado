@@ -135,13 +135,13 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putString("exploreQuickGroups", value)
         }
 
-    // 发现页用户添加的分类（key=exploreCats_{sourceUrl}，JSON，big为大分类顺序数组，sub为细分类map键"t::u"）
-    fun getExploreCats(sourceUrl: String): String {
-        return getString("exploreCats_$sourceUrl", "") ?: ""
+    // 发现页大分类展示白名单（key=exploreAdjust_{sourceUrl}，逗号分隔分类名，空为全部自动划分候选）
+    fun getExploreAdjust(sourceUrl: String): String {
+        return getString("exploreAdjust_$sourceUrl", "") ?: ""
     }
 
-    fun putExploreCats(sourceUrl: String, value: String) {
-        putString("exploreCats_$sourceUrl", value)
+    fun putExploreAdjust(sourceUrl: String, value: String) {
+        putString("exploreAdjust_$sourceUrl", value)
     }
 
     // 发现新版书签显示名（key=exploreSourceName_{sourceUrl}，空为书源名）

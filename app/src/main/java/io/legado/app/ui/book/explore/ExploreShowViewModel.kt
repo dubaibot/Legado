@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.BuildConfig
-import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
@@ -19,7 +18,6 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.GSON
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
@@ -30,17 +28,12 @@ import kotlinx.coroutines.flow.mapLatest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 分类引用,以 title+url 唯一标识
+ * 大分类:占满一栏的url分类,与其辖区内的细分(不占满一栏的url分类)
  */
-data class CatRef(val t: String, val u: String)
-
-/**
- * 用户添加的分类集合,big为大分类顺序数组,sub键为"t::u"
- */
-class ExploreCats {
-    var big: MutableList<CatRef>? = null
-    var sub: MutableMap<String, MutableList<CatRef>>? = null
-}
+data class BigKind(
+    val kind: ExploreKind,
+    val subKinds: List<ExploreKind>
+)
 
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -53,20 +46,33 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val errorTopLiveData = MutableLiveData<String>()
     val pageLiveData = MutableLiveData<Int>()
     val sourceData = MutableLiveData<BookSource?>()
-    val catsData = MutableLiveData<List<CatRef>>()
+
+    /** 大分类栏内容(白名单过滤后),两栏联动均由该数据与currentBig/currentSub驱动 */
+    val bigKindsData = MutableLiveData<List<BigKind>>()
     private var bookSource: BookSource? = null
     var exploreUrl: String? = null
         private set
     private var page = 1
     private var books = linkedSetOf<SearchBook>()
 
-    /** 解析出的有效url分类,供默认分类推导 */
+    /** 解析出的有效url分类,按书源原顺序 */
     private var allKinds: List<ExploreKind> = emptyList()
 
-    /** 整段exploreUrl,无有效分类时兜底 */
-    private var fallbackUrl: String? = null
-    private var cats = ExploreCats()
-    private var currentCat: CatRef? = null
+    /** 按占满一栏规则自动划分的大分类树 */
+    private var bigTree: List<BigKind> = emptyList()
+
+    /** 用户勾选白名单过滤后的展示列表,空存储时等于bigTree */
+    private var displayBigKinds: List<BigKind> = emptyList()
+
+    /** 当前大分类,细分栏高亮项为currentSub,null表示停在大分类本级 */
+    var currentBig: BigKind? = null
+        private set
+    var currentSub: ExploreKind? = null
+        private set
+
+    /** 管理页可勾选候选:自动划分的大分类 */
+    val bigCandidates: List<ExploreKind>
+        get() = bigTree.map { it.kind }
 
     init {
         execute {
@@ -99,123 +105,217 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
             }
             sourceData.postValue(bookSource)
-            loadExploreKinds(intentUrl)
-            val url = bookSource?.bookSourceUrl
-            if (url != null) {
-                cats = loadCats(url)
+            loadExploreKinds()
+            bigTree = buildBigTree()
+            upDisplayBigKinds()
+            //当前分类:intent url树中匹配,失配取展示列表第一项,不持久化
+            currentBig = null
+            currentSub = null
+            if (intentUrl != null) {
+                matchIntentUrl(intentUrl)
             }
-            //当前分类:已添加用栏内第一项,否则用默认分类,不持久化
-            val first = cats.big?.firstOrNull() ?: defaultCat()
-            currentCat = first
-            exploreUrl = first.u.ifBlank { intentUrl }
-            catsData.postValue(barCats())
+            if (currentBig == null) {
+                currentBig = displayBigKinds.firstOrNull()
+            }
+            exploreUrl = currentSub?.url
+                ?: currentBig?.kind?.url
+                ?: intentUrl
+                ?: fallbackUrl()
+            page = 1
+            books.clear()
+            bigKindsData.postValue(displayBigKinds)
             explore()
         }
     }
 
-    /**
-     * 解析有效url分类,记录整段exploreUrl兜底
-     */
-    private suspend fun loadExploreKinds(fallback: String?) {
+    /** 解析有效url分类,排除ERROR分类 */
+    private suspend fun loadExploreKinds() {
         val source = bookSource ?: return
         allKinds = source.exploreKinds()
             .filter { it.type == ExploreKind.Type.url && !it.url.isNullOrBlank() }
             .filterNot { it.title.startsWith("ERROR:") }
-        fallbackUrl = fallback ?: source.exploreUrl
+    }
+
+    private fun fallbackUrl(): String? {
+        return bookSource?.exploreUrl
     }
 
     /**
-     * 未添加分类时的默认分类:第一个有效分类,否则为单个全部
+     * 占满一栏判定:flexBasisPercent>=1独占一行;
+     * flexGrow>=1按连续段判定,段长为1独占一行,连续多项共享一行互相分摊按细分
      */
-    private fun defaultCat(): CatRef {
-        val kind = allKinds.firstOrNull()
-        return if (kind != null && kind.url != null) {
-            CatRef(kind.title, kind.url)
+    private fun isFullRow(kind: ExploreKind, segLen: IntArray, index: Int): Boolean {
+        val style = kind.style()
+        if (style.layout_flexBasisPercent >= 1) {
+            return true
+        }
+        if (style.layout_flexGrow >= 1) {
+            return segLen[index] == 1
+        }
+        return false
+    }
+
+    /**
+     * 划分大分类/细分树:按原顺序扫描,fullRow项开启新大分类,
+     * 非fullRow归入当前大分类,首个大分类之前的非fullRow前挂给第一个大分类;
+     * 无fullRow项时取第一个有效分类为大分类,其余全部为其细分
+     */
+    private fun buildBigTree(): List<BigKind> {
+        val kinds = allKinds
+        if (kinds.isEmpty()) {
+            return emptyList()
+        }
+        //预计算每项所在flexGrow连续段的长度
+        val segLen = IntArray(kinds.size) { 1 }
+        var i = 0
+        while (i < kinds.size) {
+            val style = kinds[i].style()
+            if (style.layout_flexBasisPercent < 1 && style.layout_flexGrow >= 1) {
+                var j = i
+                while (j < kinds.size) {
+                    val s = kinds[j].style()
+                    if (s.layout_flexBasisPercent < 1 && s.layout_flexGrow >= 1) {
+                        j++
+                    } else {
+                        break
+                    }
+                }
+                for (k in i until j) {
+                    segLen[k] = j - i
+                }
+                i = j
+            } else {
+                i++
+            }
+        }
+        val tree = mutableListOf<Pair<ExploreKind, MutableList<ExploreKind>>>()
+        val headSubs = mutableListOf<ExploreKind>()
+        kinds.forEachIndexed { index, kind ->
+            if (isFullRow(kind, segLen, index)) {
+                tree.add(kind to mutableListOf())
+            } else if (tree.isEmpty()) {
+                headSubs.add(kind)
+            } else {
+                tree.last().second.add(kind)
+            }
+        }
+        if (tree.isEmpty()) {
+            return listOf(BigKind(kinds.first(), kinds.drop(1)))
+        }
+        tree.first().second.addAll(0, headSubs)
+        return tree.map { BigKind(it.first, it.second) }
+    }
+
+    /**
+     * 白名单过滤:未写/空串展示全部候选;非空取交集保持原顺序;交集为空回落全部
+     */
+    private fun upDisplayBigKinds() {
+        val sourceUrl = bookSource?.bookSourceUrl
+        val saved = sourceUrl?.let { LocalConfig.getExploreAdjust(it) } ?: ""
+        displayBigKinds = if (saved.isBlank()) {
+            bigTree
         } else {
-            CatRef(context.getString(R.string.explore_all), fallbackUrl ?: "")
+            val names = saved.split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .toSet()
+            val filtered = bigTree.filter { it.kind.title in names }
+            if (filtered.isEmpty()) bigTree else filtered
+        }
+    }
+
+    /** intent url在展示树中匹配,命中大分类或细分并定位 */
+    private fun matchIntentUrl(url: String) {
+        for (big in displayBigKinds) {
+            if (big.kind.url == url) {
+                currentBig = big
+                currentSub = null
+                return
+            }
+            for (sub in big.subKinds) {
+                if (sub.url == url) {
+                    currentBig = big
+                    currentSub = sub
+                    return
+                }
+            }
         }
     }
 
     /**
-     * 大分类栏内容:仅展示用户添加过的,未添加时显示默认分类
+     * 选中大分类,currentSub复位为本级,调用方负责清列表触发拉书
      */
-    fun barCats(): List<CatRef> {
-        val saved = cats.big
-        return if (!saved.isNullOrEmpty()) saved else listOfNotNull(currentCat ?: defaultCat())
+    fun selectBig(big: BigKind) {
+        currentBig = big
+        currentSub = null
+        resetLoad()
+        bigKindsData.postValue(displayBigKinds)
     }
 
-    fun currentIs(cat: CatRef): Boolean = currentCat == cat
+    /**
+     * 选中细分,父级大分类保持高亮,调用方负责清列表触发拉书
+     */
+    fun selectSub(sub: ExploreKind) {
+        currentSub = sub
+        resetLoad()
+        bigKindsData.postValue(displayBigKinds)
+    }
 
     /**
-     * 切换大分类,重置分页与数据
+     * 侧边页使用模式点击分类,在自动划分树中定位,命中返回true
      */
-    fun switchCategory(cat: CatRef) {
-        if (cat.u.isBlank()) return
-        currentCat = cat
-        exploreUrl = cat.u
+    fun selectFromUrl(title: String, url: String): Boolean {
+        val big = bigTree.firstOrNull { it.kind.title == title && it.kind.url == url }
+        if (big != null) {
+            currentBig = big
+            currentSub = null
+            resetLoad()
+            bigKindsData.postValue(displayBigKinds)
+            return true
+        }
+        val parent = bigTree.firstOrNull { b ->
+            b.subKinds.any { it.title == title && it.url == url }
+        }
+        if (parent != null) {
+            currentBig = parent
+            currentSub = parent.subKinds.first { it.title == title && it.url == url }
+            resetLoad()
+            bigKindsData.postValue(displayBigKinds)
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 管理页提交:保存白名单并做当前分类维护,返回是否切换了分类(需拉书)
+     */
+    fun applyManageSelection(selected: List<String>): Boolean {
+        val sourceUrl = bookSource?.bookSourceUrl ?: return false
+        if (selected.isEmpty()) {
+            //全取消回落:保存第一项标题,使刻意清空与从未管理可区分
+            LocalConfig.putExploreAdjust(sourceUrl, bigTree.firstOrNull()?.kind?.title ?: "")
+        } else {
+            LocalConfig.putExploreAdjust(sourceUrl, selected.joinToString(","))
+        }
+        upDisplayBigKinds()
+        val stillThere = displayBigKinds.firstOrNull { it.kind == currentBig?.kind }
+        return if (stillThere != null) {
+            currentBig = stillThere
+            bigKindsData.postValue(displayBigKinds)
+            false
+        } else {
+            currentBig = displayBigKinds.firstOrNull()
+            currentSub = null
+            resetLoad()
+            bigKindsData.postValue(displayBigKinds)
+            true
+        }
+    }
+
+    private fun resetLoad() {
+        exploreUrl = currentSub?.url ?: currentBig?.kind?.url
         page = 1
         books.clear()
-    }
-
-    /**
-     * 加载细分类,当前大分类保持不变
-     */
-    fun loadKind(cat: CatRef) {
-        if (cat.u.isBlank()) return
-        exploreUrl = cat.u
-        page = 1
-        books.clear()
-    }
-
-    /**
-     * 添加大分类,已存在返回false
-     */
-    fun addBigCategory(t: String, u: String): Boolean {
-        val big = cats.big ?: mutableListOf<CatRef>().also { cats.big = it }
-        if (big.any { it.t == t && it.u == u }) {
-            return false
-        }
-        big.add(CatRef(t, u))
-        saveCats()
-        catsData.postValue(barCats())
-        return true
-    }
-
-    /**
-     * 给大分类添加细分类,已存在返回false
-     */
-    fun addSubCategory(big: CatRef, t: String, u: String): Boolean {
-        val sub = cats.sub ?: mutableMapOf<String, MutableList<CatRef>>().also { cats.sub = it }
-        val key = "${big.t}::${big.u}"
-        val list = sub[key] ?: mutableListOf<CatRef>().also { sub[key] = it }
-        if (list.any { it.t == t && it.u == u }) {
-            return false
-        }
-        list.add(CatRef(t, u))
-        saveCats()
-        return true
-    }
-
-    /**
-     * 大分类的细分类列表
-     */
-    fun subCategoriesOf(big: CatRef): List<CatRef> {
-        return cats.sub?.get("${big.t}::${big.u}") ?: emptyList()
-    }
-
-    private fun loadCats(sourceUrl: String): ExploreCats {
-        val json = LocalConfig.getExploreCats(sourceUrl)
-        if (json.isBlank()) {
-            return ExploreCats()
-        }
-        return runCatching {
-            GSON.fromJson(json, ExploreCats::class.java)
-        }.getOrNull() ?: ExploreCats()
-    }
-
-    private fun saveCats() {
-        val sourceUrl = bookSource?.bookSourceUrl ?: return
-        LocalConfig.putExploreCats(sourceUrl, GSON.toJson(cats))
     }
 
     /**
@@ -242,6 +342,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 errorTopLiveData.postValue(it.stackTraceStr)
             }
     }
+
     fun skipPage(page: Int) {
         if (page > 0) {
             books.clear()

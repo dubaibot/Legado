@@ -812,6 +812,7 @@
     <string name="explore_all">All</string>
     <string name="explore_no_sub_category">No sub categories</string>
     <string name="explore_adjust_category">Adjust categories</string>
+    <string name="explore_category_list">Categories</string>
     <string name="explore_add_big_category">Add to main categories</string>
     <string name="explore_add_sub_category">Add sub category for %1$s</string>
     <string name="read_direct">Read now</string>
