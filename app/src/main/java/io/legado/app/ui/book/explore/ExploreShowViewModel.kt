@@ -771,10 +771,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    /** 筛选设置区kinds:select/text/toggle */
+    /** 筛选设置区kinds:select/toggle(不渲染text搜索框) */
     fun filterSettingKinds(): List<ExploreKind> {
         return rawKinds.filter {
-            it.type == Type.select || it.type == Type.text || it.type == Type.toggle
+            it.type == Type.select || it.type == Type.toggle
         }
     }
 

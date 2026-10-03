@@ -563,6 +563,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         ) as TextView
         plus.text = "＋"
         plus.setOnClickListener {
+            //滚动定位到传统发现面板,引导用户从面板选分类添加
+            binding.drawerPanel.svFilter.smoothScrollTo(0, binding.drawerPanel.fbxPanel.top)
             toastOnUi(R.string.explore_plus_hint)
         }
         fbx.addView(plus)
