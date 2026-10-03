@@ -97,14 +97,19 @@ android {
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             applicationIdSuffix '.debug'
+            versionNameSuffix 'debug'
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
     }
-    // 按 ABI 拆分安装包：产出 universal 通用包与 arm 精简包，减小下载体积
+    // 按 ABI 拆分安装包：产出 universal 通用包与 arm 精简包，减小下载体积。
+    // 仅在 release 任务启用，debug 本地构建保持单一 universal 包，避免重复打包拖慢构建。
+    def enableAbiSplits = gradle.startParameter.taskNames.any {
+        it.toLowerCase().contains('release')
+    }
     splits {
         abi {
-            enable true
+            enable enableAbiSplits
             reset()
             include 'armeabi-v7a', 'arm64-v8a'
             universalApk true

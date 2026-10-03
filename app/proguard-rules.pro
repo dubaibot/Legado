@@ -61,6 +61,33 @@
 -keep class * extends io.legado.app.help.JsExtensions{*;}
 # 数据类
 -keep class **.data.entities.**{*;}
+
+# Room 数据库（防止 R8 在 release 构建中剥离生成的 _Impl 类）
+-keep class io.legado.app.data.AppDatabase {*;}
+-keep class io.legado.app.data.AppDatabase_Impl {*;}
+-keep,allowobfuscation @androidx.room.Dao interface * {*;}
+-keep,allowobfuscation @androidx.room.DatabaseView class * {*;}
+-keep class * extends androidx.room.migration.Migration {*;}
+-keep class io.legado.app.data.DatabaseMigrations {*;}
+-keep class io.legado.app.data.dao.**_Impl {*;}
+-keep class io.legado.app.data.entities.BookSourcePart {*;}
+-keepnames class io.legado.app.data.AppDatabase_Impl
+-keepnames class io.legado.app.data.dao.**_Impl
+
+# 状态栏 / 导航栏间距处理（防止 R8 剥离 WindowInsets 相关扩展与合成方法）
+-keep class io.legado.app.utils.ViewExtensionsKt {*;}
+-keep class io.legado.app.utils.WindowInsetsExtensionsKt {*;}
+-keep class io.legado.app.utils.ActivityExtensionsKt {
+    *** fullScreen(...);
+    *** setStatusBarColorAuto(...);
+}
+-keep class io.legado.app.ui.widget.TitleBar {*;}
+-keep class androidx.core.view.WindowInsetsCompat {*;}
+-keep class androidx.core.view.WindowInsetsCompat$* {*;}
+-keep class androidx.core.graphics.Insets {*;}
+-keep interface androidx.core.view.OnApplyWindowInsetsListener {*;}
+-dontwarn androidx.core.view.WindowInsetsCompat$Impl*
+
 # hutool-core hutool-crypto
 -keep class
 !cn.hutool.core.util.RuntimeUtil,
