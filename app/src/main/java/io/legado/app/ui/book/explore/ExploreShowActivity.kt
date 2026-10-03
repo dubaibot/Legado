@@ -122,7 +122,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }
         viewModel.bigKindsData.observe(this) { bigs ->
-            categoryMenuItem?.isVisible = bigs.isNotEmpty()
+            //单层平铺(大分类栏隐藏)时三横仍可用
+            categoryMenuItem?.isVisible = viewModel.hasExploreKinds
             upBigCategoryBar()
             upSubCategoryBar()
             if (titleInited) {
@@ -149,7 +150,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         initSearchView()
         val source = viewModel.sourceData.value
         searchMenuItem?.isVisible = !source?.searchUrl.isNullOrBlank()
-        categoryMenuItem?.isVisible = viewModel.bigKindsData.value?.isNotEmpty() == true
+        categoryMenuItem?.isVisible = viewModel.hasExploreKinds
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -397,10 +398,10 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     /**
-     * 细分栏:当前大分类有细分才显示,高亮currentSub
+     * 细分栏:当前大分类有细分才显示;单层平铺书源显示全部url分类
      */
     private fun upSubCategoryBar() {
-        val subs = viewModel.currentBig?.subKinds ?: emptyList()
+        val subs = viewModel.subBarKinds
         if (subs.isEmpty()) {
             binding.hsvSubCategory.gone()
             return
@@ -497,17 +498,23 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     /**
-     * 长按chip或三横:大分类管理,点候选toggle,关闭时生效
+     * 长按chip或三横:大分类管理,每个url分类都可勾选为大分类,关闭时生效
      */
     private fun openManageDrawer() {
-        if (viewModel.bigKindsData.value.isNullOrEmpty()) {
+        if (!viewModel.hasExploreKinds) {
             return
         }
         drawerModeManage = true
+        val candidates = viewModel.bigCandidates.map { it.title }.toSet()
         manageChecked.clear()
-        manageChecked.addAll(viewModel.bigKindsData.value?.map { it.kind.title } ?: emptyList())
+        //初始勾选:当前大分类栏中属于候选的分类(分段标题不在候选,单层平铺初始为空)
+        viewModel.bigKindsData.value?.forEach { big ->
+            if (big.kind.title in candidates) {
+                manageChecked.add(big.kind.title)
+            }
+        }
         drawerAdapter.manageChecker = ExploreAdapter.ManageChecker(
-            candidateTitles = viewModel.bigCandidates.map { it.title }.toSet(),
+            candidateTitles = candidates,
             checkedTitles = manageChecked,
             onToggle = { title ->
                 if (!manageChecked.remove(title)) {

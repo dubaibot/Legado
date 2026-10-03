@@ -28,7 +28,8 @@ import kotlinx.coroutines.flow.mapLatest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 大分类:占满一栏的url分类,与其辖区内的细分(不占满一栏的url分类)
+ * 大分类:分段标题(自动模式,细分为其辖区)或用户勾选的url分类(管理模式,无辖区);
+ * 单层平铺书源无大分类,细分栏直接展示全部url分类
  */
 data class BigKind(
     val kind: ExploreKind,
@@ -55,14 +56,28 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     private var page = 1
     private var books = linkedSetOf<SearchBook>()
 
+    /** 原始kinds(未过滤类型),供分段标题检测与树顺序扫描 */
+    private var rawKinds: List<ExploreKind> = emptyList()
+
     /** 解析出的有效url分类,按书源原顺序 */
     private var allKinds: List<ExploreKind> = emptyList()
 
-    /** 按占满一栏规则自动划分的大分类树 */
+    /** 自动划分:分段标题树,空列表表示单层平铺(大分类栏隐藏) */
     private var bigTree: List<BigKind> = emptyList()
 
-    /** 用户勾选白名单过滤后的展示列表,空存储时等于bigTree */
+    /** 大分类栏展示内容:白名单模式为用户勾选的url分类,自动模式为分段标题树 */
     private var displayBigKinds: List<BigKind> = emptyList()
+
+    /** 是否存在有效url分类,决定三横与管理入口可见性 */
+    val hasExploreKinds: Boolean
+        get() = allKinds.isNotEmpty()
+
+    /** 细分栏内容:当前大分类辖区;无大分类(单层平铺)时为全部url分类 */
+    val subBarKinds: List<ExploreKind>
+        get() {
+            currentBig?.let { return it.subKinds }
+            return if (displayBigKinds.isEmpty()) allKinds else emptyList()
+        }
 
     /** 当前大分类,细分栏高亮项为currentSub,null表示停在大分类本级 */
     var currentBig: BigKind? = null
@@ -70,9 +85,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     var currentSub: ExploreKind? = null
         private set
 
-    /** 管理页可勾选候选:自动划分的大分类 */
+    /** 管理页可勾选候选:全部有效url分类 */
     val bigCandidates: List<ExploreKind>
-        get() = bigTree.map { it.kind }
+        get() = allKinds
 
     init {
         execute {
@@ -114,11 +129,17 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             if (intentUrl != null) {
                 matchIntentUrl(intentUrl)
             }
-            if (currentBig == null) {
-                currentBig = displayBigKinds.firstOrNull()
+            if (currentBig == null && currentSub == null) {
+                if (displayBigKinds.isNotEmpty()) {
+                    currentBig = displayBigKinds.first()
+                } else {
+                    //单层平铺:直接定位第一个url分类
+                    currentSub = allKinds.firstOrNull()
+                }
             }
             exploreUrl = currentSub?.url
-                ?: currentBig?.kind?.url
+                ?: currentBig?.kind?.url?.takeIf { it.isNotBlank() }
+                ?: currentBig?.subKinds?.firstOrNull()?.url
                 ?: intentUrl
                 ?: fallbackUrl()
             page = 1
@@ -128,10 +149,13 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    /** 解析有效url分类,排除ERROR分类 */
+    /**
+     * 解析kinds:rawKinds保留原样供分段标题检测,allKinds为有效url分类
+     */
     private suspend fun loadExploreKinds() {
         val source = bookSource ?: return
-        allKinds = source.exploreKinds()
+        rawKinds = source.exploreKinds()
+        allKinds = rawKinds
             .filter { it.type == ExploreKind.Type.url && !it.url.isNullOrBlank() }
             .filterNot { it.title.startsWith("ERROR:") }
     }
@@ -141,73 +165,86 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
 
     /**
-     * 占满一栏判定:flexBasisPercent>=1独占一行;
-     * flexGrow>=1按连续段判定,段长为1独占一行,连续多项共享一行互相分摊按细分
+     * 占满一行判定:flexBasisPercent>=1独占一行;
+     * flexGrow>=1按连续段判定,段长为1独占一行,连续多项共享一行互相分摊
      */
-    private fun isFullRow(kind: ExploreKind, segLen: IntArray, index: Int): Boolean {
+    private fun isFullRowStyle(kind: ExploreKind): Boolean {
         val style = kind.style()
         if (style.layout_flexBasisPercent >= 1) {
             return true
         }
         if (style.layout_flexGrow >= 1) {
-            return segLen[index] == 1
+            val index = rawKinds.indexOfFirst { it === kind }
+            val prevGrow = index > 0 && rawKinds[index - 1].style().layout_flexGrow >= 1
+            val nextGrow =
+                index in 0 until rawKinds.size - 1 && rawKinds[index + 1].style().layout_flexGrow >= 1
+            return !prevGrow && !nextGrow
         }
         return false
     }
 
-    /**
-     * 划分大分类/细分树:按原顺序扫描,fullRow项开启新大分类,
-     * 非fullRow归入当前大分类,首个大分类之前的非fullRow前挂给第一个大分类;
-     * 无fullRow项时取第一个有效分类为大分类,其余全部为其细分
-     */
-    private fun buildBigTree(): List<BigKind> {
-        val kinds = allKinds
-        if (kinds.isEmpty()) {
-            return emptyList()
+    /** 分段标题:无url、占满一行、title非空 */
+    private fun isHeaderKind(kind: ExploreKind): Boolean {
+        if (!kind.url.isNullOrBlank() || kind.title.isBlank()) {
+            return false
         }
-        //预计算每项所在flexGrow连续段的长度
-        val segLen = IntArray(kinds.size) { 1 }
-        var i = 0
-        while (i < kinds.size) {
-            val style = kinds[i].style()
-            if (style.layout_flexBasisPercent < 1 && style.layout_flexGrow >= 1) {
-                var j = i
-                while (j < kinds.size) {
-                    val s = kinds[j].style()
-                    if (s.layout_flexBasisPercent < 1 && s.layout_flexGrow >= 1) {
-                        j++
-                    } else {
-                        break
-                    }
-                }
-                for (k in i until j) {
-                    segLen[k] = j - i
-                }
-                i = j
-            } else {
-                i++
-            }
-        }
-        val tree = mutableListOf<Pair<ExploreKind, MutableList<ExploreKind>>>()
-        val headSubs = mutableListOf<ExploreKind>()
-        kinds.forEachIndexed { index, kind ->
-            if (isFullRow(kind, segLen, index)) {
-                tree.add(kind to mutableListOf())
-            } else if (tree.isEmpty()) {
-                headSubs.add(kind)
-            } else {
-                tree.last().second.add(kind)
-            }
-        }
-        if (tree.isEmpty()) {
-            return listOf(BigKind(kinds.first(), kinds.drop(1)))
-        }
-        tree.first().second.addAll(0, headSubs)
-        return tree.map { BigKind(it.first, it.second) }
+        return isFullRowStyle(kind)
     }
 
     /**
-     * 白名单过滤:未写/空串展示全部候选;非空取交集保持原顺序;交集为空回落全部
+     * 自动划分(真实书源校准):
+     * 分段标题数量>=2时,大分类=分段标题,细分=该标题之后、下一标题之前的全部url分类,
+     * 点大分类加载段首url分类;
+     * 无分段标题时返回空列表(单层平铺,大分类栏隐藏,全部url分类进细分栏);
+     * 占满一行的url项按普通细分处理,不特殊化;select只作语境不进栏
+     */
+    private fun buildBigTree(): List<BigKind> {
+        if (allKinds.isEmpty()) {
+            return emptyList()
+        }
+        val headers = rawKinds.filter { isHeaderKind(it) }
+        if (headers.size < 2) {
+            return emptyList()
+        }
+        val tree = mutableListOf<BigKind>()
+        val headSubs = mutableListOf<ExploreKind>()
+        var header: ExploreKind? = null
+        var subs = mutableListOf<ExploreKind>()
+        for (kind in rawKinds) {
+            if (isHeaderKind(kind)) {
+                val h = header
+                if (h != null && subs.isNotEmpty()) {
+                    tree.add(BigKind(h, subs))
+                }
+                header = kind
+                subs = mutableListOf()
+            } else if (kind.type == ExploreKind.Type.url
+                && !kind.url.isNullOrBlank()
+                && !kind.title.startsWith("ERROR:")
+            ) {
+                if (header == null) {
+                    headSubs.add(kind)
+                } else {
+                    subs.add(kind)
+                }
+            }
+        }
+        val h = header
+        if (h != null && subs.isNotEmpty()) {
+            tree.add(BigKind(h, subs))
+        }
+        if (tree.isNotEmpty() && headSubs.isNotEmpty()) {
+            //首个分段标题之前的url分类前挂给第一个大分类
+            val first = tree.first()
+            tree[0] = first.copy(subKinds = headSubs + first.subKinds)
+        }
+        return tree
+    }
+
+    /**
+     * 展示模式:白名单未写/空串走自动划分(分段标题树或单层平铺);
+     * 非空为用户勾选的url分类作为大分类(点击加载自身,无辖区细分),
+     * 交集保持书源原顺序,交集为空(源改版失效)回落自动划分
      */
     private fun upDisplayBigKinds() {
         val sourceUrl = bookSource?.bookSourceUrl
@@ -219,12 +256,13 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .toSet()
-            val filtered = bigTree.filter { it.kind.title in names }
+            val filtered = allKinds.filter { it.title in names }
+                .map { BigKind(it, emptyList()) }
             if (filtered.isEmpty()) bigTree else filtered
         }
     }
 
-    /** intent url在展示树中匹配,命中大分类或细分并定位 */
+    /** intent url在展示树或平铺列表中匹配定位 */
     private fun matchIntentUrl(url: String) {
         for (big in displayBigKinds) {
             if (big.kind.url == url) {
@@ -239,6 +277,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                     return
                 }
             }
+        }
+        if (displayBigKinds.isEmpty()) {
+            //单层平铺:直接命中细分
+            currentSub = allKinds.firstOrNull { it.url == url }
         }
     }
 
@@ -262,26 +304,36 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
 
     /**
-     * 侧边页使用模式点击分类,在自动划分树中定位,命中返回true
+     * 侧边页使用模式点击分类,定位后返回true(需拉书);
+     * 传统发现面板行为不受管理模式影响,逐项正常分发
      */
     fun selectFromUrl(title: String, url: String): Boolean {
-        val big = bigTree.firstOrNull { it.kind.title == title && it.kind.url == url }
-        if (big != null) {
-            currentBig = big
-            currentSub = null
-            resetLoad()
-            bigKindsData.postValue(displayBigKinds)
-            return true
+        for (big in displayBigKinds) {
+            if (big.kind.title == title && big.kind.url == url) {
+                currentBig = big
+                currentSub = null
+                resetLoad()
+                bigKindsData.postValue(displayBigKinds)
+                return true
+            }
+            val sub = big.subKinds.firstOrNull { it.title == title && it.url == url }
+            if (sub != null) {
+                currentBig = big
+                currentSub = sub
+                resetLoad()
+                bigKindsData.postValue(displayBigKinds)
+                return true
+            }
         }
-        val parent = bigTree.firstOrNull { b ->
-            b.subKinds.any { it.title == title && it.url == url }
-        }
-        if (parent != null) {
-            currentBig = parent
-            currentSub = parent.subKinds.first { it.title == title && it.url == url }
-            resetLoad()
-            bigKindsData.postValue(displayBigKinds)
-            return true
+        if (displayBigKinds.isEmpty()) {
+            //单层平铺:直接切细分
+            val sub = allKinds.firstOrNull { it.title == title && it.url == url }
+            if (sub != null) {
+                currentSub = sub
+                resetLoad()
+                bigKindsData.postValue(displayBigKinds)
+                return true
+            }
         }
         return false
     }
@@ -292,15 +344,20 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     fun applyManageSelection(selected: List<String>): Boolean {
         val sourceUrl = bookSource?.bookSourceUrl ?: return false
         if (selected.isEmpty()) {
-            //全取消回落:保存第一项标题,使刻意清空与从未管理可区分
-            LocalConfig.putExploreAdjust(sourceUrl, bigTree.firstOrNull()?.kind?.title ?: "")
+            //全取消回落:保存第一个有效分类标题,使刻意清空与从未管理可区分
+            LocalConfig.putExploreAdjust(sourceUrl, allKinds.firstOrNull()?.title ?: "")
         } else {
             LocalConfig.putExploreAdjust(sourceUrl, selected.joinToString(","))
         }
+        val oldBig = currentBig
+        val oldSub = currentSub
         upDisplayBigKinds()
-        val stillThere = displayBigKinds.firstOrNull { it.kind == currentBig?.kind }
+        val stillThere = displayBigKinds.firstOrNull { it.kind == oldBig?.kind }
         return if (stillThere != null) {
             currentBig = stillThere
+            if (oldSub != null && stillThere.subKinds.none { it == oldSub }) {
+                currentSub = null
+            }
             bigKindsData.postValue(displayBigKinds)
             false
         } else {
@@ -313,7 +370,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
 
     private fun resetLoad() {
-        exploreUrl = currentSub?.url ?: currentBig?.kind?.url
+        exploreUrl = currentSub?.url
+            ?: currentBig?.kind?.url?.takeIf { it.isNotBlank() }
+            ?: currentBig?.subKinds?.firstOrNull()?.url
         page = 1
         books.clear()
     }
