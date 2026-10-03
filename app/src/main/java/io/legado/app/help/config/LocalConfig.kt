@@ -3,7 +3,10 @@ package io.legado.app.help.config
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import io.legado.app.data.entities.rule.ExploreCatNode
+import io.legado.app.utils.GSON
 import io.legado.app.utils.getBoolean
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.putBoolean
 import io.legado.app.utils.putLong
 import io.legado.app.utils.putString
@@ -135,13 +138,26 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putString("exploreQuickGroups", value)
         }
 
-    // 发现页大分类展示白名单（key=exploreAdjust_{sourceUrl}，逗号分隔分类名，空为全部自动划分候选）
-    fun getExploreAdjust(sourceUrl: String): String {
-        return getString("exploreAdjust_$sourceUrl", "") ?: ""
+    // 发现页手动分类树(key=exploreCats_{sourceUrl},JSON三级树,用户从筛选页面板构建)
+    fun getExploreCats(sourceUrl: String): List<ExploreCatNode> {
+        val json = getString("exploreCats_$sourceUrl", "") ?: ""
+        if (json.isBlank()) {
+            return emptyList()
+        }
+        return GSON.fromJsonArray<ExploreCatNode>(json).getOrDefault(emptyList())
     }
 
-    fun putExploreAdjust(sourceUrl: String, value: String) {
-        putString("exploreAdjust_$sourceUrl", value)
+    fun putExploreCats(sourceUrl: String, nodes: List<ExploreCatNode>) {
+        putString("exploreCats_$sourceUrl", GSON.toJson(nodes))
+    }
+
+    // 手动编辑标志(key=exploreCatsEdited_{sourceUrl},true后预填不再覆盖)
+    fun isExploreCatsEdited(sourceUrl: String): Boolean {
+        return getBoolean("exploreCatsEdited_$sourceUrl", false)
+    }
+
+    fun putExploreCatsEdited(sourceUrl: String, edited: Boolean) {
+        putBoolean("exploreCatsEdited_$sourceUrl", edited)
     }
 
     // 发现新版书签显示名（key=exploreSourceName_{sourceUrl}，空为书源名）

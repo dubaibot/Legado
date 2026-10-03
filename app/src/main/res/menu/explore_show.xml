@@ -14,7 +14,7 @@
     <item
         android:id="@+id/menu_category"
         android:icon="@drawable/ic_sort"
-        android:title="@string/explore_adjust_category"
+        android:title="@string/explore_filter"
         app:showAsAction="always"
         tools:ignore="AlwaysShowAction" />
 

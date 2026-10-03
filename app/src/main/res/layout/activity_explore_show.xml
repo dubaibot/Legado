@@ -58,12 +58,32 @@
 
         </HorizontalScrollView>
 
+        <HorizontalScrollView
+            android:id="@+id/hsv_third_category"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:overScrollMode="never"
+            android:paddingBottom="4dp"
+            android:scrollbars="none"
+            android:visibility="gone"
+            app:layout_constraintTop_toBottomOf="@id/hsv_sub_category">
+
+            <LinearLayout
+                android:id="@+id/ll_third_category"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp" />
+
+        </HorizontalScrollView>
+
         <io.legado.app.ui.widget.dynamiclayout.DynamicFrameLayout
             android:id="@+id/content_view"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/hsv_sub_category">
+            app:layout_constraintTop_toBottomOf="@id/hsv_third_category">
 
 
             <androidx.recyclerview.widget.RecyclerView

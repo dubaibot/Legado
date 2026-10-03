@@ -11,13 +11,19 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.rule.ExploreCatNode
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.entities.rule.ExploreKind.Type
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.main.explore.ExploreAdapter
+import io.legado.app.ui.login.SourceLoginJsExtensions
+import io.legado.app.utils.InfoMap
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
@@ -25,17 +31,9 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.launch
+import com.script.rhino.runScriptWithContext
 import java.util.concurrent.ConcurrentHashMap
-
-/**
- * 大分类:分段标题(自动模式,细分为其辖区)或用户勾选的url分类(管理模式,无辖区);
- * 单层平铺书源无大分类,细分栏直接展示全部url分类
- */
-data class BigKind(
-    val kind: ExploreKind,
-    val subKinds: List<ExploreKind>
-)
-
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExploreShowViewModel(application: Application) : BaseViewModel(application) {
@@ -48,46 +46,73 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     val pageLiveData = MutableLiveData<Int>()
     val sourceData = MutableLiveData<BookSource?>()
 
-    /** 大分类栏内容(白名单过滤后),两栏联动均由该数据与currentBig/currentSub驱动 */
-    val bigKindsData = MutableLiveData<List<BigKind>>()
+    /** 分类树三栏:一级/二级/三级 */
+    val treeData = MutableLiveData<List<ExploreCatNode>>()
+    val l2Data = MutableLiveData<List<ExploreCatNode>>()
+    val l3Data = MutableLiveData<List<ExploreCatNode>>()
+
+    /** 节点失效提示与button执行完成提示 */
+    val nodeInvalidLiveData = MutableLiveData<ExploreCatNode>()
+    val nodeExecutedLiveData = MutableLiveData<ExploreCatNode>()
+
+    /** 书源面板变化(reUiView),需刷新筛选页 */
+    val panelRefreshLiveData = MutableLiveData<Boolean>()
+
     private var bookSource: BookSource? = null
+    private var sourceUrl: String? = null
     var exploreUrl: String? = null
         private set
     private var page = 1
     private var books = linkedSetOf<SearchBook>()
 
-    /** 原始kinds(未过滤类型),供分段标题检测与树顺序扫描 */
+    /** 原始kinds,供预填/失效校验/筛选设置应用 */
     private var rawKinds: List<ExploreKind> = emptyList()
 
-    /** 解析出的有效url分类,按书源原顺序 */
+    /** 有效url分类 */
     private var allKinds: List<ExploreKind> = emptyList()
 
-    /** 自动划分:分段标题树,空列表表示单层平铺(大分类栏隐藏) */
-    private var bigTree: List<BigKind> = emptyList()
+    /** 工作树(一级列表)。未编辑时=预填树(不持久化);编辑后=用户树(持久化) */
+    private var tree = emptyList<ExploreCatNode>()
 
-    /** 大分类栏展示内容:白名单模式为用户勾选的url分类,自动模式为分段标题树 */
-    private var displayBigKinds: List<BigKind> = emptyList()
+    /** 预填平铺二级(未编辑+无分段标题时展示于二级栏) */
+    private var flatPreset = emptyList<ExploreCatNode>()
 
-    /** 是否存在有效url分类,决定三横与管理入口可见性 */
+    /** 手动编辑标志,true后预填不再覆盖 */
+    private var edited = false
+
+    var currentL1: ExploreCatNode? = null
+        private set
+    var currentL2: ExploreCatNode? = null
+        private set
+    var currentL3: ExploreCatNode? = null
+        private set
+
+    /** 面板是否有可筛选内容,决定筛选按钮可见性 */
     val hasExploreKinds: Boolean
-        get() = allKinds.isNotEmpty()
+        get() = rawKinds.any { !it.title.startsWith("ERROR:") }
 
-    /** 细分栏内容:当前大分类辖区;无大分类(单层平铺)时为全部url分类 */
-    val subBarKinds: List<ExploreKind>
-        get() {
-            currentBig?.let { return it.subKinds }
-            return if (displayBigKinds.isEmpty()) allKinds else emptyList()
+    /** 平铺预填形态:无一级,二级栏展示flatPreset */
+    val isFlatPreset: Boolean
+        get() = tree.isEmpty() && !edited && flatPreset.isNotEmpty()
+
+    private val infoMap: InfoMap by lazy {
+        val u = sourceUrl ?: ""
+        ExploreAdapter.exploreInfoMapList[u] ?: InfoMap(u).also {
+            ExploreAdapter.exploreInfoMapList.put(u, it)
         }
+    }
 
-    /** 当前大分类,细分栏高亮项为currentSub,null表示停在大分类本级 */
-    var currentBig: BigKind? = null
-        private set
-    var currentSub: ExploreKind? = null
-        private set
+    private val jsExtensions by lazy {
+        SourceLoginJsExtensions(null, bookSource,
+            callback = object : SourceLoginJsExtensions.Callback {
+                override fun upUiData(data: Map<String, Any?>?) {
+                }
 
-    /** 管理页可勾选候选:全部有效url分类 */
-    val bigCandidates: List<ExploreKind>
-        get() = allKinds
+                override fun reUiView(deltaUp: Boolean) {
+                    onPanelChanged()
+                }
+            })
+    }
 
     init {
         execute {
@@ -114,54 +139,102 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
     fun initData(intent: Intent) {
         execute {
-            val sourceUrl = intent.getStringExtra("sourceUrl")
+            val intentSourceUrl = intent.getStringExtra("sourceUrl")
             val intentUrl = intent.getStringExtra("exploreUrl")
-            if (bookSource == null && sourceUrl != null) {
-                bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
+            if (bookSource == null && intentSourceUrl != null) {
+                bookSource = appDb.bookSourceDao.getBookSource(intentSourceUrl)
             }
+            sourceUrl = bookSource?.bookSourceUrl
             sourceData.postValue(bookSource)
             loadExploreKinds()
-            bigTree = buildBigTree()
-            upDisplayBigKinds()
-            //当前分类:intent url树中匹配,失配取展示列表第一项,不持久化
-            currentBig = null
-            currentSub = null
+            loadTree()
+            currentL1 = null
+            currentL2 = null
+            currentL3 = null
             if (intentUrl != null) {
-                matchIntentUrl(intentUrl)
+                locateByUrl(intentUrl)
             }
-            if (currentBig == null && currentSub == null) {
-                if (displayBigKinds.isNotEmpty()) {
-                    currentBig = displayBigKinds.first()
-                } else {
-                    //单层平铺:直接定位第一个url分类
-                    currentSub = allKinds.firstOrNull()
-                }
+            if (currentL1 == null && currentL2 == null && currentL3 == null) {
+                locateFirst()
             }
-            exploreUrl = currentSub?.url
-                ?: currentBig?.kind?.url?.takeIf { it.isNotBlank() }
-                ?: currentBig?.subKinds?.firstOrNull()?.url
-                ?: intentUrl
-                ?: fallbackUrl()
-            page = 1
-            books.clear()
-            bigKindsData.postValue(displayBigKinds)
-            explore()
+            upBars()
+            reloadCurrent()
         }
     }
 
-    /**
-     * 解析kinds:rawKinds保留原样供分段标题检测,allKinds为有效url分类
-     */
     private suspend fun loadExploreKinds() {
         val source = bookSource ?: return
         rawKinds = source.exploreKinds()
         allKinds = rawKinds
-            .filter { it.type == ExploreKind.Type.url && !it.url.isNullOrBlank() }
+            .filter { it.type == Type.url && !it.url.isNullOrBlank() }
             .filterNot { it.title.startsWith("ERROR:") }
     }
 
-    private fun fallbackUrl(): String? {
-        return bookSource?.exploreUrl
+    /**
+     * 加载工作树:已编辑用存储树,未编辑用预填
+     */
+    private fun loadTree() {
+        val u = sourceUrl ?: return
+        edited = LocalConfig.isExploreCatsEdited(u)
+        if (edited) {
+            tree = LocalConfig.getExploreCats(u)
+            flatPreset = emptyList()
+        } else {
+            val (ptree, pflat) = buildPreset()
+            tree = ptree
+            flatPreset = pflat
+        }
+    }
+
+    /**
+     * 预填:分段标题>=2生成两级骨架,否则一级空+全部url分类平铺
+     */
+    private fun buildPreset(): Pair<List<ExploreCatNode>, List<ExploreCatNode>> {
+        if (allKinds.isEmpty()) {
+            return emptyList<ExploreCatNode>() to emptyList()
+        }
+        val headers = rawKinds.filter { isHeaderKind(it) }
+        if (headers.size >= 2) {
+            val nodes = mutableListOf<ExploreCatNode>()
+            val headSubs = mutableListOf<ExploreCatNode>()
+            var header: ExploreKind? = null
+            var subs = mutableListOf<ExploreCatNode>()
+            for (kind in rawKinds) {
+                if (isHeaderKind(kind)) {
+                    val h = header
+                    if (h != null && subs.isNotEmpty()) {
+                        nodes.add(
+                            ExploreCatNode(h.title, ExploreCatNode.TYPE_HEADER, h.title, children = subs)
+                        )
+                    }
+                    header = kind
+                    subs = mutableListOf()
+                } else if (kind.type == Type.url
+                    && !kind.url.isNullOrBlank()
+                    && !kind.title.startsWith("ERROR:")
+                ) {
+                    val node = kind.toCatNode(null)
+                    if (header == null) {
+                        headSubs.add(node)
+                    } else {
+                        subs.add(node)
+                    }
+                }
+            }
+            val h = header
+            if (h != null && subs.isNotEmpty()) {
+                nodes.add(
+                    ExploreCatNode(h.title, ExploreCatNode.TYPE_HEADER, h.title, children = subs)
+                )
+            }
+            if (nodes.isNotEmpty() && headSubs.isNotEmpty()) {
+                //首个分段标题之前的url分类前挂给第一个大分类
+                val first = nodes.first()
+                nodes[0] = first.copy(children = headSubs + first.children)
+            }
+            return nodes to emptyList()
+        }
+        return emptyList<ExploreCatNode>() to allKinds.map { it.toCatNode(null) }
     }
 
     /**
@@ -191,190 +264,545 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         return isFullRowStyle(kind)
     }
 
-    /**
-     * 自动划分(真实书源校准):
-     * 分段标题数量>=2时,大分类=分段标题,细分=该标题之后、下一标题之前的全部url分类,
-     * 点大分类加载段首url分类;
-     * 无分段标题时返回空列表(单层平铺,大分类栏隐藏,全部url分类进细分栏);
-     * 占满一行的url项按普通细分处理,不特殊化;select只作语境不进栏
-     */
-    private fun buildBigTree(): List<BigKind> {
-        if (allKinds.isEmpty()) {
-            return emptyList()
-        }
-        val headers = rawKinds.filter { isHeaderKind(it) }
-        if (headers.size < 2) {
-            return emptyList()
-        }
-        val tree = mutableListOf<BigKind>()
-        val headSubs = mutableListOf<ExploreKind>()
-        var header: ExploreKind? = null
-        var subs = mutableListOf<ExploreKind>()
-        for (kind in rawKinds) {
-            if (isHeaderKind(kind)) {
-                val h = header
-                if (h != null && subs.isNotEmpty()) {
-                    tree.add(BigKind(h, subs))
-                }
-                header = kind
-                subs = mutableListOf()
-            } else if (kind.type == ExploreKind.Type.url
-                && !kind.url.isNullOrBlank()
-                && !kind.title.startsWith("ERROR:")
-            ) {
-                if (header == null) {
-                    headSubs.add(kind)
-                } else {
-                    subs.add(kind)
-                }
-            }
-        }
-        val h = header
-        if (h != null && subs.isNotEmpty()) {
-            tree.add(BigKind(h, subs))
-        }
-        if (tree.isNotEmpty() && headSubs.isNotEmpty()) {
-            //首个分段标题之前的url分类前挂给第一个大分类
-            val first = tree.first()
-            tree[0] = first.copy(subKinds = headSubs + first.subKinds)
-        }
-        return tree
-    }
+    private fun ExploreKind.toCatNode(option: String?): ExploreCatNode {
+        return when (type) {
+            Type.select -> ExploreCatNode(
+                name = option ?: title,
+                type = Type.select,
+                kindTitle = title,
+                option = option,
+                action = action
+            )
 
-    /**
-     * 展示模式:白名单未写/空串走自动划分(分段标题树或单层平铺);
-     * 非空为用户勾选的url分类作为大分类(点击加载自身,无辖区细分),
-     * 交集保持书源原顺序,交集为空(源改版失效)回落自动划分
-     */
-    private fun upDisplayBigKinds() {
-        val sourceUrl = bookSource?.bookSourceUrl
-        val saved = sourceUrl?.let { LocalConfig.getExploreAdjust(it) } ?: ""
-        displayBigKinds = if (saved.isBlank()) {
-            bigTree
-        } else {
-            val names = saved.split(",")
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .toSet()
-            val filtered = allKinds.filter { it.title in names }
-                .map { BigKind(it, emptyList()) }
-            if (filtered.isEmpty()) bigTree else filtered
+            Type.button -> ExploreCatNode(
+                name = title,
+                type = Type.button,
+                kindTitle = title,
+                action = action
+            )
+
+            else -> ExploreCatNode(
+                name = title,
+                type = Type.url,
+                kindTitle = title,
+                url = url
+            )
         }
     }
 
-    /** intent url在展示树或平铺列表中匹配定位 */
-    private fun matchIntentUrl(url: String) {
-        for (big in displayBigKinds) {
-            if (big.kind.url == url) {
-                currentBig = big
-                currentSub = null
+    /** 三栏数据 */
+    fun l1Kinds(): List<ExploreCatNode> = tree
+
+    fun l2Kinds(): List<ExploreCatNode> {
+        currentL1?.let { return it.children }
+        if (isFlatPreset) {
+            return flatPreset
+        }
+        return emptyList()
+    }
+
+    fun l3Kinds(): List<ExploreCatNode> = currentL2?.children ?: emptyList()
+
+    private fun upBars() {
+        treeData.postValue(tree)
+        l2Data.postValue(l2Kinds())
+        l3Data.postValue(l3Kinds())
+    }
+
+    /** 定位树中第一个一级项(一级空时取第一个二级项) */
+    private fun locateFirst() {
+        currentL1 = tree.firstOrNull()
+        if (currentL1 == null) {
+            currentL2 = l2Kinds().firstOrNull()
+        }
+    }
+
+    /** intent url在树或平铺预填中定位,并同步父级引用 */
+    private fun locateByUrl(url: String) {
+        if (isFlatPreset) {
+            currentL2 = flatPreset.firstOrNull { it.url == url }
+            return
+        }
+        for (l1 in tree) {
+            if (l1.url == url) {
+                currentL1 = l1
                 return
             }
-            for (sub in big.subKinds) {
-                if (sub.url == url) {
-                    currentBig = big
-                    currentSub = sub
+            for (l2 in l1.children) {
+                if (l2.url == url) {
+                    currentL1 = l1
+                    currentL2 = l2
                     return
+                }
+                for (l3 in l2.children) {
+                    if (l3.url == url) {
+                        currentL1 = l1
+                        currentL2 = l2
+                        currentL3 = l3
+                        return
+                    }
                 }
             }
         }
-        if (displayBigKinds.isEmpty()) {
-            //单层平铺:直接命中细分
-            currentSub = allKinds.firstOrNull { it.url == url }
+    }
+
+    /** 点击一级:高亮+下级栏重置+按节点语义拉书;再点已高亮项无操作返回false */
+    fun selectL1(node: ExploreCatNode): Boolean {
+        if (node == currentL1 && currentL2 == null && currentL3 == null) {
+            return false
+        }
+        currentL1 = node
+        currentL2 = null
+        currentL3 = null
+        upBars()
+        reloadCurrent()
+        return true
+    }
+
+    fun selectL2(node: ExploreCatNode): Boolean {
+        if (node == currentL2 && currentL3 == null) {
+            return false
+        }
+        currentL2 = node
+        currentL3 = null
+        upBars()
+        reloadCurrent()
+        return true
+    }
+
+    fun selectL3(node: ExploreCatNode): Boolean {
+        if (node == currentL3) {
+            return false
+        }
+        currentL3 = node
+        upBars()
+        reloadCurrent()
+        return true
+    }
+
+    /**
+     * 按当前定位执行节点语义拉书;无url语义(button/select无默认列表)时清空列表
+     */
+    private fun reloadCurrent() {
+        val node = currentL3 ?: currentL2 ?: currentL1
+        execute {
+            if (node == null) {
+                exploreUrl = null
+                books.clear()
+                booksData.postValue(emptyList())
+                return@execute
+            }
+            val url = executeNodeInternal(node)
+            page = 1
+            books.clear()
+            if (url != null) {
+                exploreUrl = url
+                explore()
+            } else {
+                exploreUrl = null
+                booksData.postValue(emptyList())
+            }
         }
     }
 
     /**
-     * 选中大分类,currentSub复位为本级,调用方负责清列表触发拉书
+     * 节点执行:先应用筛选设置,再按节点类型执行
+     * url→返回其地址;select选项→切语境+找默认列表url;button→仅执行action返回null
      */
-    fun selectBig(big: BigKind) {
-        currentBig = big
-        currentSub = null
-        resetLoad()
-        bigKindsData.postValue(displayBigKinds)
+    private suspend fun executeNodeInternal(node: ExploreCatNode): String? {
+        applyFilterSettings()
+        val kind = findKind(node)
+        return when (node.type) {
+            ExploreCatNode.TYPE_HEADER -> {
+                //分段标题:加载段首子级url分类
+                node.children.firstOrNull { !it.url.isNullOrBlank() }?.url
+            }
+
+            Type.url -> {
+                if (kind == null || node.url.isNullOrBlank()) {
+                    nodeInvalidLiveData.postValue(node)
+                    null
+                } else {
+                    node.url
+                }
+            }
+
+            Type.select -> {
+                if (kind == null || node.option == null) {
+                    nodeInvalidLiveData.postValue(node)
+                    return null
+                }
+                //执行选项action切换语境(写入源变量)
+                infoMap[kind.title] = node.option ?: return null
+                infoMap.save()
+                evalJs(kind.action, infoMap)
+                findSelectDefaultUrl(kind)
+            }
+
+            Type.button -> {
+                if (kind == null) {
+                    nodeInvalidLiveData.postValue(node)
+                    return null
+                }
+                evalJs(kind.action, infoMap)
+                nodeExecutedLiveData.postValue(node)
+                null
+            }
+
+            else -> null
+        }
     }
 
     /**
-     * 选中细分,父级大分类保持高亮,调用方负责清列表触发拉书
+     * 筛选设置自动应用:按面板顺序遍历select/text/toggle,
+     * 按infoMap当前值执行各自action(无action跳过)
      */
-    fun selectSub(sub: ExploreKind) {
-        currentSub = sub
-        resetLoad()
-        bigKindsData.postValue(displayBigKinds)
+    private suspend fun applyFilterSettings() {
+        for (kind in rawKinds) {
+            when (kind.type) {
+                Type.select, Type.text, Type.toggle -> {
+                    val v = infoMap[kind.title]
+                    if (!v.isNullOrEmpty() && !kind.action.isNullOrBlank()) {
+                        evalJs(kind.action, infoMap)
+                    }
+                }
+            }
+        }
     }
 
     /**
-     * 侧边页使用模式点击分类,定位后返回true(需拉书);
-     * 传统发现面板行为不受管理模式影响,逐项正常分发
+     * 失效校验:url比对地址串;select比对控件标题+选项在值域内;button比对标题
      */
-    fun selectFromUrl(title: String, url: String): Boolean {
-        for (big in displayBigKinds) {
-            if (big.kind.title == title && big.kind.url == url) {
-                currentBig = big
-                currentSub = null
-                resetLoad()
-                bigKindsData.postValue(displayBigKinds)
-                return true
+    private fun findKind(node: ExploreCatNode): ExploreKind? {
+        return when (node.type) {
+            Type.url -> rawKinds.firstOrNull {
+                it.type == Type.url && it.url == node.url && !it.title.startsWith("ERROR:")
             }
-            val sub = big.subKinds.firstOrNull { it.title == title && it.url == url }
-            if (sub != null) {
-                currentBig = big
-                currentSub = sub
-                resetLoad()
-                bigKindsData.postValue(displayBigKinds)
-                return true
+
+            Type.select -> rawKinds.firstOrNull {
+                it.type == Type.select && it.title == node.kindTitle
+                        && it.chars?.filterNotNull()?.contains(node.option) == true
             }
+
+            Type.button -> rawKinds.firstOrNull {
+                it.type == Type.button && it.title == node.kindTitle
+            }
+
+            else -> null
         }
-        if (displayBigKinds.isEmpty()) {
-            //单层平铺:直接切细分
-            val sub = allKinds.firstOrNull { it.title == title && it.url == url }
-            if (sub != null) {
-                currentSub = sub
-                resetLoad()
-                bigKindsData.postValue(displayBigKinds)
-                return true
-            }
-        }
-        return false
     }
 
     /**
-     * 管理页提交:保存白名单并做当前分类维护,返回是否切换了分类(需拉书)
+     * select默认列表:该select之后连续的url项优先title含"全部/所有",其次第一个;
+     * 段内无则全面板找"全部",再退全面板第一个;都无返回null(仅刷新面板)
      */
-    fun applyManageSelection(selected: List<String>): Boolean {
-        val sourceUrl = bookSource?.bookSourceUrl ?: return false
-        if (selected.isEmpty()) {
-            //全取消回落:保存第一个有效分类标题,使刻意清空与从未管理可区分
-            LocalConfig.putExploreAdjust(sourceUrl, allKinds.firstOrNull()?.title ?: "")
-        } else {
-            LocalConfig.putExploreAdjust(sourceUrl, selected.joinToString(","))
-        }
-        val oldBig = currentBig
-        val oldSub = currentSub
-        upDisplayBigKinds()
-        val stillThere = displayBigKinds.firstOrNull { it.kind == oldBig?.kind }
-        return if (stillThere != null) {
-            currentBig = stillThere
-            if (oldSub != null && stillThere.subKinds.none { it == oldSub }) {
-                currentSub = null
+    private fun findSelectDefaultUrl(selectKind: ExploreKind): String? {
+        val idx = rawKinds.indexOfFirst { it === selectKind }
+        val segUrls = mutableListOf<ExploreKind>()
+        if (idx >= 0) {
+            for (i in idx + 1 until rawKinds.size) {
+                val k = rawKinds[i]
+                if (k.type == Type.url) {
+                    if (!k.url.isNullOrBlank() && !k.title.startsWith("ERROR:")) {
+                        segUrls.add(k)
+                    }
+                } else {
+                    break
+                }
             }
-            bigKindsData.postValue(displayBigKinds)
-            false
-        } else {
-            currentBig = displayBigKinds.firstOrNull()
-            currentSub = null
-            resetLoad()
-            bigKindsData.postValue(displayBigKinds)
-            true
+        }
+        val segPick = segUrls.firstOrNull {
+            it.title.contains("全部") || it.title.contains("所有")
+        } ?: segUrls.firstOrNull()
+        if (segPick != null) {
+            return segPick.url
+        }
+        val globalPick = allKinds.firstOrNull {
+            it.title.contains("全部") || it.title.contains("所有")
+        } ?: allKinds.firstOrNull()
+        return globalPick?.url
+    }
+
+    /**
+     * 辖域候选:节点可挂下一级的候选集合,空列表表示不可作父级或辖域为空
+     * 分段标题→段内全部可选项;select选项→同select值域其他选项;url→面板全量;button/text→无
+     */
+    fun scopeCandidates(node: ExploreCatNode?): List<Pair<ExploreKind, String?>> {
+        if (node == null) {
+            return emptyList()
+        }
+        return when (node.type) {
+            ExploreCatNode.TYPE_HEADER -> headerSegmentCandidates(node.kindTitle)
+            Type.select -> selectSiblingCandidates(node)
+            Type.url -> panelAllCandidates()
+            else -> emptyList()
         }
     }
 
-    private fun resetLoad() {
-        exploreUrl = currentSub?.url
-            ?: currentBig?.kind?.url?.takeIf { it.isNotBlank() }
-            ?: currentBig?.subKinds?.firstOrNull()?.url
-        page = 1
-        books.clear()
+    /** 辖域包含判断:url按地址+标题,select选项按控件标题+选项名,button按标题 */
+    fun scopeContains(
+        candidates: List<Pair<ExploreKind, String?>>,
+        kind: ExploreKind,
+        option: String?
+    ): Boolean {
+        return candidates.any { (k, opt) ->
+            k.title == kind.title && k.url == kind.url && opt == option
+        }
+    }
+
+    private fun collectCandidate(kind: ExploreKind, result: MutableList<Pair<ExploreKind, String?>>) {
+        when (kind.type) {
+            Type.url -> if (!kind.url.isNullOrBlank() && !kind.title.startsWith("ERROR:")) {
+                result.add(kind to null)
+            }
+
+            Type.select -> kind.chars?.filterNotNull()?.forEach {
+                result.add(kind to it)
+            }
+
+            Type.button -> result.add(kind to null)
+        }
+    }
+
+    /** 分段标题段内候选:该标题之后至下一标题之间的可选项 */
+    private fun headerSegmentCandidates(headerTitle: String): List<Pair<ExploreKind, String?>> {
+        val result = mutableListOf<Pair<ExploreKind, String?>>()
+        var inSeg = false
+        for (kind in rawKinds) {
+            if (isHeaderKind(kind)) {
+                if (inSeg) {
+                    break
+                }
+                if (kind.title == headerTitle) {
+                    inSeg = true
+                }
+                continue
+            }
+            if (inSeg) {
+                collectCandidate(kind, result)
+            }
+        }
+        return result
+    }
+
+    /** select选项的辖域:同一select值域内其他选项 */
+    private fun selectSiblingCandidates(node: ExploreCatNode): List<Pair<ExploreKind, String?>> {
+        val kind = findKind(node) ?: return emptyList()
+        return kind.chars?.filterNotNull()
+            ?.filter { it != node.option }
+            ?.map { kind to it }
+            ?: emptyList()
+    }
+
+    /** url分类的辖域:同面板全部可选项(B方案) */
+    private fun panelAllCandidates(): List<Pair<ExploreKind, String?>> {
+        val result = mutableListOf<Pair<ExploreKind, String?>>()
+        for (kind in rawKinds) {
+            collectCandidate(kind, result)
+        }
+        return result
+    }
+
+    /**
+     * 添加节点(筛选页面板菜单确认后),自动持久化并置编辑标志
+     * level1:加入一级;level2:挂currentL1(空取第一个一级);level3:挂currentL2(空取当前一级第一个二级)
+     */
+    fun addNode(level: Int, kind: ExploreKind, option: String?): Boolean {
+        ensureEdited()
+        val node = kind.toCatNode(option)
+        when (level) {
+            1 -> {
+                tree = tree + node
+                if (currentL1 == null && currentL2 == null && currentL3 == null) {
+                    currentL1 = node
+                }
+            }
+
+            2 -> {
+                val parent = currentL1 ?: tree.firstOrNull() ?: return false
+                tree = tree.map {
+                    if (it.sameRefAs(parent)) {
+                        it.copy(children = it.children + node)
+                    } else {
+                        it
+                    }
+                }
+                currentL1 = tree.firstOrNull { it.sameRefAs(parent) }
+            }
+
+            3 -> {
+                val l1 = currentL1 ?: tree.firstOrNull() ?: return false
+                val l2 = currentL2 ?: l1.children.firstOrNull() ?: return false
+                tree = tree.map { l1n ->
+                    if (l1n.sameRefAs(l1)) {
+                        l1n.copy(children = l1n.children.map { l2n ->
+                            if (l2n.sameRefAs(l2)) {
+                                l2n.copy(children = l2n.children + node)
+                            } else {
+                                l2n
+                            }
+                        })
+                    } else {
+                        l1n
+                    }
+                }
+                currentL1 = tree.firstOrNull { it.sameRefAs(l1) }
+                currentL2 = currentL1?.children?.firstOrNull { it.sameRefAs(l2) }
+            }
+        }
+        persist()
+        upBars()
+        return true
+    }
+
+    /** 删除一级(连带子级) */
+    fun removeL1(node: ExploreCatNode) {
+        ensureEdited()
+        tree = tree.filterNot { it.sameRefAs(node) }
+        if (currentL1?.sameRefAs(node) == true) {
+            currentL1 = null
+            currentL2 = null
+            currentL3 = null
+        }
+        persist()
+        upBars()
+    }
+
+    /** 删除二级(连带三级) */
+    fun removeL2(l1: ExploreCatNode, node: ExploreCatNode) {
+        ensureEdited()
+        tree = tree.map {
+            if (it.sameRefAs(l1)) {
+                it.copy(children = it.children.filterNot { c -> c.sameRefAs(node) })
+            } else {
+                it
+            }
+        }
+        if (currentL1?.sameRefAs(l1) == true && currentL2?.sameRefAs(node) == true) {
+            currentL2 = null
+            currentL3 = null
+        }
+        persist()
+        upBars()
+    }
+
+    /** 删除三级 */
+    fun removeL3(l1: ExploreCatNode, l2: ExploreCatNode, node: ExploreCatNode) {
+        ensureEdited()
+        tree = tree.map { l1n ->
+            if (l1n.sameRefAs(l1)) {
+                l1n.copy(children = l1n.children.map { l2n ->
+                    if (l2n.sameRefAs(l2)) {
+                        l2n.copy(children = l2n.children.filterNot { c -> c.sameRefAs(node) })
+                    } else {
+                        l2n
+                    }
+                })
+            } else {
+                l1n
+            }
+        }
+        if (currentL1?.sameRefAs(l1) == true
+            && currentL2?.sameRefAs(l2) == true
+            && currentL3?.sameRefAs(node) == true
+        ) {
+            currentL3 = null
+        }
+        persist()
+        upBars()
+    }
+
+    /** 首次编辑转正:预填树转为工作树并置编辑标志 */
+    private fun ensureEdited() {
+        if (!edited) {
+            edited = true
+            LocalConfig.putExploreCatsEdited(sourceUrl ?: return, true)
+        }
+    }
+
+    private fun persist() {
+        val u = sourceUrl ?: return
+        LocalConfig.putExploreCats(u, tree)
+    }
+
+    /** 清空重建:删除现有树,重新按预填算法生成(回未编辑状态) */
+    fun resetToPreset() {
+        val u = sourceUrl ?: return
+        edited = false
+        LocalConfig.putExploreCatsEdited(u, false)
+        LocalConfig.putExploreCats(u, emptyList())
+        val (ptree, pflat) = buildPreset()
+        tree = ptree
+        flatPreset = pflat
+        currentL1 = null
+        currentL2 = null
+        currentL3 = null
+        locateFirst()
+        upBars()
+        reloadCurrent()
+    }
+
+    /** 清空:全部置空,置编辑标志不再预填 */
+    fun clearAll() {
+        val u = sourceUrl ?: return
+        edited = true
+        tree = emptyList()
+        flatPreset = emptyList()
+        LocalConfig.putExploreCatsEdited(u, true)
+        persist()
+        currentL1 = null
+        currentL2 = null
+        currentL3 = null
+        upBars()
+        execute {
+            exploreUrl = null
+            page = 1
+            books.clear()
+            booksData.postValue(emptyList())
+        }
+    }
+
+    /** 面板变化(js执行reUiView):清缓存重解析,通知筛选页刷新 */
+    fun onPanelChanged() {
+        execute {
+            bookSource?.clearExploreKindsCache()
+            loadExploreKinds()
+            panelRefreshLiveData.postValue(true)
+        }
+    }
+
+    /** 筛选设置区kinds:select/text/toggle */
+    fun filterSettingKinds(): List<ExploreKind> {
+        return rawKinds.filter {
+            it.type == Type.select || it.type == Type.text || it.type == Type.toggle
+        }
+    }
+
+    /** 传统发现面板kinds:全部原样 */
+    fun panelKinds(): List<ExploreKind> = rawKinds
+
+    /** 关闭筛选页:当前定位被删除时重新定位并拉书 */
+    fun onFilterClosed() {
+        if (currentL1 == null && currentL2 == null && currentL3 == null) {
+            locateFirst()
+            upBars()
+            reloadCurrent()
+        }
+    }
+
+    private suspend fun evalJs(action: String?, infoMap: InfoMap) {
+        val source = bookSource ?: return
+        val jsStr = action?.takeIf { it.isNotBlank() } ?: return
+        try {
+            runScriptWithContext {
+                source.evalJS(jsStr) {
+                    put("java", jsExtensions)
+                    put("infoMap", infoMap)
+                }
+            }
+        } catch (e: Exception) {
+            AppLog.put("ExploreNode action error", e)
+        }
     }
 
     /**

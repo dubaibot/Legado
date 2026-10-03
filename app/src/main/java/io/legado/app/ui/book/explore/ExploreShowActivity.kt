@@ -6,14 +6,15 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.appcompat.widget.ActionMenuView
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.SearchView
 import androidx.core.os.bundleOf
 import androidx.core.view.GravityCompat
-import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
@@ -21,12 +22,14 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
+import com.google.android.flexbox.FlexboxLayout
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.rule.ExploreCatNode
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
@@ -34,7 +37,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.search.SearchActivity
-import io.legado.app.ui.main.explore.ExploreAdapter
+import io.legado.app.ui.main.explore.ExploreKindRenderer
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
@@ -42,11 +45,12 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 
 /**
- * 发现列表
+ * 发现列表:三栏平铺分类树 + 筛选页(已选分类/筛选设置/传统发现面板)
  */
 class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreShowViewModel>(),
     ExploreShowAdapter.CallBack {
@@ -79,22 +83,37 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     private var searchMenuItem: MenuItem? = null
     private var categoryMenuItem: MenuItem? = null
 
-    /** 侧边页模式,false为传统发现分类面板,true为大分类管理 */
-    private var drawerModeManage = false
-    private var drawerInited = false
-    private val manageChecked = linkedSetOf<String>()
-    private val drawerAdapter by lazy {
-        ExploreAdapter(this, object : ExploreAdapter.CallBack {
-            override val scope = lifecycleScope
-            override fun scrollTo(pos: Int) {}
-            override fun openExplore(sourceUrl: String, title: String, exploreUrl: String?) {
-                onDrawerKindClick(title, exploreUrl)
+    /** 筛选页两个渲染器:筛选设置区(完整交互)/传统发现面板(点击弹添加菜单) */
+    private val filterRenderer by lazy {
+        ExploreKindRenderer(this, lifecycleScope, object : ExploreKindRenderer.Callback {
+            override fun onKindClick(view: View, sourceUrl: String, kind: ExploreKind) {
             }
 
-            override fun editSource(sourceUrl: String) {}
-            override fun toTop(source: BookSourcePart) {}
-            override fun deleteSource(source: BookSourcePart) {}
-            override fun searchBook(bookSource: BookSourcePart) {}
+            override fun onSelectOptionClick(
+                view: View, sourceUrl: String, kind: ExploreKind, option: String
+            ) {
+            }
+
+            override fun onRequestRefresh(sourceUrl: String) {
+                viewModel.onPanelChanged()
+            }
+        })
+    }
+    private val panelRenderer by lazy {
+        ExploreKindRenderer(this, lifecycleScope, object : ExploreKindRenderer.Callback {
+            override fun onKindClick(view: View, sourceUrl: String, kind: ExploreKind) {
+                showAddMenu(view, kind, null)
+            }
+
+            override fun onSelectOptionClick(
+                view: View, sourceUrl: String, kind: ExploreKind, option: String
+            ) {
+                showAddMenu(view, kind, option)
+            }
+
+            override fun onRequestRefresh(sourceUrl: String) {
+                viewModel.onPanelChanged()
+            }
         })
     }
 
@@ -117,17 +136,37 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             }
             //source异步加载完成,补刷搜索按钮可见性
             searchMenuItem?.isVisible = !source?.searchUrl.isNullOrBlank()
-            setupCategoryLongClick()
         }
         viewModel.booksData.observe(this) { upData(it) }
         viewModel.addBooksData.observe(this) { upDataTop(it) }
-        viewModel.bigKindsData.observe(this) { bigs ->
-            //单层平铺(大分类栏隐藏)时三横仍可用
-            categoryMenuItem?.isVisible = viewModel.hasExploreKinds
-            upBigCategoryBar()
-            upSubCategoryBar()
-            if (titleInited) {
-                updateSubtitle()
+        viewModel.treeData.observe(this) {
+            upL1Bar()
+            if (isFilterOpen()) {
+                upFilterSelected()
+            }
+        }
+        viewModel.l2Data.observe(this) {
+            upL2Bar()
+            if (isFilterOpen()) {
+                upFilterSelected()
+            }
+        }
+        viewModel.l3Data.observe(this) {
+            upL3Bar()
+            if (isFilterOpen()) {
+                upFilterSelected()
+            }
+        }
+        viewModel.nodeInvalidLiveData.observe(this) {
+            toastOnUi(R.string.explore_node_invalid)
+        }
+        viewModel.nodeExecutedLiveData.observe(this) {
+            toastOnUi(R.string.explore_node_executed)
+        }
+        viewModel.panelRefreshLiveData.observe(this) {
+            if (isFilterOpen()) {
+                upFilterSettings()
+                upFilterPanel()
             }
         }
         viewModel.initData(intent)
@@ -155,8 +194,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     /**
-     * 方案A标题栏:[←][第N页] [书源名居中+副标题] [搜索][三横]
-     * 页码与标题用toolbar内自定义视图,搜索与三横走标准menu
+     * 方案A标题栏:[←][第N页] [书源名居中+副标题] [搜索][筛选]
+     * 页码与标题用toolbar内自定义视图,搜索与筛选走标准menu
      */
     private fun initTitleView() {
         val toolbar = binding.titleBar.toolbar
@@ -169,19 +208,20 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             ?: intent.getStringExtra("exploreName")
         updateSubtitle()
         binding.titleBar.setColorFilter(primaryTextColor)
-        setupCategoryLongClick()
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.menu_category) {
-            openDrawer()
+            openFilterDrawer()
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
-    /** 副标题显示当前分类名,无分类树时隐藏 */
+    /** 副标题显示当前分类名,无分类时隐藏 */
     private fun updateSubtitle() {
-        val subtitle = viewModel.currentSub?.title ?: viewModel.currentBig?.kind?.title
+        val subtitle = viewModel.currentL3?.name
+            ?: viewModel.currentL2?.name
+            ?: viewModel.currentL1?.name
         tvSubtitle?.let {
             it.isVisible = subtitle != null
             it.text = subtitle
@@ -221,25 +261,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
             override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
                 titleView?.isVisible = true
-                setupCategoryLongClick()
                 return true
             }
         })
-    }
-
-    /**
-     * 三横长按为大分类管理,menu item无长按事件,对toolbar内的动作视图注册
-     */
-    private fun setupCategoryLongClick() {
-        binding.titleBar.toolbar.post {
-            val menuView = binding.titleBar.toolbar.children
-                .firstOrNull { it is ActionMenuView } as? ActionMenuView
-            val itemView = menuView?.children?.lastOrNull { it !is SearchView }
-            itemView?.setOnLongClickListener {
-                openManageDrawer()
-                true
-            }
-        }
     }
 
     private fun initRecyclerView(isGrid: Boolean) {
@@ -354,85 +378,58 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     /**
-     * 大分类栏:高亮currentBig,长按进管理侧边页
+     * 列表页三栏chip:高亮当前定位,点击切换联动刷新下级栏;再点已高亮项无操作
      */
-    private fun upBigCategoryBar() {
-        val bigs = viewModel.bigKindsData.value ?: emptyList()
-        if (bigs.isEmpty()) {
-            binding.hsvBigCategory.gone()
+    private fun upL1Bar() = upBar(
+        binding.hsvBigCategory, binding.llBigCategory,
+        viewModel.l1Kinds(), viewModel.currentL1
+    ) { viewModel.selectL1(it) }
+
+    private fun upL2Bar() = upBar(
+        binding.hsvSubCategory, binding.llSubCategory,
+        viewModel.l2Kinds(), viewModel.currentL2
+    ) { viewModel.selectL2(it) }
+
+    private fun upL3Bar() = upBar(
+        binding.hsvThirdCategory, binding.llThirdCategory,
+        viewModel.l3Kinds(), viewModel.currentL3
+    ) { viewModel.selectL3(it) }
+
+    private fun upBar(
+        scrollView: HorizontalScrollView,
+        container: ViewGroup,
+        nodes: List<ExploreCatNode>,
+        current: ExploreCatNode?,
+        onSelect: (ExploreCatNode) -> Boolean
+    ) {
+        if (nodes.isEmpty()) {
+            scrollView.gone()
             return
         }
-        binding.hsvBigCategory.visible()
-        binding.llBigCategory.removeAllViews()
-        val inflater = layoutInflater
+        scrollView.visible()
+        container.removeAllViews()
+        val names = displayNames(nodes)
         var selectedView: TextView? = null
-        bigs.forEach { big ->
-            val tv = inflater.inflate(
-                R.layout.item_quick_group, binding.llBigCategory, false
+        nodes.forEachIndexed { index, node ->
+            val tv = layoutInflater.inflate(
+                R.layout.item_quick_group, container, false
             ) as TextView
-            tv.text = big.kind.title
-            tv.isSelected = viewModel.currentBig == big
-            tv.setOnClickListener { onBigCategoryClick(big) }
-            tv.setOnLongClickListener {
-                openManageDrawer()
-                true
+            tv.text = names[index]
+            tv.isSelected = current == node
+            tv.setOnClickListener {
+                if (onSelect(node)) {
+                    clearAndReload()
+                }
             }
-            binding.llBigCategory.addView(tv)
+            container.addView(tv)
             if (tv.isSelected) {
                 selectedView = tv
             }
         }
-        selectedView?.let { ensureChipVisible(binding.hsvBigCategory, it) }
-    }
-
-    private fun onBigCategoryClick(big: BigKind) {
-        val current = viewModel.currentBig
-        if (current == big && viewModel.currentSub == null) { //再点高亮大分类,无操作
-            return
+        selectedView?.let { ensureChipVisible(scrollView, it) }
+        if (titleInited) {
+            updateSubtitle()
         }
-        //选中或回本级:currentSub复位,按大分类本级url拉书
-        viewModel.selectBig(big)
-        clearAndReload()
-        upBigCategoryBar()
-        upSubCategoryBar()
-    }
-
-    /**
-     * 细分栏:当前大分类有细分才显示;单层平铺书源显示全部url分类
-     */
-    private fun upSubCategoryBar() {
-        val subs = viewModel.subBarKinds
-        if (subs.isEmpty()) {
-            binding.hsvSubCategory.gone()
-            return
-        }
-        binding.hsvSubCategory.visible()
-        binding.llSubCategory.removeAllViews()
-        val inflater = layoutInflater
-        var selectedView: TextView? = null
-        subs.forEach { sub ->
-            val tv = inflater.inflate(
-                R.layout.item_quick_group, binding.llSubCategory, false
-            ) as TextView
-            tv.text = sub.title
-            tv.textSize = 12f
-            tv.isSelected = viewModel.currentSub == sub
-            tv.setOnClickListener { onSubCategoryClick(sub) }
-            binding.llSubCategory.addView(tv)
-            if (tv.isSelected) {
-                selectedView = tv
-            }
-        }
-        selectedView?.let { ensureChipVisible(binding.hsvSubCategory, it) }
-    }
-
-    private fun onSubCategoryClick(sub: ExploreKind) {
-        if (viewModel.currentSub == sub) { //再点当前细分,无操作
-            return
-        }
-        viewModel.selectSub(sub)
-        clearAndReload()
-        upSubCategoryBar()
     }
 
     /** 高亮chip滚动到可见 */
@@ -463,97 +460,213 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         scrollToBottom(true)
     }
 
-    /**
-     * 侧边页关闭:infoMap落盘;管理模式提交白名单
-     */
-    private fun initDrawerListener() {
-        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
-            override fun onDrawerClosed(drawerView: View) {
-                drawerAdapter.onPause()
-                if (drawerModeManage) {
-                    drawerModeManage = false
-                    drawerAdapter.manageChecker = null
-                    val changed = viewModel.applyManageSelection(manageChecked.toList())
-                    manageChecked.clear()
-                    if (changed) {
-                        clearAndReload()
-                    }
-                }
-            }
-        })
+    //==================== 筛选页 ====================
+
+    private fun isFilterOpen(): Boolean {
+        return binding.drawerLayout.isDrawerOpen(GravityCompat.END)
     }
 
     /**
-     * 点三横:传统发现分类面板,点击行为与传统发现相同
+     * 筛选页:已选分类三栏 + 清空重建/清空 + 筛选设置 + 传统发现面板
      */
-    private fun openDrawer() {
-        if (viewModel.sourceData.value == null) {
-            return
-        }
-        drawerModeManage = false
-        drawerAdapter.manageChecker = null
-        binding.drawerPanel.titleDrawer.title = getString(R.string.explore_category_list)
-        prepareDrawerAdapter()
-        binding.drawerLayout.openDrawer(GravityCompat.END)
-    }
-
-    /**
-     * 长按chip或三横:大分类管理,每个url分类都可勾选为大分类,关闭时生效
-     */
-    private fun openManageDrawer() {
+    private fun openFilterDrawer() {
         if (!viewModel.hasExploreKinds) {
             return
         }
-        drawerModeManage = true
-        val candidates = viewModel.bigCandidates.map { it.title }.toSet()
-        manageChecked.clear()
-        //初始勾选:当前大分类栏中属于候选的分类(分段标题不在候选,单层平铺初始为空)
-        viewModel.bigKindsData.value?.forEach { big ->
-            if (big.kind.title in candidates) {
-                manageChecked.add(big.kind.title)
-            }
+        if (viewModel.sourceData.value == null) {
+            return
         }
-        drawerAdapter.manageChecker = ExploreAdapter.ManageChecker(
-            candidateTitles = candidates,
-            checkedTitles = manageChecked,
-            onToggle = { title ->
-                if (!manageChecked.remove(title)) {
-                    manageChecked.add(title)
-                }
-                manageChecked.contains(title)
-            }
-        )
-        binding.drawerPanel.titleDrawer.title = getString(R.string.explore_adjust_category)
-        prepareDrawerAdapter()
+        upFilterSelected()
+        upFilterSettings()
+        upFilterPanel()
         binding.drawerLayout.openDrawer(GravityCompat.END)
     }
 
-    private fun prepareDrawerAdapter() {
-        val source = viewModel.sourceData.value ?: return
-        val part = appDb.bookSourceDao.getBookSourcePart(source.bookSourceUrl) ?: return
-        if (!drawerInited) {
-            binding.drawerPanel.rvDrawerKinds.layoutManager = LinearLayoutManager(this)
-            binding.drawerPanel.rvDrawerKinds.adapter = drawerAdapter
-            drawerInited = true
+    private fun initDrawerListener() {
+        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerClosed(drawerView: View) {
+                ExploreKindRenderer.saveInfoMaps()
+                viewModel.onFilterClosed()
+            }
+        })
+        binding.drawerPanel.btnResetPreset.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.explore_reset_preset)
+                .setMessage(R.string.explore_reset_preset_confirm)
+                .setPositiveButton(R.string.ok) { _, _ ->
+                    viewModel.resetToPreset()
+                    upFilterSelected()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
         }
-        //每次打开重渲染,保证两种模式样式正确
-        drawerAdapter.setItems(listOf(part))
-        drawerAdapter.expand(0)
+        binding.drawerPanel.btnClearAll.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.explore_clear_all)
+                .setMessage(R.string.explore_clear_all_confirm)
+                .setPositiveButton(R.string.ok) { _, _ ->
+                    viewModel.clearAll()
+                    upFilterSelected()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
     }
 
     /**
-     * 侧边页使用模式点击url分类:切到该分类拉书并关闭侧边页
+     * 已选分类三栏:chip点击设为当前定位,长按弹引用信息+删除,栏末尾「＋」提示
      */
-    private fun onDrawerKindClick(title: String, exploreUrl: String?) {
-        if (drawerModeManage) {
-            return
+    private fun upFilterSelected() {
+        upSelectedBar(
+            binding.drawerPanel.fbxL1, viewModel.l1Kinds(), 1
+        )
+        upSelectedBar(
+            binding.drawerPanel.fbxL2, viewModel.l2Kinds(), 2,
+            viewModel.currentL1, null
+        )
+        upSelectedBar(
+            binding.drawerPanel.fbxL3, viewModel.l3Kinds(), 3,
+            viewModel.currentL1, viewModel.currentL2
+        )
+    }
+
+    private fun upSelectedBar(
+        fbx: FlexboxLayout,
+        nodes: List<ExploreCatNode>,
+        level: Int,
+        l1: ExploreCatNode? = null,
+        l2: ExploreCatNode? = null
+    ) {
+        fbx.removeAllViews()
+        val names = displayNames(nodes)
+        nodes.forEachIndexed { index, node ->
+            val tv = layoutInflater.inflate(
+                R.layout.item_quick_group, fbx, false
+            ) as TextView
+            tv.text = names[index]
+            tv.setOnClickListener {
+                when (level) {
+                    1 -> viewModel.selectL1(node)
+                    2 -> viewModel.selectL2(node)
+                    else -> viewModel.selectL3(node)
+                }
+                upFilterSelected()
+            }
+            tv.setOnLongClickListener {
+                showNodeDialog(node, level, l1, l2)
+                true
+            }
+            fbx.addView(tv)
         }
-        val url = exploreUrl?.takeIf { it.isNotBlank() } ?: return
-        if (viewModel.selectFromUrl(title, url)) {
-            binding.drawerLayout.closeDrawer(GravityCompat.END)
-            clearAndReload()
-            upBigCategoryBar()
-            upSubCategoryBar()
+        val plus = layoutInflater.inflate(
+            R.layout.item_quick_group, fbx, false
+        ) as TextView
+        plus.text = "＋"
+        plus.setOnClickListener {
+            toastOnUi(R.string.explore_plus_hint)
+        }
+        fbx.addView(plus)
+    }
+
+    /**
+     * 长按节点:展示完整引用信息,可删除(父级删除连带子级由remove实现)
+     */
+    private fun showNodeDialog(
+        node: ExploreCatNode,
+        level: Int,
+        l1: ExploreCatNode?,
+        l2: ExploreCatNode?
+    ) {
+        val refInfo = buildString {
+            append(getString(R.string.explore_node_ref_info))
+            append("\n")
+            append("type: ${node.type}")
+            append("\nkind: ${node.kindTitle}")
+            node.url?.takeIf { it.isNotBlank() }?.let { append("\nurl: $it") }
+            node.option?.let { append("\noption: $it") }
+            node.action?.takeIf { it.isNotBlank() }?.let { append("\naction: ${it.take(300)}") }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(node.name)
+            .setMessage(refInfo)
+            .setPositiveButton(R.string.explore_node_delete) { _, _ ->
+                when (level) {
+                    1 -> viewModel.removeL1(node)
+                    2 -> l1?.let { viewModel.removeL2(it, node) }
+                    else -> {
+                        if (l1 != null && l2 != null) {
+                            viewModel.removeL3(l1, l2, node)
+                        }
+                    }
+                }
+                upFilterSelected()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** 筛选设置区:select/text/toggle完整交互,改动即存 */
+    private fun upFilterSettings() {
+        val sourceUrl = viewModel.sourceData.value?.bookSourceUrl ?: return
+        filterRenderer.render(
+            binding.drawerPanel.fbxFilter,
+            viewModel.filterSettingKinds(),
+            sourceUrl,
+            ExploreKindRenderer.Mode.FILTER_SETTINGS
+        )
+    }
+
+    /** 传统发现面板:点击弹添加菜单 */
+    private fun upFilterPanel() {
+        val sourceUrl = viewModel.sourceData.value?.bookSourceUrl ?: return
+        panelRenderer.render(
+            binding.drawerPanel.fbxPanel,
+            viewModel.panelKinds(),
+            sourceUrl,
+            ExploreKindRenderer.Mode.PANEL_ADD
+        )
+    }
+
+    /**
+     * 添加分类菜单:添加一级始终可用;二级/三级按辖域过滤+跳级禁用
+     */
+    private fun showAddMenu(anchor: View, kind: ExploreKind, option: String?) {
+        val popup = PopupMenu(this, anchor)
+        val mAdd1 = popup.menu.add(R.string.explore_add_level_one)
+        //实际挂靠父级与addNode的fallback一致
+        val l2Parent = viewModel.currentL1 ?: viewModel.l1Kinds().firstOrNull()
+        val l3Parent = viewModel.currentL2 ?: l2Parent?.children?.firstOrNull()
+        val mAdd2 = popup.menu.add(R.string.explore_add_level_two)
+        val l2Scope = viewModel.scopeCandidates(l2Parent)
+        mAdd2.isEnabled =
+            l2Scope.isNotEmpty() && viewModel.scopeContains(l2Scope, kind, option)
+        val mAdd3 = popup.menu.add(R.string.explore_add_level_three)
+        val l3Scope = viewModel.scopeCandidates(l3Parent)
+        mAdd3.isEnabled =
+            l3Scope.isNotEmpty() && viewModel.scopeContains(l3Scope, kind, option)
+        popup.menu.add(R.string.explore_cancel)
+        popup.setOnMenuItemClickListener { item ->
+            when (item) {
+                mAdd1 -> viewModel.addNode(1, kind, option)
+                mAdd2 -> viewModel.addNode(2, kind, option)
+                mAdd3 -> viewModel.addNode(3, kind, option)
+            }
+            upFilterSelected()
+            true
+        }
+        popup.show()
+    }
+
+    /** 同名称不同引用显示"名称（序号）" */
+    private fun displayNames(nodes: List<ExploreCatNode>): List<String> {
+        val groups = nodes.groupBy { it.name }
+        return nodes.map { node ->
+            val group = groups[node.name].orEmpty()
+            if (group.size > 1) {
+                "${node.name}（${group.indexOf(node) + 1}）"
+            } else {
+                node.name
+            }
         }
     }
 
