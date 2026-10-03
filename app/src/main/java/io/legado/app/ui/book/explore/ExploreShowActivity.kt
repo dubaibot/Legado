@@ -169,6 +169,10 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 upFilterPanel()
             }
         }
+        viewModel.kindsLoadedLiveData.observe(this) {
+            //exploreKinds异步解析完成,补刷筛选按钮可见性(菜单创建时通常还未加载完)
+            categoryMenuItem?.isVisible = viewModel.hasExploreKinds
+        }
         viewModel.initData(intent)
         viewModel.errorLiveData.observe(this) {
             loadMoreView.error(it)
@@ -544,6 +548,12 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 R.layout.item_quick_group, fbx, false
             ) as TextView
             tv.text = names[index]
+            //高亮当前定位,添加二级/三级的目标父级以此为准
+            tv.isSelected = when (level) {
+                1 -> viewModel.currentL1?.let { node.sameRefAs(it) } == true
+                2 -> viewModel.currentL2?.let { node.sameRefAs(it) } == true
+                else -> viewModel.currentL3?.let { node.sameRefAs(it) } == true
+            }
             tv.setOnClickListener {
                 when (level) {
                     1 -> viewModel.selectL1(node)
@@ -635,14 +645,20 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     private fun showAddMenu(anchor: View, kind: ExploreKind, option: String?) {
         val popup = PopupMenu(this, anchor)
         val mAdd1 = popup.menu.add(R.string.explore_add_level_one)
-        //实际挂靠父级与addNode的fallback一致
+        //实际挂靠父级与addNode的fallback一致,标题明示目标避免"总是加到第一个"困惑
         val l2Parent = viewModel.currentL1 ?: viewModel.l1Kinds().firstOrNull()
         val l3Parent = viewModel.currentL2 ?: l2Parent?.children?.firstOrNull()
-        val mAdd2 = popup.menu.add(R.string.explore_add_level_two)
+        val mAdd2 = popup.menu.add(
+            l2Parent?.name?.let { getString(R.string.explore_add_level_two_to, it) }
+                ?: getString(R.string.explore_add_level_two)
+        )
         val l2Scope = viewModel.scopeCandidates(l2Parent)
         mAdd2.isEnabled =
             l2Scope.isNotEmpty() && viewModel.scopeContains(l2Scope, kind, option)
-        val mAdd3 = popup.menu.add(R.string.explore_add_level_three)
+        val mAdd3 = popup.menu.add(
+            l3Parent?.name?.let { getString(R.string.explore_add_level_three_to, it) }
+                ?: getString(R.string.explore_add_level_three)
+        )
         val l3Scope = viewModel.scopeCandidates(l3Parent)
         mAdd3.isEnabled =
             l3Scope.isNotEmpty() && viewModel.scopeContains(l3Scope, kind, option)

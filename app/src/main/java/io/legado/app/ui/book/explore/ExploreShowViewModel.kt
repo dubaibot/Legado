@@ -58,6 +58,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     /** 书源面板变化(reUiView),需刷新筛选页 */
     val panelRefreshLiveData = MutableLiveData<Boolean>()
 
+    /** exploreKinds异步解析完成信号,用于补刷筛选菜单按钮可见性 */
+    val kindsLoadedLiveData = MutableLiveData<Boolean>()
+
     private var bookSource: BookSource? = null
     private var sourceUrl: String? = null
     var exploreUrl: String? = null
@@ -168,6 +171,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         allKinds = rawKinds
             .filter { it.type == Type.url && !it.url.isNullOrBlank() }
             .filterNot { it.title.startsWith("ERROR:") }
+        kindsLoadedLiveData.postValue(hasExploreKinds)
     }
 
     /**

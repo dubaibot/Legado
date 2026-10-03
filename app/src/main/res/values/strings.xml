@@ -828,6 +828,8 @@
     <string name="explore_add_level_one">添加一级</string>
     <string name="explore_add_level_two">添加二级</string>
     <string name="explore_add_level_three">添加三级</string>
+    <string name="explore_add_level_two_to">添加二级到「%1$s」</string>
+    <string name="explore_add_level_three_to">添加三级到「%1$s」</string>
     <string name="explore_cancel">取消</string>
     <string name="explore_plus_hint">已定位到传统发现面板，点击分类项即可添加</string>
     <string name="explore_node_invalid">该分类已失效，请重新添加</string>

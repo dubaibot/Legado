@@ -171,9 +171,14 @@ class ExploreKindRenderer(
         kotlin.runCatching {
             recycle(flexbox)
             flexbox.visible()
-            kinds.forEach { kind ->
-                val type = kind.type
-                val title = kind.title
+        }.onFailure {
+            AppLog.put("ExplorePanel recycle error:${it.localizedMessage}", it)
+        }
+        kinds.forEach { kind ->
+            val type = kind.type
+            val title = kind.title
+            //单项渲染失败不中断其余项,异常写入日志便于排查
+            runCatching {
                 when (type) {
                     Type.url -> {
                         val tv = getFlexboxChild(flexbox)
@@ -380,6 +385,8 @@ class ExploreKindRenderer(
                             }
                     }
                 }
+            }.onFailure { e ->
+                AppLog.put("ExplorePanel render $title error:${e.localizedMessage}", e)
             }
         }
     }
