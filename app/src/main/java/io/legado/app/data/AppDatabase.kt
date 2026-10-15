@@ -67,7 +67,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 91,
+    version = 92,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -125,7 +125,9 @@ val appDb by lazy {
         AutoMigration(from = 89, to = 90),
         // v91: 迁移框架占位空迁移（多源合并 D3，清单 1.2），无 schema 变更；
         // 真实 schema 变更自 v92 起逐功能推进，见 .monkeycode/docs/db-migration-sop.md
-        AutoMigration(from = 90, to = 91)
+        AutoMigration(from = 90, to = 91),
+        // v92: rssArticles 增加 idx_origin_sort 索引（多源合并 D7，清单 2.1.6）
+        AutoMigration(from = 91, to = 92)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -246,10 +246,18 @@ dependencies {
     implementation(libs.media.media)
     // For media playback using ExoPlayer
     implementation(libs.media3.exoplayer)
-    //implementation(libs.media3.exoplayer.hls)
-    //implementation(libs.media3.ui)
+    // R3: 显式声明 HLS 依赖（ExoPlayerHelper 使用 HlsMediaSource 处理 m3u8 格式）
+    implementation(libs.media3.exoplayer.hls)
+    // 画质增强：GlEffect/RgbMatrix 等效果类（锐化/降噪）
+    implementation(libs.media3.effect)
+    implementation(libs.media3.ui)
     // For loading data using the OkHttp network stack
     implementation(libs.media3.datasource.okhttp)
+    // Cronet DataSource（TLS 指纹与 Chrome 一致，解决 CDN TLS 指纹检测导致 m3u8 播放失败）
+    // 排除 cronet-api 传递依赖：API 由本地 cronetlib/cronet_api.jar 提供
+    implementation(libs.media3.datasource.cronet) {
+        exclude group: 'org.chromium.net', module: 'cronet-api'
+    }
     // For exposing and controlling media sessions
     //implementation "androidx.media3:media3-session:$media3_version"
 

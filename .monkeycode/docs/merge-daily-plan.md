@@ -1,7 +1,7 @@
 # 多源合并每日任务排期
 
 > 依据：《多源功能合并修改清单》（2026-10-15）。原则：积分有限，每日只动一个文件簇，新增优先、融合单独日、核心侵入单独分支；每日必跑 `./gradlew :app:assembleDebug`，DB 改动日必跑实库迁移。
-> 进度：D1–D6 完成（D4/D5 纸面方案与视频管线见 261015-feat-d4/d5 分支，D6 见 d6-report.md）；下一步 D7。
+> 进度：D1–D6 完成（D4/D5 纸面方案与视频管线见 261015-feat-d4/d5 分支，D6 见 d6-report.md）；D7 完成（media3 hls/ui/effect/cronet + rssArticles idx_origin_sort + v92 迁移，见 d7-report.md）；下一步 D8。
 
 ## 排期前环境核对结论（2026-10-15 实测）
 
