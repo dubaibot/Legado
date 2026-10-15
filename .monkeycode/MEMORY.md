@@ -51,3 +51,12 @@ Entries discovered by the Agent during task execution should follow this format:
   - 构建必须用 background_terminal_create（memory_percent=70、cpu_percent=400、timeout 30 分钟以上）；全新构建约 17 分钟，增量约 5 分钟
   - 工具链已装好：JDK 17（apt）、Android SDK /opt/android-sdk（platform-36、build-tools 36.0.0），local.properties 已写入
   - 网络分化：GitHub 快，Debian/Google 源约 200KB/s；settings.gradle 有预置 aliyun 镜像注释行可临时启用，用后还原勿提交
+
+[Project Knowledge Summary]
+- Date: 2026-10-15
+- Context: D2 启用 Compose 时排查 BOM 与 AGP 兼容性
+- Category: Environment Configuration
+- Instructions:
+  - Compose BOM 必须用 2025.04.01（对齐 m 源）：max 源的 2026.08.00 会解析出 compose-ui 1.12.0，要求 AGP 9.1+，与工作区 AGP 8.13.2 冲突
+  - 移植 max 的 Compose UI（阶段 3）若报缺少新 API，先评估整体升 AGP 9.x 再考虑降级 BOM，两者是绑定的
+  - Compose 配置已就位：kotlin-compose 插件（org.jetbrains.kotlin.plugin.compose）+ buildFeatures.compose + BOM 管理全部 compose 依赖，版本一律走 BOM 不写死
