@@ -67,7 +67,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 90,
+    version = 91,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -122,7 +122,10 @@ val appDb by lazy {
         AutoMigration(from = 86, to = 87),
         AutoMigration(from = 87, to = 88),
         AutoMigration(from = 88, to = 89),
-        AutoMigration(from = 89, to = 90)
+        AutoMigration(from = 89, to = 90),
+        // v91: 迁移框架占位空迁移（多源合并 D3，清单 1.2），无 schema 变更；
+        // 真实 schema 变更自 v92 起逐功能推进，见 .monkeycode/docs/db-migration-sop.md
+        AutoMigration(from = 90, to = 91)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
