@@ -59,6 +59,24 @@ Entries discovered by the Agent during task execution should follow this format:
 
 [Project Knowledge Summary]
 - Date: 2026-10-15
+- Context: D3 执行时发现执行环境被重置，D1 工具链与源树全部丢失，重新恢复并总结流程
+- Category: Environment Configuration
+- Instructions:
+  - 环境重置会丢失：JDK、/opt/android-sdk、/root/.gradle 缓存、/workspace/_refs 源树、local.properties；仓库代码与 .monkeycode 文档不受影响
+  - 恢复顺序：apt 装 openjdk-17-jdk-headless → dl.google.com 下 cmdline-tools 装 SDK（platform-tools、platforms;android-36、build-tools;36.0.0）→ 写 local.properties → 重克四源（命令在 refs-manifest.md）→ 跑 assembleDebug（全量约 18 分钟）
+  - 每日开工先花 1 分钟探测环境（java -version、ls /workspace/_refs、du ~/.gradle），发现重置立即后台恢复，与当日纸面工作并行不阻塞
+
+[Project Knowledge Summary]
+- Date: 2026-10-15
+- Context: D3 预写 v91 空迁移时验证 Room 行为
+- Category: Build Methods
+- Instructions:
+  - Room 2.7.1 允许注册无 schema 变更的 AutoMigration(90, 91)：编译通过，identityHash 与 v90 保持一致，属空迁移正常表现
+  - DB 版本归属：v91=D3 占位空迁移（已用掉），v92=D7 RssArticle 字段，v93=D13 AutoTask，v94=D28 urlRecord，v95=D32 AI 数据层，详见 db-migration-sop.md
+  - DB 改动日主机侧门禁：python3 tools/db_migration_check.py --from N --to N+1 --sql tools/db/migrations/migration_N_N+1.sql（空迁移省略 --sql）
+
+[Project Knowledge Summary]
+- Date: 2026-10-15
 - Context: D2 启用 Compose 时排查 BOM 与 AGP 兼容性
 - Category: Environment Configuration
 - Instructions:
