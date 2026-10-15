@@ -22,6 +22,7 @@ import io.legado.app.help.CacheManager
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.video.SniffCandidate
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
@@ -63,6 +64,10 @@ class BackstageWebView(
     private val result: String? = null,
     private val isRule: Boolean = false
 ) {
+
+    // [D5] 支撑性追加（m BackstageWebView.kt:88 逐字）：嗅探上下文候选回传槽位。
+    // 当前为惰性声明（无写入点）；写入逻辑随 D7 BackstageWebView 视频嗅探增强融合就位。
+    var lastSniffCandidate: SniffCandidate? = null
 
     private val mHandler = Handler(Looper.getMainLooper())
     private var callback: Callback? = null

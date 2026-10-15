@@ -160,4 +160,21 @@ object ExoPlayerHelper {
         }
         return mediaSourceBuilder.build()
     }
+
+    // ===================== [D5] 支撑性追加（清单 2.1.3 视频管线） =====================
+
+    /**
+     * URL 脱敏：用于日志输出，只保留 path 前40字符（符合 P0 安全规范）
+     *
+     * P0-6 修复（2026-07-26）：从 private 改为 public，供 Exo2MediaPlayer 复用，
+     * 统一URL脱敏入口，避免完整URL输出到AppLog触发违禁词审查中断
+     */
+    fun sanitizeUrl(url: String): String {
+        return try {
+            val u = java.net.URL(url)
+            "path=${u.path?.take(40)}"
+        } catch (e: Exception) {
+            "raw=${url.take(30)}"
+        }
+    }
 }

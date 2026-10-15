@@ -57,7 +57,7 @@ object VideoPlay : CoroutineScope by MainScope(){
     private const val VIDEO_POS_SAVE_TIME = 60 * 60 * 24 * 20 //20天
     private var needClearTemp = true //需要清理缓存
     private const val VIDEO_TEMP_PATH = "video_temp"
-    private val videoTempFile by lazy { File(FileUtils.getCachePath(), VIDEO_TEMP_PATH) }
+    internal val videoTempFile by lazy { File(FileUtils.getCachePath(), VIDEO_TEMP_PATH) }
 
     const val VIDEO_PREF_NAME = "video_config"
 
@@ -531,4 +531,46 @@ object VideoPlay : CoroutineScope by MainScope(){
     fun getDisplayCover(): String? {
         return book?.getDisplayCover() ?: rssStar?.image ?: rssRecord?.image
     }
+
+    // ===================== [D5] 支撑性追加（清单 2.1.3 视频管线） =====================
+    // 以下成员逐字取自 m 版 VideoPlay.kt，供 help/video/ 管线编译与 D8 起播链接线；
+    // D8 以 m 版覆盖本文件时本追加区随融合消失。
+
+    /**  边下边播缓存（已废弃，保留字段仅为兼容旧配置数据）
+     * P0-2 统一缓存机制：ExoPlayer SimpleCache 已默认接管所有视频缓存（见 ExoPlayerHelper.cacheDataSourceFactory），
+     * 旧版 GSY ProxyCacheManager 代理缓存路径对带 header/m3u8/特殊 URL 不兼容会导致播放失败，故永久关闭。
+     * getter 始终返回 false，setter 保留仅为避免旧 UI 调用崩溃。
+     */
+    @Deprecated("ExoPlayer SimpleCache 已默认接管缓存，此开关不再生效")
+    var cachePlay
+        get() = false
+        set(value) {
+            videoPrefs.edit { putBoolean("cachePlay", value) }
+        }
+
+    // 复用本对象既有 isLoading 字段（上方声明，与 m VideoPlay.kt:466 语义一致）
+    internal fun isLoadingFalse() {
+        isLoading = false
+    }
+
+    // video-sniff-403-and-rss-classic-fix 2.7/R-P1-5（AD-04）：切换令牌守卫。
+    // 根因：startPlay 内层嗅探协程是 loadScope 顶层并列子协程，switchArticleJob?.cancel() 不覆盖，
+    // 连续上滑时旧嗅探迟到回调覆盖当前播放会话（黑屏+嗅探失败主因之一）。
+    // 机制：每次 switchToArticle/playRssEpisode 递增 token，异步回调执行前校验，过期丢弃。
+    private val switchTokenCounter = java.util.concurrent.atomic.AtomicLong(0)
+    @Volatile
+    var currentSwitchToken: Long = 0
+        private set
+
+    /** P0: 当前播放使用的 Headers（供备份恢复/重试复用） */
+    var currentPlayHeaders: Map<String, String>? = null
+
+    /**
+     * video-regression-fix-0906 AD-03：当前 videoUrl 已解析成功的章节 URL（书源链）
+     * 布局切换短路重采集用——resolvedChapterUrl == chapter.url 时复用 videoUrl 直起播，
+     * 免 getContent/三层嗅探死窗；起播失败/章节变化时置 null 回退全量采集链
+     */
+    @Volatile
+    var resolvedChapterUrl: String? = null
+    // ===================== [D5] 追加结束 =====================
 }
