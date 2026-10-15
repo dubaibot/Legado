@@ -56,6 +56,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var showBoardLine = appCtx.getPrefInt(PreferKey.showBoardLine, 1)
     var adaptSpecialStyle = appCtx.getPrefBoolean(PreferKey.adaptSpecialStyle, true)
 
+    // 多源合并 D6（对齐 m 源）：书源查询短时缓存开关与脚本缓存按源隔离开关
+    // 实时读取偏好，避免 var 缓存值与设置页脱节
+    val sourceQueryCacheEnabled get() = appCtx.getPrefBoolean(PreferKey.sourceQueryCacheEnabled, true)
+    val bookSourceCacheScoped get() = appCtx.getPrefBoolean(PreferKey.bookSourceCacheScoped, false)
+
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
             PreferKey.editFontScale -> editFontScale = appCtx.getPrefInt(PreferKey.editFontScale, 16)

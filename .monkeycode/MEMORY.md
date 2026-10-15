@@ -83,3 +83,14 @@ Entries discovered by the Agent during task execution should follow this format:
   - Compose BOM 必须用 2025.04.01（对齐 m 源）：max 源的 2026.08.00 会解析出 compose-ui 1.12.0，要求 AGP 9.1+，与工作区 AGP 8.13.2 冲突
   - 移植 max 的 Compose UI（阶段 3）若报缺少新 API，先评估整体升 AGP 9.x 再考虑降级 BOM，两者是绑定的
   - Compose 配置已就位：kotlin-compose 插件（org.jetbrains.kotlin.plugin.compose）+ buildFeatures.compose + BOM 管理全部 compose 依赖，版本一律走 BOM 不写死
+
+[Project Knowledge Summary]
+- Date: 2026-10-15
+- Context: D6 书源缓存五件套移植完成后的接线状态
+- Category: Workflow & Collaboration
+- Instructions:
+  - 每日任务各自独立分支（261015-feat-dX-xxx 模式），后一天开工前先把此前分支合并进当日基座（D6 基座=D1+D2+D3+D4/D5）
+  - SourceQueryCache 失效出口已接线 SourceHelp 全部增删改；Restore/ImportOldData/RecycleBin/两个 SourceEditViewModel 尚未接线（TTL 2s 兜底自愈），随对应功能移植补齐
+  - SourcePreconnectHelper/warmUpConnection 已就位，消费方（Rss.kt/BookChapterList）在 D11 接线
+  - 工作区 AppLog 是精简版（无 putSampled/putWarn/Level/Tag），从 m 源搬日志相关代码时一律降级为 AppLog.put 适配
+  - 工作区 DNS 兜底/HTTP 缓存属 m 的 HttpHelper 大段演进（m 版 412 行 vs 工作区 191 行），D11 移植时整段对比

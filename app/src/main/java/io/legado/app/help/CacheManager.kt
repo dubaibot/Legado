@@ -151,6 +151,18 @@ object CacheManager {
         deleteMemory(key)
         ACache.get().remove(key)
     }
+
+    /**
+     * 按前缀删除内存缓存（多源合并 D6，对齐 m 源）
+     * 供 BookSourceCacheStore 删源联动清理使用
+     */
+    fun deleteMemoryByPrefix(prefix: String) {
+        memoryLruCache.snapshot().keys.forEach {
+            if (it.startsWith(prefix)) {
+                memoryLruCache.remove(it)
+            }
+        }
+    }
 }
 
 @Keep

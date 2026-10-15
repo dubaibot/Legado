@@ -97,6 +97,10 @@ object PreferKey {
     const val importKeepGroup = "importKeepGroup"
     const val screenOrientation = "screenOrientation"
     const val syncBookProgress = "syncBookProgress"
+
+    // 多源合并 D6（对齐 m 源）
+    const val bookSourceCacheScoped = "bookSourceCacheScoped"
+    const val sourceQueryCacheEnabled = "sourceQueryCacheEnabled"
     const val syncBookProgressPlus = "syncBookProgressPlus"
     const val cronet = "Cronet"
     const val antiAlias = "antiAlias"
