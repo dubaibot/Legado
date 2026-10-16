@@ -41,4 +41,7 @@ object EventBus {
     const val UP_VIDEO_INFO = "upVideoInfo"
     // [D5] 支撑性追加（m EventBus.kt:58 逐字）：视频播放统一错误事件（D9 播放壳接线消费）
     const val VIDEO_PLAY_ERROR = "videoPlayError"
+    // m 源（D8）：视频书切换单元与文章列表加载完成事件
+    const val VIDEO_BOOK_UNIT_SWITCHED = "videoBookUnitSwitched"
+    const val ARTICLES_LOADED = "articlesLoaded"
 }

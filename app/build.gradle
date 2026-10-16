@@ -90,6 +90,8 @@ android {
 
             minifyEnabled true
             shrinkResources = true
+            // 对齐 m 源：AppLog 日志裁剪语义开关，release 等价于旧 BuildConfig.DEBUG=false
+            buildConfigField "boolean", "BUILD_DEBUG", "false"
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
         debug {
@@ -101,6 +103,8 @@ android {
             applicationIdSuffix '.debug'
             versionNameSuffix 'debug'
             minifyEnabled false
+            // 对齐 m 源：测试包日志不裁剪
+            buildConfigField "boolean", "BUILD_DEBUG", "true"
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
     }
@@ -293,6 +297,8 @@ dependencies {
 
     //网络
     implementation(libs.okhttp)
+    // 对齐 m 源：DohDns 需要 DnsOverHttps（okhttp5 系列配套构件）
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:5.3.2")
     implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
     implementation(libs.protobuf.javalite)
 

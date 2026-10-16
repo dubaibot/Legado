@@ -30,6 +30,7 @@ import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import io.legado.app.data.dao.PlayHistoryDao
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
@@ -52,6 +53,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.data.entities.PlayHistory
 import io.legado.app.help.DefaultData
 import org.intellij.lang.annotations.Language
 import splitties.init.appCtx
@@ -67,13 +69,14 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 92,
+    version = 93,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
         RssSource::class, Bookmark::class, RssArticle::class, RssReadRecord::class,
         RssStar::class, TxtTocRule::class, ReadRecord::class, HttpTTS::class, Cache::class,
-        RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class],
+        RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
+        PlayHistory::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -127,7 +130,11 @@ val appDb by lazy {
         // 真实 schema 变更自 v92 起逐功能推进，见 .monkeycode/docs/db-migration-sop.md
         AutoMigration(from = 90, to = 91),
         // v92: rssArticles 增加 idx_origin_sort 索引（多源合并 D7，清单 2.1.6）
-        AutoMigration(from = 91, to = 92)
+        AutoMigration(from = 91, to = 92),
+        // v93: 新增 playHistories 表（复合主键 articleUrl+videoUrl+rssSourceId）+
+        // rssSources 增加 ruleRoutes/ruleEpisodes 视频源规则列 + bookSources/rssSources
+        // 增加 lastHost 源真实域名回填列（多源合并 D8，D4 方案 D9 前置）
+        AutoMigration(from = 92, to = 93)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -142,6 +149,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val rssSourceDao: RssSourceDao
     abstract val bookmarkDao: BookmarkDao
     abstract val rssArticleDao: RssArticleDao
+    abstract val playHistoryDao: PlayHistoryDao
     abstract val rssStarDao: RssStarDao
     abstract val rssReadRecordDao: RssReadRecordDao
     abstract val cookieDao: CookieDao

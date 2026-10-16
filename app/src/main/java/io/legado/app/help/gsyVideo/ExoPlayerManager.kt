@@ -15,6 +15,8 @@ import com.shuyu.gsyvideoplayer.cache.ICacheManager
 import com.shuyu.gsyvideoplayer.model.GSYModel
 import com.shuyu.gsyvideoplayer.model.VideoOptionModel
 import com.shuyu.gsyvideoplayer.player.BasePlayerManager
+import io.legado.app.constant.AppLog
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import tv.danmaku.ijk.media.player.IMediaPlayer
 
 
@@ -52,8 +54,16 @@ class ExoPlayerManager : BasePlayerManager() {
                 // 处理URL为空的情况
                 return
             }
+            mediaPlayer!!.currentUrl = model.getUrl()
             mediaPlayer!!.setLooping(model.isLooping)
             mediaPlayer!!.setPreview(!model.getMapHeadData().isNullOrEmpty())
+            // R5 Header 修复：在 setDataSource 前注入 Header 到 okhttpDataFactory，
+            // 确保 Exo2MediaPlayer.prepareAsyncInternal 构建的 HTTP 请求带上 Header（解决 CDN 防盗链 404）
+            // E1 优化：同时设置 currentHeaders，通过 SPLIT_TAG per-request 注入（双保险，解决 setDefaultHeaders 全局覆盖问题）
+            model.getMapHeadData()?.takeIf { it.isNotEmpty() }?.let { headers ->
+                ExoPlayerHelper.setDefaultHeaders(headers)
+                mediaPlayer!!.currentHeaders = headers
+            }
             if (model.isCache()) {
                 //通过管理器处理
                 cacheManager.doCacheLogic(
@@ -90,7 +100,7 @@ class ExoPlayerManager : BasePlayerManager() {
                 mediaPlayer!!.setSurface(dummySurface)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            AppLog.put("ExoPlayerManager: init", e)
         }
         initSuccess(model)
     }
@@ -113,7 +123,7 @@ class ExoPlayerManager : BasePlayerManager() {
             try {
                 mediaPlayer!!.setSpeed(speed, 1f)
             } catch (e: Exception) {
-                e.printStackTrace()
+                AppLog.put("ExoPlayerManager: onPlayerError", e)
             }
         }
     }
@@ -146,6 +156,13 @@ class ExoPlayerManager : BasePlayerManager() {
      */
     @SuppressLint("NewApi")
     override fun release() {
+        // video-regression-fix-0906 日志增强：wrapper 级释放定点标记（追踪 release 与实例池生命周期的时序竞态）
+        if (mediaPlayer != null) {
+            AppLog.put(
+                "ExoPlayerManager.release: wrapper release begin, " +
+                    "mediaPlayerHash=${System.identityHashCode(mediaPlayer)}"
+            )
+        }
         if (mediaPlayer != null) {
             mediaPlayer!!.setSurface(null)
             mediaPlayer!!.release()
@@ -166,6 +183,9 @@ class ExoPlayerManager : BasePlayerManager() {
     }
 
     override fun getBufferedPercentage(): Int {
+        if (mediaPlayer != null) {
+            return mediaPlayer!!.bufferedPercentage
+        }
         return -1
     }
 
@@ -189,11 +209,36 @@ class ExoPlayerManager : BasePlayerManager() {
         mediaPlayer!!.next()
     }
 
+    /**
+     * 获取所有音轨
+     */
+    fun getAudioTracks(): List<Pair<Int, String>> {
+        if (mediaPlayer == null) return emptyList()
+        return mediaPlayer!!.getAudioTracks()
+    }
+
+    /**
+     * 切换音轨
+     */
+    fun selectAudioTrack(groupIndex: Int) {
+        if (mediaPlayer != null) {
+            mediaPlayer!!.selectAudioTrack(groupIndex)
+        }
+    }
+
     override fun getNetSpeed(): Long {
         return 0
     }
 
     override fun setSpeedPlaying(speed: Float, soundTouch: Boolean) {
+        // 播放中动态调速：与 setSpeed 同链路，IjkExo2MediaPlayer.setSpeed 内部会更新 ExoPlayer.playbackParameters
+        if (mediaPlayer != null) {
+            try {
+                mediaPlayer!!.setSpeed(speed, 1f)
+            } catch (e: Exception) {
+                AppLog.put("ExoPlayerManager: setSpeedPlaying", e)
+            }
+        }
     }
 
     override fun start() {

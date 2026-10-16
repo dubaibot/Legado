@@ -136,3 +136,12 @@ fun BookSource.getBookType(): Int {
         else -> BookType.text
     }
 }
+
+/**
+ * m 源（D8）：视频源判定。语义：任一侧表态 video 即真——运行时书籍类型的 video 位，
+ * 或源静态声明的视频类型；两侧均不表态返回 false。
+ */
+fun BookSource?.isVideoSource(bookType: Int?): Boolean {
+    return ((bookType ?: 0) and BookType.video) > 0 ||
+        this?.bookSourceType == BookSourceType.video
+}

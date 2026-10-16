@@ -18,6 +18,7 @@ import okhttp3.Credentials
 import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.concurrent.ConcurrentHashMap
@@ -127,6 +128,20 @@ val okHttpClient: OkHttpClient by lazy {
             }
         }
     }
+}
+
+/**
+ * FR-3: 视频流专用 OkHttpClient（强制 HTTP/1.1）
+ * 根因：ExoPlayerHelper Range 嗅探请求用 okHttpClient（含 CronetInterceptor），
+ *   Cronet 引擎走 HTTP/2 可能触发 ERR_HTTP2_PROTOCOL_ERROR
+ *
+ * 方案：基于 okHttpClient.newBuilder() 继承所有拦截器（SSLHelper/DohDns/缓存等），
+ *   protocols 强制 HTTP/1.1，规避 HTTP/2 协议错误；Cronet 失败会降级到 OkHttp（HTTP/1.1）
+ */
+val videoStreamClient: OkHttpClient by lazy {
+    okHttpClient.newBuilder()
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .build()
 }
 
 val okHttpClientManga by lazy {

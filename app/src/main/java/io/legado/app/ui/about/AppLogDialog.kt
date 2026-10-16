@@ -45,7 +45,7 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
             recyclerView.adapter = adapter
         }
-        adapter.setItems(AppLog.logs)
+        adapter.setItems(AppLog.logs.map { Triple(it.time, it.message, it.throwable) })
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {

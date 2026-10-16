@@ -2,8 +2,14 @@ package io.legado.app.help.gsyVideo
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.drawable.ClipDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.util.AttributeSet
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceView
@@ -14,9 +20,15 @@ import android.widget.ImageView
 import android.widget.TextView
 import com.shuyu.gsyvideoplayer.listener.LockClickListener
 import com.shuyu.gsyvideoplayer.utils.CommonUtil
+import com.shuyu.gsyvideoplayer.utils.GSYVideoType
 import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import com.shuyu.gsyvideoplayer.video.base.GSYVideoPlayer
+import androidx.core.graphics.ColorUtils
 import io.legado.app.R
+import io.legado.app.constant.AppLog
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.ui.video.ImageEnhanceController
+import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.model.VideoPlay
 import master.flame.danmaku.controller.DrawHandler
 import master.flame.danmaku.danmaku.loader.IllegalDataException
@@ -36,13 +48,79 @@ class VideoPlayer: StandardGSYVideoPlayer {
     constructor(context: Context?) : super(context)
     constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs)
 
+    init {
+        // dual-layout W3-fix：音频焦点丢失改为暂停而非释放（GSY 默认 mReleaseWhenLossAudio=true）
+        // 铁证：2026-09-04 模拟器日志，起播 10s 后播放器被 releaseVideos() 整体回收
+        // （ExoPlayer 网络错误自动重试排程后 2ms 即被杀 → isReleased=true → 黑屏死播放器），
+        // 释放链唯一入口 releaseVideos()，静态排查无布局切换/onNewIntent/视图 detach 证据，
+        // 最大嫌疑即 GSY 默认"焦点丢失=整体释放"。改为暂停（GSY 官方语义），
+        // 并在 onAudioFocusLoss 埋点，后续若复现可从日志确认触发源
+        mReleaseWhenLossAudio = false
+    }
+
+    override fun onAudioFocusLoss() {
+        AppLog.put("GSY VideoPlayer onAudioFocusLoss: policy=pause-no-release")
+        super.onAudioFocusLoss()
+    }
+
     private var episodeList: TextView? = null
     private var playbackSpeed: TextView? = null
-    private var playSpeed: Float = 1.0f
+    /** video-gesture-overhaul: 改为 internal 供 VideoFragment 访问（长按倍速恢复原速） */
+    internal var playSpeed: Float = 1.0f
     private var btnNext: ImageView? = null
+    private var ivMute: ImageView? = null
+    private var isMuted = false
+
+    /** R3 阶段2：供外部读取当前静音状态 */
+    val isMutedPublic: Boolean get() = isMuted
+
+    /**
+     * 文章模式下阻止 GSY 调用 parent.requestDisallowInterceptTouchEvent(true)
+     *
+     * GSY 在 ACTION_DOWN 时会调用 parent.requestDisallowInterceptTouchEvent(true)
+     * 确保自己能持续接收触摸事件（进度条/亮度/音量）。但这会阻止 ViewPager2
+     * 的 onInterceptTouchEvent 被调用，导致垂直滑动无法切换文章。
+     *
+     * 文章模式下（rssArticles 不为空且 size > 1），我们忽略 GSY 的 true 调用，
+     * 让 ViewPager2 始终能通过 onInterceptTouchEvent 检测垂直滑动并拦截。
+     * ViewPager2 方向为垂直，水平滑动不会被拦截，GSY 的进度条功能不受影响。
+     *
+     * 非文章模式下保持原有行为。
+     */
+    override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+        if (disallowIntercept &&
+            !VideoPlay.rssArticles.isNullOrEmpty() &&
+            VideoPlay.rssArticles!!.size > 1
+        ) {
+            // 文章模式：忽略 GSY 的 requestDisallowInterceptTouchEvent(true)
+            return
+        }
+        super.requestDisallowInterceptTouchEvent(disallowIntercept)
+    }
+
+    /** R3 阶段2：切换静音状态，更新播放器+图标 */
+    fun toggleMute() {
+        isMuted = !isMuted
+        getGSYVideoManager().player?.setNeedMute(isMuted)
+        updateMuteIcon()
+    }
+
+    /** R3 阶段5：供设置面板调用画面比例选择 */
+    internal fun showRatioDialogPublic() {
+        showRatioDialog()
+    }
+
+    /** R3 阶段5：供设置面板调用音轨选择 */
+    internal fun showAudioTrackDialogPublic() {
+        showAudioTrackDialog()
+    }
+
     private var tipView: TextView? = null
     private var isChanging = false
     private var isLongPressSpeed = false
+    private var tvRatio: TextView? = null
+    private var currentRatioIndex = 0 // 0:默认 1:16:9 2:4:3 3:填充 4:原始
+    private var tvAudio: TextView? = null
 
     private var mParser: BaseDanmakuParser? = null //解析器对象
     private var mDanmakuView: DanmakuView? = null //弹幕view
@@ -85,9 +163,117 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
     public override fun lockTouchLogic() = super.lockTouchLogic()
 
+    /**
+     * F2-Bug3 标志：GSY 原始控件是否应保持可见
+     *
+     * 根因：GSY 的 changeUiToPlayingBufferingClear()（缓冲结束时调用）和
+     * changeUiToClear()（被 changeUiToPlayingClear/changeUiToPauseClear 调用）
+     * 会将 mTopContainer/mBottomContainer/mStartButton 设为 INVISIBLE，
+     * 覆盖我们通过 setGsyControlVisibility(true) 设置的 VISIBLE 状态。
+     *
+     * m3u8 流媒体播放时缓冲事件频繁，每次缓冲结束后 GSY 都会隐藏控件，
+     * 导致用户点击显示控件后很快又被 GSY 内部逻辑隐藏。
+     *
+     * 修复：此标志在 setGsyControlVisibility 中设置，override 的 changeUiToClear() 和
+     * changeUiToPlayingBufferingClear() 检查此标志，为 true 时在 super 调用后恢复控件可见性。
+     */
+    private var gsyControlsVisible = false
+
+    /**
+     * R3 F2 修复：供 VideoFragment 调用，同步切换 GSY 原始控件显隐
+     *
+     * F2 触摸事件修复后，VideoFragment 的 OnTouchListener 替换了 GSY 的 OnTouchListener，
+     * 导致 GSY 内部的 onClickUiToggle 不再被触发，GSY 原始控件（底部播放条/倍速/静音/设置/
+     * 暂停播放按钮）隐藏后无法通过点击重新显示。
+     *
+     * 此方法供 VideoFragment 在 applyState 中调用，同步切换 GSY 原始控件与我们自定义控件层。
+     *
+     * 根因修复（F2-Bug2）：直接设置 visibility=VISIBLE 不够——GSY 有内部 UI 状态机，
+     * hideAllWidget() 将 UI 状态设为"hide"后，GSY 后续事件（缓冲/seek/播放状态变化）会
+     * 通过 changeUiToXXX 覆盖我们的 visibility 设置，导致控件重新隐藏。
+     * 正确做法：调用 GSY 标准 changeUiToPlayingShow()/changeUiToPauseShow() 切换 UI 状态。
+     *
+     * 根因修复（F2-Bug3）：即使调用了 changeUiToPlayingShow()，m3u8 流媒体缓冲结束时
+     * GSY 会调用 changeUiToPlayingBufferingClear() 将控件设为 INVISIBLE。
+     * 通过 gsyControlsVisible 标志 + override changeUiToClear/changeUiToPlayingBufferingClear
+     * 确保 GSY 内部状态变化不覆盖我们的显隐设置。
+     *
+     * 注意：不启动 GSY 的 dismissControlViewTimer，使用 VideoFragment 的 scheduleAutoHide
+     * 统一管理自动隐藏，避免两套计时器不同步。
+     *
+     * @param show true=显示GSY原始控件，false=隐藏GSY原始控件
+     */
+    fun setGsyControlVisibility(show: Boolean) {
+        gsyControlsVisible = show  // F2-Bug3：设置标志供 override 方法检查
+        if (show) {
+            // 调用 GSY 标准 UI 切换方法，正确设置 UI 状态并显示所有控件
+            // 直接设置 visibility 不够：GSY 的 UI 状态机仍是"hide"状态，
+            // 后续事件（缓冲/seek/播放状态变化）会通过 changeUiToXXX 覆盖
+            when (mCurrentState) {
+                CURRENT_STATE_PAUSE -> {
+                    changeUiToPauseShow()
+                }
+                CURRENT_STATE_PLAYING -> {
+                    changeUiToPlayingShow()
+                }
+                else -> {
+                    // 其他状态（PREPARING/NORMAL/ERROR等）直接设置 visibility
+                    mTopContainer?.visibility = VISIBLE
+                    mBottomContainer?.visibility = VISIBLE
+                    mStartButton?.visibility = VISIBLE
+                }
+            }
+            // 取消 GSY 自带的 dismissControlViewTimer
+            // changeUiToPlayingShow/changeUiToPauseShow 会启动 dismissControlViewTimer，
+            // 我们用自己的 scheduleAutoHide 统一管理自动隐藏
+            cancelDismissControlViewTimer()
+        } else {
+            hideAllWidget()  // 隐藏所有 GSY 原始控件（内部会 cancelDismissControlViewTimer）
+        }
+    }
+
+    /**
+     * F2-Bug3 修复：override changeUiToPlayingBufferingClear
+     *
+     * GSY 在 m3u8 流媒体缓冲结束时调用此方法，将 mTopContainer/mBottomContainer/mStartButton
+     * 设为 INVISIBLE。当 gsyControlsVisible=true 时（用户要求控件可见），在 super 调用后
+     * 恢复这三个容器的可见性，防止 GSY 内部缓冲状态变化覆盖用户的显隐设置。
+     *
+     * 同帧内先隐藏再恢复，不会产生视觉闪烁。
+     */
+    override fun changeUiToPlayingBufferingClear() {
+        super.changeUiToPlayingBufferingClear()
+        if (gsyControlsVisible) {
+            // 缓冲结束后恢复控件可见性，防止 GSY 内部逻辑覆盖用户的"显示控件"设置
+            mTopContainer?.visibility = VISIBLE
+            mBottomContainer?.visibility = VISIBLE
+            mStartButton?.visibility = VISIBLE
+        }
+    }
+
+    /**
+     * F2-Bug3 修复：override changeUiToClear
+     *
+     * changeUiToClear 被 changeUiToPlayingClear() 和 changeUiToPauseClear() 调用，
+     * 将 mTopContainer/mBottomContainer/mStartButton 设为 INVISIBLE。
+     * changeUiToPlayingClear/PauseClear 由 GSY 的 dismissControlViewTimer 触发
+     * （我们通过 cancelDismissControlViewTimer 取消），但作为安全兜底，
+     * 当 gsyControlsVisible=true 时仍恢复控件可见性。
+     */
+    override fun changeUiToClear() {
+        super.changeUiToClear()
+        if (gsyControlsVisible) {
+            mTopContainer?.visibility = VISIBLE
+            mBottomContainer?.visibility = VISIBLE
+            mStartButton?.visibility = VISIBLE
+        }
+    }
+
     override fun init(context: Context) {
         super.init(context)
         initView()
+        // video-player-theme-unify：初始化即应用主题高亮（控制条深色悬浮层保持）
+        applyThemeColors()
         post {
             gestureDetector = GestureDetector(
                 getContext().applicationContext,
@@ -109,7 +295,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
                         if (mCurrentState == CURRENT_STATE_PLAYING) {
                             val speed = VideoPlay.longPressSpeed / 10.0f
                             setVideoSpeed(speed)
-                            showOverlayTip("${speed}倍速播放中")
+                            showOverlayTip(context.getString(R.string.video_speed_long_press, speed))
                             isLongPressSpeed = true
                         }
                         super.onLongPress(e)
@@ -132,7 +318,8 @@ class VideoPlayer: StandardGSYVideoPlayer {
         super.touchSurfaceUp()
     }
 
-    private fun setVideoSpeed(speed: Float) {
+    /** video-gesture-overhaul: 改为 internal 供 VideoFragment 访问（长按倍速设置） */
+    internal fun setVideoSpeed(speed: Float) {
         setSpeed(speed, true)
         if (mDanmakuView != null&& !mDanmakuView!!.isPaused) {
             mDanmakuContext!!.setScrollSpeedFactor(VideoPlay.danmakuSpeed - (speed - 1f) / 6f)
@@ -140,9 +327,31 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
     }
 
+    private fun updateMuteIcon() {
+        ivMute?.setImageResource(
+            if (isMuted) R.drawable.ic_volume_off
+            else R.drawable.ic_volume_up
+        )
+    }
+
     override fun onPrepared() {
         super.onPrepared()
         onPrepareDanmaku(this)
+        // V-01 修复：换集时跟随用户当前静音状态（isMuted），而非每次强制 muteOnStart
+        // 首次播放时 isMuted 已在 initView 初始化为 VideoPlay.muteOnStart
+        getGSYVideoManager().player?.setNeedMute(isMuted)
+        // 检查音轨数量，多音轨时显示音轨按钮
+        post {
+            val tracks = getGSYVideoManager().getAudioTracks()
+            tvAudio?.visibility = if (tracks.size > 1) VISIBLE else GONE
+        }
+        // video-player-image-enhance A1.2: 播放准备完成后应用画质增强滤镜
+        //（K2 实证：GSY 播放状态变化会重置渲染视图，必须在此重新应用，切集/重播均会触发本回调）
+        post { ImageEnhanceController.apply(this) }
+        // video-player-image-enhance B2.3: 锐化/降噪效果链注入（每次播放管线构建时生效，主线程回调安全）
+        // 语义：仅增强开启（效果链非空）时才真正注入；增强关闭时为 no-op，
+        // 绝不调用 setVideoEffects(空列表)——那会在 media3 1.10.1 激活 GL VideoGraph 管线（7001 规避）
+        post { ImageEnhanceController.applyEffectsToPlayer() }
     }
     private fun onPrepareDanmaku(gsyVideoPlayer: VideoPlayer) {
         val view = gsyVideoPlayer.mDanmakuView
@@ -227,6 +436,76 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
     }
 
+    /**
+     * video-player-theme-unify：主题化播放器控件
+     *
+     * 控制条保持深色半透明悬浮层（视频站标准，日夜间可读），仅让进度条/缓冲/缩略图
+     * 高亮元素动态取 ThemeStore.accentColor()，主题切换经 init / RECREATE /
+     * onConfigurationChanged 时机触发（页面 recreateOnThemeChange=false，静态色不自动刷新）。
+     *
+     * 说明：GSY 库内置 video_seek_progress 的 progress 层为 clip(shape solid style_color=#005fff)，
+     * 该结构下仅靠 progressTintList 不生效（进度条仍显库默认蓝色、不随主题），故此处动态重建
+     * LayerDrawable + ClipDrawable 并 setProgressDrawable/setThumb，100% 取主题主色。
+     */
+    fun applyThemeColors() {
+        val accent = ThemeStore.accentColor(context)
+        val buffer = ColorUtils.setAlphaComponent(accent, 0x66)
+        val secondary = ColorUtils.setAlphaComponent(accent, 0xB3)
+        // 主控制条进度条：动态重建 drawable，摆脱 GSY 库硬编码蓝色
+        mProgressBar?.let { seekBar ->
+            seekBar.progressDrawable = buildVideoSeekDrawable(accent, buffer)
+            seekBar.thumb = buildVideoThumbDrawable(accent)
+        }
+        // 底部迷你进度条：播放=主题色、缓冲=主题色半透明
+        mBottomProgressBar?.let { seekBar ->
+            seekBar.progressDrawable = buildVideoSeekDrawable(accent, secondary)
+        }
+        // tint 兜底（部分设备 layer-list 走 tint 路径时生效）
+        mProgressBar?.progressTintList = ColorStateList.valueOf(accent)
+        mProgressBar?.secondaryProgressTintList = ColorStateList.valueOf(buffer)
+        mProgressBar?.thumbTintList = ColorStateList.valueOf(accent)
+        mBottomProgressBar?.progressTintList = ColorStateList.valueOf(accent)
+    }
+
+    private fun buildVideoSeekDrawable(progressColor: Int, bufferColor: Int): Drawable {
+        val radius = 2f * context.resources.displayMetrics.density
+        val background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(0x4D999999)
+        }
+        val bufferClip = ClipDrawable(
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = radius
+                setColor(bufferColor)
+            },
+            Gravity.START, ClipDrawable.HORIZONTAL
+        )
+        val progressClip = ClipDrawable(
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = radius
+                setColor(progressColor)
+            },
+            Gravity.START, ClipDrawable.HORIZONTAL
+        )
+        return LayerDrawable(arrayOf(background, bufferClip, progressClip)).apply {
+            setId(0, android.R.id.background)
+            setId(1, android.R.id.secondaryProgress)
+            setId(2, android.R.id.progress)
+        }
+    }
+
+    private fun buildVideoThumbDrawable(color: Int): Drawable {
+        val size = (14 * context.resources.displayMetrics.density).toInt()
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+            setSize(size, size)
+        }
+    }
+
     private fun initView() {
         isNeedLockFull = true //使用锁定按钮
         playbackSpeed = findViewById(R.id.playback_speed)
@@ -242,6 +521,29 @@ class VideoPlayer: StandardGSYVideoPlayer {
         //切换选集
         episodeList = findViewById(R.id.episode_list)
         btnNext = findViewById(R.id.next)
+        //静音按钮
+        ivMute = findViewById(R.id.iv_mute)
+        isMuted = VideoPlay.muteOnStart
+        updateMuteIcon()
+        ivMute?.setOnClickListener {
+            isMuted = !isMuted
+            getGSYVideoManager().player?.setNeedMute(isMuted)
+            updateMuteIcon()
+        }
+        //画面比例按钮
+        tvRatio = findViewById(R.id.tv_ratio)
+        tvRatio?.setOnClickListener {
+            if (mHadPlay && !isChanging) {
+                showRatioDialog()
+            }
+        }
+        //音轨按钮（默认隐藏，有多音轨时显示）
+        tvAudio = findViewById(R.id.tv_audio)
+        tvAudio?.setOnClickListener {
+            if (mHadPlay && !isChanging) {
+                showAudioTrackDialog()
+            }
+        }
         if (VideoPlay.episodes == null) {
             episodeList?.visibility = GONE
             btnNext?.visibility = GONE
@@ -319,6 +621,31 @@ class VideoPlayer: StandardGSYVideoPlayer {
     }
 
     /**
+     * 弹幕是否可用（本集有弹幕数据且视图已初始化）
+     *
+     * `initDanmaku()` 在无弹幕数据时早退、不创建 `mDanmakuView`，故以该字段作为可用性判据；
+     * 沉浸式悬浮层据此决定是否展示弹幕开关入口（与传统模式 GSY 控制条 `toggle_danmaku`
+     * 在无数据时置 `GONE` 的口径一致）。
+     */
+    val isDanmakuAvailable: Boolean
+        get() = mDanmakuView != null
+
+    /** 当前是否显示弹幕（与传统模式 `toggle_danmaku` 共用 `VideoPlay.danmakuShow` 状态源） */
+    val isDanmakuShowing: Boolean
+        get() = VideoPlay.danmakuShow
+
+    /**
+     * 翻转弹幕显隐（沉浸式悬浮层开关入口）
+     *
+     * 与 `toggle_danmaku` 的点击逻辑完全一致：改全局状态 + 走同一 `resolveDanmakuShow()` 落显隐，
+     * 保证两种布局模式的弹幕状态互通，不产生第二套状态源。
+     */
+    fun toggleDanmakuShow() {
+        VideoPlay.danmakuShow = !VideoPlay.danmakuShow
+        resolveDanmakuShow()
+    }
+
+    /**
      * 弹幕偏移
      */
     private fun resolveDanmakuSeek(time: Long) {
@@ -338,10 +665,10 @@ class VideoPlayer: StandardGSYVideoPlayer {
         post {
             if (VideoPlay.danmakuShow) {
                 if (!mDanmakuView!!.isShown) mDanmakuView!!.show()
-                mToggleDanmaku?.text = "关弹幕"
+                mToggleDanmaku?.text = context.getString(R.string.video_danmaku_off)
             } else {
                 if (mDanmakuView!!.isShown) mDanmakuView!!.hide()
-                mToggleDanmaku?.text = "开弹幕"
+                mToggleDanmaku?.text = context.getString(R.string.video_danmaku_on)
             }
         }
     }
@@ -365,7 +692,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
                 }
             }
         } catch (e: IllegalDataException) {
-            e.printStackTrace()
+            AppLog.put("VideoPlayer: release", e)
         }
         val parser: BaseDanmakuParser = BiliDanmukuParser()
         val dataSource = loader.dataSource
@@ -400,7 +727,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
         isChanging = true
         val choiceSpeedDialog = ChoiceSpeedDialog(mContext)
-        choiceSpeedDialog.initList(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f).reversed(), object :
+        choiceSpeedDialog.initList(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f, 5.0f, 10.0f, 15.0f).reversed(), object :
             ChoiceSpeedDialog.OnListItemClickListener {
             @SuppressLint("SetTextI18n")
             override fun onItemClick(value: Float) {
@@ -408,17 +735,83 @@ class VideoPlayer: StandardGSYVideoPlayer {
                 setSpeed(playSpeed, true)
                 if (playSpeed != 1.0f) {
                     playbackSpeed?.text = "${playSpeed}X"
-                    showOverlayTip("${playSpeed}倍播放中", 2000)
+                    showOverlayTip(context.getString(R.string.video_speed_playing, playSpeed), 2000)
                 } else {
-                    playbackSpeed?.text = "倍速"
+                    playbackSpeed?.text = context.getString(R.string.video_speed)
                 }
             }
 
             override fun finishDialog() {
                 isChanging = false
             }
-        })
+        }, currentSpeed = playSpeed)
         choiceSpeedDialog.show()
+    }
+
+    private fun showRatioDialog() {
+        isChanging = true
+        val ratios = arrayOf(
+            context.getString(R.string.video_ratio_default),
+            context.getString(R.string.video_ratio_16_9),
+            context.getString(R.string.video_ratio_4_3),
+            context.getString(R.string.video_ratio_fill)
+        )
+        // video-player-theme-unify：改 alert() 扩展走项目主题，替代原生 AlertDialog
+        context.alert(title = context.getString(R.string.video_ratio)) {
+            singleChoiceItems(ratios, currentRatioIndex) { dialog, which ->
+                currentRatioIndex = which
+                applyRatio(which)
+                tvRatio?.text = if (which == 0) {
+                    context.getString(R.string.video_ratio_button)
+                } else {
+                    ratios[which]
+                }
+                dialog.dismiss()
+            }
+            onDismiss { isChanging = false }
+        }
+    }
+
+    private fun applyRatio(index: Int) {
+        val showType = when (index) {
+            1 -> GSYVideoType.SCREEN_TYPE_16_9     // 16:9
+            2 -> GSYVideoType.SCREEN_TYPE_4_3      // 4:3
+            3 -> GSYVideoType.SCREEN_TYPE_FULL     // 填充
+            else -> GSYVideoType.SCREEN_TYPE_DEFAULT  // 默认
+        }
+        GSYVideoType.setShowType(showType)
+        // 触发重新测量以应用新的比例
+        mTextureView?.requestLayout()
+        val labels = arrayOf(
+            context.getString(R.string.video_ratio_default),
+            context.getString(R.string.video_ratio_16_9),
+            context.getString(R.string.video_ratio_4_3),
+            context.getString(R.string.video_ratio_fill)
+        )
+        showOverlayTip(context.getString(R.string.video_ratio_playing, labels[index]), 2000)
+    }
+
+    private fun showAudioTrackDialog() {
+        val tracks = getGSYVideoManager().getAudioTracks()
+        if (tracks.size <= 1) {
+            showOverlayTip(context.getString(R.string.video_no_audio_track), 2000)
+            return
+        }
+        isChanging = true
+        val labels = tracks.map { it.second }.toTypedArray()
+        // video-player-theme-unify：改 alert() 扩展走项目主题，替代原生 AlertDialog
+        context.alert(title = context.getString(R.string.video_audio_track)) {
+            items(labels.toList()) { dialog, _, which ->
+                val trackIndex = tracks[which].first
+                getGSYVideoManager().selectAudioTrack(trackIndex)
+                showOverlayTip(
+                    context.getString(R.string.video_audio_track_playing, labels[which]),
+                    2000
+                )
+                dialog.dismiss()
+            }
+            onDismiss { isChanging = false }
+        }
     }
 
     override fun updateStartImage() {
@@ -461,6 +854,8 @@ class VideoPlayer: StandardGSYVideoPlayer {
         val gsyBaseVideoPlayer = super.startWindowFullscreen(context, actionBar, statusBar)
         if (gsyBaseVideoPlayer != null) {
             val gsyVideoPlayer = gsyBaseVideoPlayer as VideoPlayer
+            // video-player-theme-unify：全屏新建实例同步应用主题高亮
+            gsyVideoPlayer.applyThemeColors()
             //对弹幕设置偏移记录
 //            gsyVideoPlayer.mDanmakuView = this.mDanmakuView
             gsyVideoPlayer.mDanmakuStartSeekPosition = this.getCurrentPositionWhenPlaying()
@@ -479,6 +874,8 @@ class VideoPlayer: StandardGSYVideoPlayer {
         gsyVideoPlayer: GSYVideoPlayer?
     ) {
         super.resolveNormalVideoShow(oldF, vp, gsyVideoPlayer)
+        // video-player-theme-unify：退出全屏后小屏播放器保持主题高亮
+        applyThemeColors()
         if (gsyVideoPlayer != null) {
             val videoPlayer = gsyVideoPlayer as VideoPlayer
             if (mDanmakuView != null && mDanmakuView!!.isPrepared) {

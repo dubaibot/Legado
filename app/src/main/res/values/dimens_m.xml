@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 多源合并：m 源 dimens 分区 (D8) -->
+<resources>
+    <dimen name="text_16sp">16sp</dimen>
+    <dimen name="text_18sp">18sp</dimen>
+    <dimen name="ui_panel_radius">10dp</dimen>
+    <dimen name="ui_action_radius">9dp</dimen>
+</resources>

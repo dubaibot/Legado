@@ -85,6 +85,19 @@ Entries discovered by the Agent during task execution should follow this format:
   - Compose 配置已就位：kotlin-compose 插件（org.jetbrains.kotlin.plugin.compose）+ buildFeatures.compose + BOM 管理全部 compose 依赖，版本一律走 BOM 不写死
 
 [Project Knowledge Summary]
+- Date: 2026-10-16
+- Context: D8 gsyVideo 内核融合执行完毕，依赖链外溢与适配偏差记录
+- Category: Build Methods
+- Instructions:
+  - m 源文件搬运的依赖链远超 D4 落点表：D8 实际外溢拉入 dlna 整包（21 文件）、m 版 AppLog（整体替换，put 签名兼容）、AppLogDialog 桥接（Triple 映射）、theme 三件套（UiCorner/ThemeUiPalette/ThemeRuntimeKeys）+ 46 个 PreferKey 外观键 + AppConfig 6 外观属性、http 层四个文件（DohDns/HostAccessStrategy/SourceNetworkClient/SourceLastHostHelper）+ videoStreamClient、Rss.kt 整体取 m（多线路多集采集）
+  - 遇到 Unresolved reference 时的标准动作：先查 m 源定义文件（rg 定位），评估是否自包含后整文件拷贝；实体加可空字段/新表可走 AutoMigration，room 增列时构造参数上一行需补逗号
+  - DB 版本归属更新：v93=D8（playHistories 表 + rssSources.ruleRoutes/ruleEpisodes + bookSources/rssSources.lastHost），v94=D13 AutoTask，v95=D28 urlRecord，v96=D32 AI 数据层，详见 db-migration-sop.md
+  - 取 m 版 Rss.kt 时保留工作区 D6 接线检查：Rss.kt 无 D6 标记（缓存在 SourceHelp 层），可整体覆盖；其余基座文件覆盖前必须 git diff 确认无本地接线丢失
+  - m 的 Compose 版 AppLogDialog 依赖 ui/widget/compose 组件库（54 文件，D4 方案已披露），D8 用 Triple 映射桥接 Sigma 版对话框；组件库整体移植仍属 D10+
+  - rg 调试时禁用 -r 标志（是 replace 而非递归），误用会把匹配文本替换成占位串，导致误读源码（D8 实际踩坑两次）
+  - D8 手测移交项：弹幕渲染/音画同步、DLNA 全链路、controller 布局被 m 版覆盖后的视觉回归（详见 d8-report.md）
+
+[Project Knowledge Summary]
 - Date: 2026-10-15
 - Context: D6 书源缓存五件套移植完成后的接线状态
 - Category: Workflow & Collaboration
@@ -92,5 +105,5 @@ Entries discovered by the Agent during task execution should follow this format:
   - 每日任务各自独立分支（261015-feat-dX-xxx 模式），后一天开工前先把此前分支合并进当日基座（D6 基座=D1+D2+D3+D4/D5）
   - SourceQueryCache 失效出口已接线 SourceHelp 全部增删改；Restore/ImportOldData/RecycleBin/两个 SourceEditViewModel 尚未接线（TTL 2s 兜底自愈），随对应功能移植补齐
   - SourcePreconnectHelper/warmUpConnection 已就位，消费方（Rss.kt/BookChapterList）在 D11 接线
-  - 工作区 AppLog 是精简版（无 putSampled/putWarn/Level/Tag），从 m 源搬日志相关代码时一律降级为 AppLog.put 适配
-  - 工作区 DNS 兜底/HTTP 缓存属 m 的 HttpHelper 大段演进（m 版 412 行 vs 工作区 191 行），D11 移植时整段对比
+  - 工作区 AppLog 已在 D8 整体替换为 m 版（337 行，含 putDebug/putDebugWithTag/putSampled/Level/TAG_*），此前的"精简版降级适配"指引作废；从 m 搬日志代码可直接用 m 原文
+  - 工作区 DNS 兜底/HTTP 缓存属 m 的 HttpHelper 大段演进（m 版 412 行 vs 工作区 226 行），D11 移植时整段对比；D8 已先行拉入 DohDns/HostAccessStrategy/videoStreamClient（ExoPlayerHelper 硬依赖）

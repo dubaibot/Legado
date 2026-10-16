@@ -5,6 +5,7 @@ import android.os.Build
 import io.legado.app.BuildConfig
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.PreferKey
+import io.legado.app.lib.theme.ThemeRuntimeKeys
 import io.legado.app.data.appDb
 import io.legado.app.utils.GSON
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
@@ -60,6 +61,54 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     // 实时读取偏好，避免 var 缓存值与设置页脱节
     val sourceQueryCacheEnabled get() = appCtx.getPrefBoolean(PreferKey.sourceQueryCacheEnabled, true)
     val bookSourceCacheScoped get() = appCtx.getPrefBoolean(PreferKey.bookSourceCacheScoped, false)
+
+    // 多源合并 D8（对齐 m 源）：UI 调色/圆角/面板外观属性（UiCorner、ThemeUiPalette 依赖）
+    var bookCoverShadow: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookCoverShadow, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookCoverShadow, value)
+        }
+
+    var uiCornerScale: Float
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.uiCornerScale(isNightTheme), "1")
+            ?.toFloatOrNull()
+            ?.coerceIn(0f, 3f)
+            ?: 1f
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.uiCornerScale(isNightTheme), value.coerceIn(0f, 3f).toPlainScale())
+        }
+
+    var uiLayoutAlpha: Int
+        get() = appCtx.getPrefInt(
+            ThemeRuntimeKeys.uiLayoutAlpha(isNightTheme),
+            appCtx.getPrefInt(PreferKey.uiCornerEffectLevel, 100)
+        ).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(ThemeRuntimeKeys.uiLayoutAlpha(isNightTheme), value.coerceIn(0, 100))
+        }
+
+    var dialogAlpha: Int
+        get() = appCtx.getPrefInt(ThemeRuntimeKeys.dialogAlpha(isNightTheme), 100).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(ThemeRuntimeKeys.dialogAlpha(isNightTheme), value.coerceIn(0, 100))
+        }
+
+    val uiCornerSearchFollow: Boolean
+        get() = appCtx.getPrefBoolean(ThemeRuntimeKeys.uiCornerSearchFollow(isNightTheme), false)
+
+    val uiCornerReplyFollow: Boolean
+        get() = appCtx.getPrefBoolean(ThemeRuntimeKeys.uiCornerReplyFollow(isNightTheme), false)
+
+    private fun Float.toPlainScale(): String {
+        return if (this % 1f == 0f) {
+            this.toInt().toString()
+        } else {
+            String.format(java.util.Locale.US, "%.2f", this).trimEnd('0').trimEnd('.')
+        }
+    }
+
+    // 多源合并 D8（对齐 m 源）：书源视频嗅探竞态开关（嗅探失败时兜底重试）
+    val sniffRaceEnabled get() = appCtx.getPrefBoolean(PreferKey.sniffRaceEnabled, true)
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {

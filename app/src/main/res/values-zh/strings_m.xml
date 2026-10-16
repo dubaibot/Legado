@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 多源合并：m 源字符串分区 (D8 视频栈) -->
+<resources>
+    <string name="video_play_control">播放控制</string>
+    <string name="video_ratio">画面比例</string>
+    <string name="video_audio_track">音轨选择</string>
+    <string name="video_play_info">播放信息</string>
+    <string name="video_function">功能</string>
+    <string name="video_play_setting">播放设置</string>
+    <string name="video_skip_time">快进/快退时间</string>
+    <string name="video_player_optimization">播放器优化</string>
+    <string name="video_route_format">线路：%1$s ▼</string>
+    <string name="video_unknown_route">未知</string>
+    <string name="video_play_url_format">播放地址：%1$s</string>
+    <string name="video_play_url_copied">播放地址已复制</string>
+    <string name="video_no_play_url">暂无播放地址</string>
+    <string name="video_seconds_format">%1$d秒</string>
+    <string name="video_resume_from_format">已从 %1$d:%2$02d 继续播放</string>
+    <string name="video_no_available_url">暂无可用地址</string>
+    <string name="video_route_self_heal_toast">播放失败，已自动切换到线路：%1$s</string>
+    <string name="video_download_no_url">视频地址不可用，无法下载</string>
+    <string name="video_favorite_no_context">无法收藏：未获取到文章信息</string>
+</resources>

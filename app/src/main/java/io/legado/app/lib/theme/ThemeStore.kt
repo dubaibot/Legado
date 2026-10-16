@@ -180,6 +180,14 @@ private constructor(private val mContext: Context) : ThemeStoreInterface {
 
         // Static getters
 
+        /**
+         * m 源（D8）：主题变更令牌（apply() 时打的时间戳）。供调用方比对做懒刷新。
+         */
+        @CheckResult
+        fun valuesChanged(context: Context = appCtx): Long {
+            return prefs(context).getLong(ThemeStorePrefKeys.VALUES_CHANGED, 0L)
+        }
+
         @CheckResult
         internal fun prefs(context: Context): SharedPreferences {
             return context.getSharedPreferences(

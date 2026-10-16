@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 多源合并：m 源字符串分区 (D8 视频栈) -->
+<resources>
+    <string name="video_download_no_url">video address unavailable, cannot download</string>
+    <string name="video_favorite_no_context">Cannot favorite: no article info</string>
+    <string name="video_route_self_heal_toast">Playback failed, switched to line: %1$s</string>
+    <string name="video_cache_size">视频缓存容量</string>
+    <string name="video_cache_size_summary">%1$d MB（重启生效）</string>
+    <string name="video_play_control">播放控制</string>
+    <string name="video_play_info">播放信息</string>
+    <string name="video_function">功能</string>
+    <string name="video_play_setting">播放设置</string>
+    <string name="video_skip_time">快进/快退时间</string>
+    <string name="video_settings_title">视频设置</string>
+    <string name="video_player_optimization">播放器优化</string>
+    <string name="video_route_format">线路：%1$s ▼</string>
+    <string name="video_unknown_route">未知</string>
+    <string name="video_play_url_format">播放地址：%1$s</string>
+    <string name="video_play_url_copied">播放地址已复制</string>
+    <string name="video_no_play_url">暂无播放地址</string>
+    <string name="video_seconds_format">%1$d秒</string>
+    <string name="video_resume_from_format">Resume from %1$d:%2$02d</string>
+    <string name="video_no_available_url">No available URL</string>
+    <string name="video_speed">倍速</string>
+    <string name="video_danmaku_off">关弹幕</string>
+    <string name="video_danmaku_on">开弹幕</string>
+    <string name="video_ratio">画面比例</string>
+    <string name="video_ratio_button">比例</string>
+    <string name="video_audio_track">音轨</string>
+    <string name="video_episode_list">选集（%1$d）</string>
+    <string name="video_episode_list_btn">选集</string>
+    <string name="video_book_detail_title">详情</string>
+    <string name="video_route_label">线路</string>
+    <string name="video_episode_label">选集</string>
+    <string name="video_ratio_default">默认</string>
+    <string name="video_ratio_16_9">16:9</string>
+    <string name="video_ratio_4_3">4:3</string>
+    <string name="video_ratio_fill">填充</string>
+    <string name="video_speed_playing">%1$s倍播放中</string>
+    <string name="video_speed_long_press">%1$s倍速播放中</string>
+    <string name="video_no_audio_track">无可用音轨</string>
+    <string name="video_ratio_playing">画面比例: %1$s</string>
+    <string name="video_audio_track_playing">音轨: %1$s</string>
+    <!-- ErrorMapper 播放错误提示 (m 源, D8) -->
+    <string name="player_error_network_title">网络错误</string>
+    <string name="player_error_network_message">网络连接失败，请检查网络后重试</string>
+    <string name="player_error_dns_title">域名解析失败</string>
+    <string name="player_error_dns_message">无法解析服务器地址，可能网络异常或地址已变更</string>
+    <string name="player_error_decoder_title">解码错误</string>
+    <string name="player_error_decoder_message">视频格式不支持解码，请尝试切换源或使用WebView播放</string>
+    <string name="player_error_drm_title">受版权保护</string>
+    <string name="player_error_drm_message">此视频受版权保护，无法在内置播放器中播放</string>
+    <string name="player_error_source_title">视频源无效</string>
+    <string name="player_error_source_message">视频源已失效或不可用，请尝试切换其他源</string>
+    <string name="player_error_unknown_title">播放失败</string>
+    <string name="player_error_unknown_message">播放遇到问题，请重试或切换源</string>
+    <string name="player_error_tip">播放错误提示</string>
+</resources>

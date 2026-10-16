@@ -298,6 +298,9 @@ interface BookSourceDao {
     @Query("update book_sources set enabled = :enable where bookSourceUrl = :bookSourceUrl")
     fun enable(bookSourceUrl: String, enable: Boolean)
 
+    @Query("update book_sources set lastHost = :lastHost where bookSourceUrl = :bookSourceUrl")
+    fun updateLastHost(bookSourceUrl: String, lastHost: String?)
+
     @Transaction
     fun enable(enable: Boolean, bookSources: List<BookSourcePart>) {
         for (bs in bookSources) {
