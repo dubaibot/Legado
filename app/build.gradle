@@ -241,6 +241,31 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material3.window.size)
     implementation(libs.compose.material.icons.extended)
+    implementation(libs.subsampling.scale.image.view)
+    // D9（m）：高级标题 Lottie 动画（m build.gradle 同款坐标直引，绕开访问器再生问题）
+    implementation("com.airbnb.android:lottie:6.6.6")
+    implementation("top.yukonga.miuix.kmp:miuix-android:0.8.8") {
+        // D9：miuix 传递依赖会把 compose 对齐到 1.10.x（minSdk 23），与工作区 BOM 2025.04.01
+        // （compose 1.8.x，minSdk 21）冲突。排除 compose 传递组，保持既有 compose 面；
+        // miuix 0.8.8 构建于 compose 1.8 时代，字节码兼容。
+        exclude(group: "androidx.compose.ui")
+        exclude(group: "androidx.compose.foundation")
+        exclude(group: "androidx.compose.runtime")
+        exclude(group: "androidx.compose.animation")
+        exclude(group: "androidx.compose.material3")
+        exclude(group: "androidx.compose.material")
+        // CMB（org.jetbrains.compose） shim 链会带入 navigationevent-compose 等 minSdk 23 依赖，
+        // 一并排除，miuix 运行时对齐工作区既有 androidx compose
+        exclude(group: "org.jetbrains.compose")
+        exclude(group: "org.jetbrains.compose.ui")
+        exclude(group: "org.jetbrains.compose.foundation")
+        exclude(group: "org.jetbrains.compose.runtime")
+        exclude(group: "org.jetbrains.compose.animation")
+        exclude(group: "org.jetbrains.compose.material3")
+        exclude(group: "org.jetbrains.compose.material")
+        exclude(group: "org.jetbrains.androidx.navigationevent")
+        exclude(group: "org.jetbrains.androidx.lifecycle")
+    }
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)

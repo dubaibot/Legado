@@ -16,6 +16,10 @@ object AppConst {
 
     const val APP_TAG = "Legado"
 
+    // D9 桥接（m 版 AppConst）：通知渠道常量
+    const val channelIdAiTask = "channel_ai_task"
+    // add-dlna-cast：投屏会话通知渠道（前台服务保活）
+    const val channelIdCast = "channel_cast"
     const val channelIdDownload = "channel_download"
     const val channelIdReadAloud = "channel_read_aloud"
     const val channelIdWeb = "channel_web"

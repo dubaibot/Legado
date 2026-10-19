@@ -11,7 +11,17 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 @Suppress("unused", "MemberVisibilityCanBePrivate")
+// D9 桥接：前景对比色兜底下限与单源（m 版 ColorUtils，对比治理批次落位时以原版覆盖）
+const val MIN_FONT_SURFACE_CONTRAST = 3.0
+
 object ColorUtils {
+
+    /**
+     * 前景对比色单源（m R31）：亮底取黑、暗底取白；View/Compose 共用。
+     */
+    @ColorInt
+    fun contrastOnColor(@ColorInt background: Int): Int =
+        if (isColorLight(background)) Color.BLACK else Color.WHITE
 
     fun isColorLight(@ColorInt color: Int): Boolean {
         return ColorUtils.calculateLuminance(color) >= 0.5

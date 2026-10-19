@@ -17,4 +17,13 @@
     <item name="full_id" type="id" />
     <item name="text_watcher" type="id" />
 
+    <!-- D9 桥接（m）：UiTypography 标题字体角色 tag，防重复应用 -->
+    <item type="id" name="ui_title_typeface_role" />
+
+    <!-- D9（m）：图片查看子系统旋转/重置按钮 id -->
+    <item type="id" name="btn_reset" />
+    <item type="id" name="btn_rotate_right" />
+    <item type="id" name="btn_rotate_left" />
+    <item type="id" name="tv_page_index" />
+    <item type="id" name="layout_rotate_toolbar" />
 </resources>

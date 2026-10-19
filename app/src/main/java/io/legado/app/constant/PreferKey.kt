@@ -262,5 +262,15 @@ object PreferKey {
     const val uiFontPath = "ui_font_path"
     const val uiFontPathN = "ui_font_path_night"
     const val uiLayoutAlpha = "uiLayoutAlpha"
-    const val uiLayoutAlphaN = "uiLayoutAlphaNight"
+    const val uiLayoutAlphaN = "uiLayoutAlphaNight"    // D9 桥接（m 版 PreferKey）：视频手势引导已读标记
+    const val videoGestureGuideShown = "videoGestureGuideShown"    // D9 桥接（m 版 PreferKey）：管理页背景透明度
+    const val manageBgAlpha = "manageBgAlpha"
+    const val loadCoverHighQuality = "loadCoverHighQuality"   // D9 桥接（m 版 PreferKey）：高质量封面加载
+    const val imageArticlePrefetch = "imageArticlePrefetch"   // D9（m 版 PreferKey）：图片文章预取
+    const val advancedTitleConfig = "advancedTitleConfig"     // D9（m 版 PreferKey）：高级标题配置
+    const val advancedTitleLottieJson = "advancedTitleLottieJson"
+    const val advancedTitleLottiePath = "advancedTitleLottiePath"
+    const val advancedTitleHeightFactor = "advancedTitleHeightFactor"
+    const val updateCacheThreadCount = "updateCacheThreadCount"
+    const val advancedTitlePackage = "advancedTitlePackage"
 }

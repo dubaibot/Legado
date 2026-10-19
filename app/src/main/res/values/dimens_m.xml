@@ -5,4 +5,12 @@
     <dimen name="text_18sp">18sp</dimen>
     <dimen name="ui_panel_radius">10dp</dimen>
     <dimen name="ui_action_radius">9dp</dimen>
+    <dimen name="bookshelf_action_button_size">34dp</dimen>
+    <dimen name="bookshelf_action_button_padding">8dp</dimen>
+    <dimen name="top_bar_regular_action_size">36dp</dimen>
+    <dimen name="text_11sp">11sp</dimen>
+    <dimen name="text_12sp">12sp</dimen>
+    <dimen name="text_13sp">13sp</dimen>
+    <dimen name="text_14sp">14sp</dimen>
+    <dimen name="text_15sp">15sp</dimen>
 </resources>

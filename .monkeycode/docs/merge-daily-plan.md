@@ -1,7 +1,7 @@
 # 多源合并每日任务排期
 
 > 依据：《多源功能合并修改清单》（2026-10-15）。原则：积分有限，每日只动一个文件簇，新增优先、融合单独日、核心侵入单独分支；每日必跑 `./gradlew :app:assembleDebug`，DB 改动日必跑实库迁移。
-> 进度：D1–D6 完成（D4/D5 纸面方案与视频管线见 261015-feat-d4/d5 分支，D6 见 d6-report.md）；D7 完成（media3 hls/ui/effect/cronet + rssArticles idx_origin_sort + v92 迁移，见 d7-report.md）；D8 完成（gsyVideo 内核融合 + 播放器家族取 m + DB v93（playHistories/ruleRoutes/ruleEpisodes/lastHost），见 d8-report.md，弹幕渲染与 DLNA 手测移交用户）；下一步 D9。
+> 进度：D1–D6 完成（D4/D5 纸面方案与视频管线见 261015-feat-d4/d5 分支，D6 见 d6-report.md）；D7 完成（media3 hls/ui/effect/cronet + rssArticles idx_origin_sort + v92 迁移，见 d7-report.md）；D8 完成（gsyVideo 内核融合 + 播放器家族取 m + DB v93（playHistories/ruleRoutes/ruleEpisodes/lastHost），见 d8-report.md，弹幕渲染与 DLNA 手测移交用户）；D9 完成（VideoPlayService 融合 + VideoPlayerActivity/Fragment 壳家族 + 图片查看子系统 + compose 组件库与 miuix/ssiv/lottie 依赖接入 + TopBarConfig/AppSettingPalette/CoverCollectionManager 三 shim + DB 演练 v90→93 PASS，见 d9-report.md）；下一步 D10（compose 组件库收尾 + AppSettingPaletteShim 删除 + miuix minSdk 裁决）。
 
 ## 排期前环境核对结论（2026-10-15 实测）
 

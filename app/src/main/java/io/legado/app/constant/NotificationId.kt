@@ -14,6 +14,7 @@ object NotificationId {
     const val DownloadService = 106
     const val CheckSourceService = 107
     const val VideoPlayService = 108
+    const val DlnaCastService = 114   // D9（m 版 NotificationId）：投屏前台通知
     const val Download = 10000
     const val ExportBook = 201
 

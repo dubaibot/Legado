@@ -1,4 +1,6 @@
 [versions]
+miuix = "0.8.8"
+ssiv = "3.10.0"
 
 kotlin = "2.3.10"
 ksp = "2.3.4"
@@ -82,6 +84,8 @@ firebaseBom = "33.2.0"
 composeBom = "2025.04.01"
 
 [libraries]
+miuix = { module = "top.yukonga.miuix.kmp:miuix-android", version.ref = "miuix" }
+subsampling-scale-image-view = { module = "com.davemorrissey.labs:subsampling-scale-image-view-androidx", version.ref = "ssiv" }
 
 activity-activity = { module = "androidx.activity:activity", version.ref = "activity" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }

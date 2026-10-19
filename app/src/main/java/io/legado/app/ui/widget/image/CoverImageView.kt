@@ -1,5 +1,6 @@
 package io.legado.app.ui.widget.image
 
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -19,12 +20,14 @@ import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.BookCover
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
 import android.view.ViewOutlineProvider
@@ -55,11 +58,56 @@ class CoverImageView @JvmOverloads constructor(
     companion object {
         private val nameBitmapCache by lazy { LruCache<String, Bitmap>(33) }
         private val needNameBitmap by lazy { LruCache<String, Boolean>(99) }
+
+        // B13: 系统内存压力时降级封面缓存
+        @Suppress("DEPRECATION")
+        fun trimMemory(level: Int) {
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+                || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+                || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+            ) {
+                nameBitmapCache.evictAll()
+            } else if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+                || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE
+            ) {
+                nameBitmapCache.trimToSize(nameBitmapCache.maxSize() / 2)
+            }
+        }
     }
+    // S3: Compose 组件库封面风格枚举（由 ui/widget/compose 使用，含圆角/阴影参数）
+    enum class CoverStyle(
+        val radiusDp: Float,
+        val elevationDp: Float,
+        val strokeWidthDp: Float,
+        val strokeAlpha: Float
+    ) {
+        FLAT(8f, 0f, 0f, 0f),
+        COMPACT(7f, 1f, 0f, 0f),
+        LIST(8f, 1.5f, 0f, 0f),
+        GRID(8f, 2f, 0f, 0f),
+        DETAIL(12f, 5f, 0f, 0f),
+        PREVIEW(10f, 6f, 0f, 0f)
+    }
+
     private var viewWidth: Float = 0f
     private var viewHeight: Float = 0f
     private var currentJob: Job? = null
     private val triggerChannel = Channel<Unit>(Channel.CONFLATED)
+    var coverStyle: CoverStyle = CoverStyle.LIST
+        private set
+    private var coverRadiusPx = CoverStyle.LIST.radiusDp.dpToPx()
+    private var coverStrokeAlpha = CoverStyle.LIST.strokeAlpha
+
+    // Archive 回退所需：设置封面圆角/阴影风格
+    fun setCoverStyle(style: CoverStyle) {
+        val shadowElevation = if (AppConfig.bookCoverShadow) style.elevationDp.dpToPx() else 0f
+        if (coverStyle == style && elevation == shadowElevation) return
+        coverStyle = style
+        coverRadiusPx = style.radiusDp.dpToPx()
+        coverStrokeAlpha = style.strokeAlpha
+        elevation = shadowElevation
+        invalidate()
+    }
     var bitmapPath: String? = null
         private set
     private var name: String? = null
@@ -94,7 +142,7 @@ class CoverImageView @JvmOverloads constructor(
         super.onSizeChanged(w, h, oldw, oldh)
         outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, w, h, 12f)
+                outline.setRoundRect(0, 0, w, h, coverRadiusPx)
             }
         }
         clipToOutline = true
@@ -148,7 +196,7 @@ class CoverImageView @JvmOverloads constructor(
                 invalidate()
             } catch (_: CancellationException) {
             } catch (e: Exception) {
-                e.printStackTrace()
+                AppLog.put("CoverImageView: load", e)
             }
         }
     }
@@ -289,7 +337,9 @@ class CoverImageView @JvmOverloads constructor(
         sourceOrigin: String? = null,
         fragment: Fragment? = null,
         lifecycle: Lifecycle? = null,
-        onLoadFinish: (() -> Unit)? = null
+        onLoadFinish: (() -> Unit)? = null,
+        forcePath: Boolean = false,
+        allowNameOverlay: Boolean? = null
     ) {
         val currentAuthor = author?.replace(AppPattern.bdRegex, "")?.trim()?.also {
             this.author = it
@@ -298,12 +348,14 @@ class CoverImageView @JvmOverloads constructor(
             this.name = it
         }
         this.bitmapPath = path
-        if (AppConfig.useDefaultCover) {
+        // allowNameOverlay 为 null 时保持原行为(始终绘制书名覆盖层)。
+        val drawNameOverlayForCurrentCover = allowNameOverlay ?: true
+        if (AppConfig.useDefaultCover && !forcePath) {
             ImageLoader.load(context, BookCover.defaultDrawable)
                 .centerCrop()
                 .into(this)
         } else {
-            if (drawBookName && currentName != null) {
+            if (drawNameOverlayForCurrentCover && drawBookName && currentName != null) {
                 val pathName = if (drawBookAuthor){
                     currentName + currentAuthor
                 } else {

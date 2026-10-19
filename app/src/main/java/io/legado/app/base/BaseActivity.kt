@@ -49,6 +49,11 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     protected abstract val binding: VB
 
+    // D9 桥接（m 版 BaseActivity）：收到主题重建事件时是否重建本 Activity；
+    // 沉浸页（阅读器/视频/音频播放）覆写为 false，避免打断播放
+    open val recreateOnThemeChange: Boolean
+        get() = true
+
     val isInMultiWindow: Boolean
         @SuppressLint("ObsoleteSdkInt")
         get() {

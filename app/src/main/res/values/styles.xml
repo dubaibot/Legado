@@ -146,4 +146,17 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
+
+    <!-- D9: Compose 弹窗样式（多源合并 D9, 清单 2.1.4/2.1.2 前半） -->
+    <style name="AnimDialogCenter">
+        <item name="android:windowEnterAnimation">@anim/dialog_center_enter</item>
+        <item name="android:windowExitAnimation">@anim/dialog_center_exit</item>
+    </style>
+
+    <style name="Theme.Legado.ComposeDialog.Center" parent="@android:style/Theme.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@style/AnimDialogCenter</item>
+    </style>
+
 </resources>

@@ -883,5 +883,44 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefBoolean(PreferKey.isNewExplore, value)
         }
+
+    // ===== D9 桥接（m 版 AppConfig 成员）：字体颜色治理（A3.4）与管理页背景批次落位时以 m 原版覆盖 =====
+    // getter 返回空串 = 未自定义（toThemeTextColorOrNull 返回 null，消费方走默认主题色）；setter 仅持久化原值
+    var uiFontColor: String
+        get() = ""
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.uiFontColor(isNightTheme), value)
+        }
+    var titleFontColor: String
+        get() = ""
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.titleFontColor(isNightTheme), value)
+        }
+    // 管理页背景透明度分数（m v2：禁止预混不透明色）；基座无 E-Ink 模式，省略 isEInkMode 分支
+    val manageBgAlphaFraction: Float
+        get() = appCtx.getPrefInt(PreferKey.manageBgAlpha, 0).coerceIn(0, 100) / 100f
+    // 自定义字体文件路径（m 版成员）：桥接返回空串 = 未自定义，消费方走系统字体
+    val uiFontPath: String
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.uiFontPath(isNightTheme), "").orEmpty()
+    val titleFontPath: String
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.titleFontPath(isNightTheme), "").orEmpty()
+    // 高质量封面加载开关（m 版成员，BookCoverImage 消费）
+    var loadCoverHighQuality: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.loadCoverHighQuality, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.loadCoverHighQuality, value)
+        }
+    // 图片文章预取开关（m 版成员，ImageCanvasViewModel 消费）
+    var imageArticlePrefetch: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.imageArticlePrefetch, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.imageArticlePrefetch, value)
+        }
+    // 图片缓存协程池线程数（m 版成员，ImageCanvasViewModel/WebViewPool 消费）
+    var updateCacheThreadCount: Int
+        get() = appCtx.getPrefInt(PreferKey.updateCacheThreadCount, 16)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.updateCacheThreadCount, value.coerceIn(1, 256))
+        }
 }
 

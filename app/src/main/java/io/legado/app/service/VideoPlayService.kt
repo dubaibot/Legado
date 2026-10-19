@@ -105,7 +105,7 @@ class VideoPlayService : BaseService() {
         try {
             windowManager.updateViewLayout(floatingView, params)
         } catch (e: Exception) {
-            e.printStackTrace()
+            AppLog.put("VideoPlayService: play", e)
         }
     }
 
@@ -166,9 +166,14 @@ class VideoPlayService : BaseService() {
 
     override fun onCreate() {
         super.onCreate()
+        // R3 Bug修复：Android 12+ 要求 startForegroundService 后5秒内必须调用 startForeground()
+        // 否则抛出 ForegroundServiceDidNotStartInTimeException 崩溃
+        // 必须在所有耗时操作之前调用，确保5秒内完成
+        startForegroundNotification()
         initMediaSession()
         initBroadcastReceiver()
         application.registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
+        // P1-5 AppFreeze修复：loadBitmap 的 .get() 在 execute{} 的 IO 线程中执行，不阻塞主线程
         execute {
             ImageLoader
                 .loadBitmap(this@VideoPlayService, VideoPlay.getDisplayCover())
@@ -184,13 +189,10 @@ class VideoPlayService : BaseService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                checkFloatPermission()
-                stopSelf()
-                return START_NOT_STICKY
-            }
-        }
+        // P0-2 悬浮窗不展示修复：
+        // 之前在 onStartCommand 中检查权限，没权限时 stopSelf() 导致服务83ms就销毁
+        // 现在权限检查已移到 Activity.startFloatingWindow() 中预检查
+        // Service 收到启动请求说明权限已通过，直接执行
         if (intent == null) return START_NOT_STICKY
         intent.action?.let { action ->
             when (action) {
@@ -216,7 +218,6 @@ class VideoPlayService : BaseService() {
             val bookUrl = intent.getStringExtra("bookUrl")
             val record = intent.getStringExtra("record")
             VideoPlay.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            // m 源（D8）：initSource 为挂起函数（含嗅探/加载），异步执行后按结果继续
             lifecycleScope.launch {
                 if (!VideoPlay.initSource(sourceKey, sourceType, bookUrl, record)) {
                     stopSelf()
@@ -239,6 +240,10 @@ class VideoPlayService : BaseService() {
 
     @SuppressLint("UnspecifiedImmutableFlag")
     private fun initMediaSession() {
+        mediaSessionCompat.setFlags(
+            MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+        )
         mediaSessionCompat.setCallback(object : MediaSessionCompat.Callback() {
             override fun onSeekTo(pos: Long) = playerView.seekTo(pos)
             override fun onPlay() = resume()
@@ -591,7 +596,7 @@ class VideoPlayService : BaseService() {
             application.unregisterActivityLifecycleCallbacks(activityLifecycleCallbacks)
             playerView.release()
         } catch (e: Exception) {
-            e.printStackTrace()
+            AppLog.put("VideoPlayService: release", e)
         }
     }
 

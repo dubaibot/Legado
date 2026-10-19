@@ -11,7 +11,9 @@ import com.script.rhino.runScriptWithContext
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.MemoryPressure
 import io.legado.app.help.http.addHeaders
+import io.legado.app.help.http.StreamResetRetryInterceptor
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.okHttpClientManga
 import io.legado.app.help.source.SourceHelp
@@ -19,6 +21,7 @@ import io.legado.app.model.ReadManga
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.isWifiConnect
+import io.legado.app.constant.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.SupervisorJob
@@ -28,8 +31,10 @@ import okhttp3.Response
 import okhttp3.ResponseBody
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.SequenceInputStream
 
 
 class OkHttpStreamFetcher(
@@ -50,11 +55,70 @@ class OkHttpStreamFetcher(
     private var call: Call? = null
 
     companion object {
-        private val failUrl = hashSetOf<String>()
+        // log-compliance-cleanup 2.6: 原 TAG="ImgDecrypt" 字面量收编为 AppLog.TAG_IMG_DECRYPT（值不变）
+
+        /**
+         * F-P1-C4：失败 URL 短路缓存（上限 200 条不变）。
+         * F5/2.9d：值改为 FailEntry（重试允许时间+连续失败次数），TTL 指数退避 5→10→20min 封顶，
+         * 过期自动可重试——消除"一次瞬时失败→同 URL 永久秒失败直到 LRU 淘汰"的时好时坏放大器
+         */
+        private class FailEntry(val retryAt: Long, val consecutive: Int)
+
+        private val failUrl = android.util.LruCache<String, FailEntry>(200)
+
+        internal fun failTtlMs(consecutive: Int): Long = when {
+            consecutive <= 1 -> 5 * 60_000L
+            consecutive == 2 -> 10 * 60_000L
+            else -> 20 * 60_000L
+        }
+
+        internal fun markFailed(urlStr: String) {
+            val prev = failUrl.get(urlStr)
+            val consecutive = (prev?.consecutive ?: 0) + 1
+            val now = System.currentTimeMillis()
+            val base = if (prev != null && prev.retryAt > now) prev.retryAt else now
+            failUrl.put(urlStr, FailEntry(base + failTtlMs(consecutive), consecutive))
+        }
+
+        internal fun isBlocked(urlStr: String): Boolean {
+            val entry = failUrl.get(urlStr) ?: return false
+            if (entry.retryAt > System.currentTimeMillis()) return true
+            failUrl.remove(urlStr) // TTL 过期允许重试
+            return false
+        }
+
+        /** H3(sniff-regression-rss-image-crash): 小内存设备超过该大小的图片跳过解密透传（10MB） */
+        internal const val SKIP_DECODE_SIZE_BYTES = 10L * 1024 * 1024
+
+        /** AD-03: 有界缓冲读取结果（exceeded=true 表示超过 limit，调用方透传） */
+        internal class BoundedRead(val bytes: ByteArray, val exceeded: Boolean)
+
+        /**
+         * AD-03(enhance-switch-governance-fix): 有界缓冲读取——增量读入至 limit+1 上限
+         * 内存峰值 ≤ limit + 单块缓冲，与既有 decode readBytes 路径等价量级，堵住 chunked
+         * 无长度响应绕过小内存 OOM 守卫的缺口；恰好等于 limit 时视为未超限（与既有
+         * contentLength > SKIP 语义一致）
+         */
+        internal fun readBounded(body: ResponseBody, limit: Long): BoundedRead {
+            val input = body.byteStream()
+            val out = ByteArrayOutputStream(if (limit < Int.MAX_VALUE) (limit / 4).coerceAtMost(4L * 1024 * 1024).toInt() else Int.MAX_VALUE)
+            val buf = ByteArray(64 * 1024)
+            var total = 0L
+            while (true) {
+                val n = input.read(buf)
+                if (n == -1) return BoundedRead(out.toByteArray(), false)
+                out.write(buf, 0, n)
+                total += n
+                if (total > limit) return BoundedRead(out.toByteArray(), true)
+            }
+        }
     }
 
     override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in InputStream>) {
-        if (failUrl.contains(url.toStringUrl())) {
+        // I-P0-2: 降级链主动重试（bypassFailCacheOption=true）时绕过失败缓存短路，
+        // 否则同 URL 重试永不发请求（86 张 403 仅 1 张真实降级的根因）
+        val bypassFailCache = options.get(OkHttpModelLoader.bypassFailCacheOption) == true
+        if (!bypassFailCache && isBlocked(url.toStringUrl())) {
             callback.onLoadFailed(NoStackTraceException("跳过加载失败的图片"))
             return
         }
@@ -64,9 +128,17 @@ class OkHttpStreamFetcher(
             return
         }
 
-        options.get(OkHttpModelLoader.sourceOriginOption)?.let { sourceUrl ->
+        val sourceUrl = options.get(OkHttpModelLoader.sourceOriginOption)
+        if (sourceUrl != null) {
             source = SourceHelp.getSource(sourceUrl)
         }
+        // log-compliance-cleanup 2.6: 裸 Log.e 收编 AppLog（沿用既有采集 tag 值 ImgDecrypt；
+        // putDebugWithTag 在 recordLog 关闭时 ERROR/WARN/INFO 仍输出 logcat，诊断可见性不降级）
+        AppLog.putDebugWithTag(
+            AppLog.TAG_IMG_DECRYPT,
+            "loadData: source=${source?.getKey()}, manga=$manga",
+            level = AppLog.Level.INFO
+        )
 
         analyzedUrl = AnalyzeUrl(
             url.toString(),
@@ -76,6 +148,19 @@ class OkHttpStreamFetcher(
 
         val requestBuilder = Request.Builder().url(analyzedUrl.toStringUrl())
         requestBuilder.addHeaders(analyzedUrl.headers)
+        // 修复（image-gallery）：图片防盗链失败，如果订阅源 header 未配置 Referer，用 refererOption 兜底
+        // 网页模式 WebView 会自动带文章页 URL 作为 Referer，图片模式需要手动注入
+        val referer = options.get(OkHttpModelLoader.refererOption)
+        if (!referer.isNullOrBlank() && analyzedUrl.headers["Referer"] == null
+            && analyzedUrl.headers["referer"] == null
+        ) {
+            requestBuilder.addHeader("Referer", referer)
+            AppLog.putDebugWithTag(
+                AppLog.TAG_IMG_DECRYPT,
+                "inject Referer from refererOption: refererLen=${referer.length}",
+                level = AppLog.Level.INFO
+            )
+        }
         val request: Request = requestBuilder.build()
         this.callback = callback
         call = if (manga) {
@@ -109,6 +194,20 @@ class OkHttpStreamFetcher(
     }
 
     override fun onFailure(call: Call, e: IOException) {
+        // log-compliance-cleanup 2.6: 脱敏修正——URL 只记长度，禁止完整 URL 进日志（logging_rules 脱敏铁律）
+        AppLog.putDebugWithTag(
+            AppLog.TAG_IMG_DECRYPT,
+            "onFailure: urlLen=${url.toStringUrl().length}, error=${e.message}",
+            e,
+            level = AppLog.Level.ERROR
+        )
+        // sniff-result-pipeline-fix FR-3: StreamResetException 不写入 failUrl
+        // 根因：StreamReset 是 HTTP/2 流重置，连接池连接未淘汰，下次复用仍失败
+        // 方案：StreamResetException 不写入 failUrl，允许后续请求重试（配合 StreamResetRetryInterceptor）
+        // 注：原 onFailure 未写入 failUrl，只有 onResponse 非 2xx 才写入，此处保持原逻辑
+        if (StreamResetRetryInterceptor.isStreamResetException(e)) {
+            AppLog.put("Glide onFailure StreamReset (HTTP/2 流重置, 已由 StreamResetRetryInterceptor 重试)")
+        }
         callback?.onLoadFailed(e)
     }
 
@@ -116,12 +215,19 @@ class OkHttpStreamFetcher(
         responseBody = response.body
         if (!response.isSuccessful) {
             if (!manga) {
-                failUrl.add(url.toStringUrl())
+                markFailed(url.toStringUrl())
             }
             callback?.onLoadFailed(HttpException(response.message, response.code))
             return
         }
-        if (ImageUtils.skipDecode(source, !manga)) {
+        // I-P0-2: 降级重试成功后清除失败缓存旧记录，后续普通 bind 不再被短路
+        if (options.get(OkHttpModelLoader.bypassFailCacheOption) == true) {
+            failUrl.remove(url.toStringUrl())
+        }
+        val isCover = !manga
+        val needDecode = !ImageUtils.skipDecode(source, isCover)
+
+        if (!needDecode) {
             onStreamReady(responseBody!!.byteStream())
             return
         }
@@ -136,10 +242,50 @@ class OkHttpStreamFetcher(
                         ReadManga.book
                     )?.inputStream()
                 } else {
-                    ImageUtils.decode(
-                        analyzedUrl.toStringUrl(), responseBody!!.byteStream(),
-                        isCover = true, source
-                    )
+                    // H3(sniff-regression-rss-image-crash): 小内存设备（heap≤320MB）超大图跳过解密
+                    // 根因：decode(InputStream) 内 readBytes() 全量读入，解密期间原始+结果双份 byte[]
+                    // 存活（峰值 2×图体积），256MB heap 上多张并发极易触顶 OOM；
+                    // 超大图（>10MB）加密概率极低（已知格式本来就会被文件头检测跳过），直接透传
+                    // AD-03(enhance-switch-governance-fix)：chunked/无长度响应 contentLength=-1 绕过守卫，
+                    // 改为有界缓冲探测——增量读至 SKIP+1 上限，超限透传，未超限对缓冲字节走 decode
+                    val contentLength = responseBody?.contentLength() ?: -1
+                    when {
+                        MemoryPressure.isSmallHeap && contentLength > SKIP_DECODE_SIZE_BYTES -> {
+                            // log-compliance-cleanup 2.6: 收编 + 脱敏（URL 只记长度）
+                            AppLog.putDebugWithTag(
+                                AppLog.TAG_IMG_DECRYPT,
+                                "small-heap skip decode: len=$contentLength urlLen=${analyzedUrl.toStringUrl().length}",
+                                level = AppLog.Level.WARN
+                            )
+                            responseBody!!.byteStream()
+                        }
+                        MemoryPressure.isSmallHeap && contentLength < 0 -> {
+                            val bounded = readBounded(responseBody!!, SKIP_DECODE_SIZE_BYTES)
+                            if (bounded.exceeded) {
+                                AppLog.putDebugWithTag(
+                                    AppLog.TAG_IMG_DECRYPT,
+                                    "small-heap skip decode: len=unknown(>limit) urlLen=${analyzedUrl.toStringUrl().length}",
+                                    level = AppLog.Level.WARN
+                                )
+                                SequenceInputStream(
+                                    ByteArrayInputStream(bounded.bytes),
+                                    responseBody!!.byteStream()
+                                )
+                            } else {
+                                ImageUtils.decode(
+                                    analyzedUrl.toStringUrl(),
+                                    ByteArrayInputStream(bounded.bytes),
+                                    isCover = true, source
+                                )
+                            }
+                        }
+                        else -> {
+                            ImageUtils.decode(
+                                analyzedUrl.toStringUrl(), responseBody!!.byteStream(),
+                                isCover = true, source
+                            )
+                        }
+                    }
                 }
             }
             onStreamReady(decodeResult)
@@ -149,7 +295,7 @@ class OkHttpStreamFetcher(
     private fun onStreamReady(inputStream: InputStream?) {
         if (inputStream == null) {
             if (!manga) {
-                failUrl.add(url.toStringUrl())
+                markFailed(url.toStringUrl())
             }
             callback?.onLoadFailed(NoStackTraceException("封面二次解密失败"))
         } else {

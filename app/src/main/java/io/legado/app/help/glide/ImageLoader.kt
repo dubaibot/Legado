@@ -69,6 +69,25 @@ object ImageLoader {
         }
     }
 
+    fun loadBitmap(
+        fragment: Fragment,
+        lifecycle: Lifecycle,
+        path: String?
+    ): RequestBuilder<Bitmap> {
+        val requestManager = Glide.with(fragment).lifecycle(lifecycle).`as`(Bitmap::class.java)
+        return when {
+            path.isNullOrEmpty() -> requestManager.load(path)
+            path.isDataUrl() -> requestManager.load(path)
+            path.isAbsUrl() -> requestManager.load(path)
+            path.isContentScheme() -> requestManager.load(path.toUri())
+            else -> kotlin.runCatching {
+                requestManager.load(File(path))
+            }.getOrElse {
+                requestManager.load(path)
+            }
+        }
+    }
+
     fun loadFile(context: Context, path: String?): RequestBuilder<File> {
         return when {
             path.isNullOrEmpty() -> Glide.with(context).asFile().load(path)
@@ -96,6 +115,31 @@ object ImageLoader {
 
     fun load(context: Context, drawable: Drawable?): RequestBuilder<Drawable> {
         return Glide.with(context).load(drawable)
+    }
+
+    /**
+     * AD-05: 大图采样加载（防止OOM）
+     *
+     * 在load基础上添加override()采样：
+     * - 根据targetWidth/targetHeight调用override()降采样
+     * - 极高分辨率（>4096px）强制降级到2048px
+     *
+     * @param context Context
+     * @param path 图片路径/URL
+     * @param targetWidth 目标宽度（<=0时默认2048）
+     * @param targetHeight 目标高度（<=0时默认2048）
+     * @return RequestBuilder<Drawable> 已配置override采样的请求
+     */
+    fun loadWithSampling(
+        context: Context,
+        path: String?,
+        targetWidth: Int = 2048,
+        targetHeight: Int = 2048
+    ): RequestBuilder<Drawable> {
+        // 极高分辨率强制降级到2048
+        val w = if (targetWidth > 4096 || targetWidth <= 0) 2048 else targetWidth
+        val h = if (targetHeight > 4096 || targetHeight <= 0) 2048 else targetHeight
+        return load(context, path).override(w, h)
     }
 
     fun load(context: Context, bitmap: Bitmap?): RequestBuilder<Drawable> {

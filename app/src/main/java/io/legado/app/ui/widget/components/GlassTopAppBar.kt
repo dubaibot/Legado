@@ -1,0 +1,395 @@
+package io.legado.app.ui.widget.components
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.text.TextUtils
+import android.widget.TextView
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.TopBarConfig
+import io.legado.app.lib.theme.applyUiTitleTypeface
+import io.legado.app.lib.theme.elevation
+import io.legado.app.lib.theme.titleTextColor
+import io.legado.app.ui.theme.ThemeSync
+import java.io.File
+
+/**
+ * 顶栏（S2/S4 统一容器）。
+ *
+ * 主题联动（主题统一 AD-19）：默认容器色跟随「颜色主题」colorPrimary（与 View 体系
+ * TitleBar 一致），阴影高度跟随 barElevation 设置（View 侧 context.elevation，px→dp）。
+ * 特殊页面（视频/阅读等需自定义底色/无阴影）可传 [containerColor] / [elevation] 覆盖。
+ *
+ * H13（2026-08-27 用户裁决）：对齐 MainTopBarView 消费「顶栏管理」TopBarConfig——
+ * 仅 `STYLE_REGULAR` 顶栏包启用时应用背景色/壁纸/圆角/透明度；默认样式维持 colorPrimary 现状，
+ * 避免既有页面顶栏默认态被改成黑/白底。
+ *
+ * W6.5 插槽扩展（my-compose-full Delta 3→1 归一）：
+ * - [barHeight] 高度槽：传入时启用自绘紧凑布局（管理族 48dp 档），替代 M3 TopAppBar 默认高度
+ * - [secondRow] 双行布局槽：标题行下第二行（管理族搜索框内嵌槽，调用方自绘内容）
+ * - [titleFontFamily] 标题字体槽：管理族标题字体跟随页面包
+ * - statusBars 内嵌：自绘分支 windowInsetsPadding(statusBars)（对齐管理族原实现）
+ * 任一扩展槽传入即走自绘分支（渲染路径与 M3 分支同源：TopBarConfig 取色/壁纸/圆角单源）。
+ *
+ * ⚠️ 能力边界（顶栏包 §6.2，名实一致声明）：本组件**不渲染真实毛玻璃/模糊**——实现中无 blur shader，
+ * 「Glass」仅指其半透明容器色（顶栏包 `STYLE_REGULAR` 背景 + 透明度合成 + 圆角）。
+ * 真毛玻璃仅在 **View 侧 `MainTopBarView` 于 API ≥ 33** 通过 `setBackdropBlur` 提供；
+ * 层 1 主 Tab 因此必须保留 View 富实现（`CG-主壳方案.md` 方案 A 终态），不得以本组件替换。
+ *
+ * ⚠️ 死按钮防线（topbar-icon-semantics-fix AD-03）：[navIcon] 与 [onNavClick] 必须成对传入——
+ * 仅当 [onNavClick] 非 null 时才渲染返回位（painter = [navIcon] ?: `ic_back`）；[onNavClick] 为 null
+ * 时**整个返回位不渲染**（即使 [navIcon] 非空，也无任何警告），漏传会导致页面无返回入口。
+ * 调用方必须保证返回可达性。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GlassTopAppBar(
+    title: String,
+    subtitle: String? = null,
+    navIcon: ImageVector? = null,
+    onNavClick: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+    containerColor: Color? = null,
+    elevation: Dp? = null,
+    barHeight: Dp? = null,
+    secondRow: (@Composable ColumnScope.() -> Unit)? = null,
+    titleFontFamily: FontFamily? = null
+) {
+    val context = LocalContext.current
+    // 订阅全局主题信号：ThemeSync.bump() 后本组件重组，重读 primaryColor/elevation 最新值
+    val themeVersion = ThemeSync.version
+    // 顶栏包 §1.3/§2.2（2026-09-25）：样式解析以**契约签名**为记忆键（而非单纯 themeVersion）——
+    // 签名函数与 View 侧同为 `TopBarConfig.currentSignature`（含 themeUiSignature + 顶栏包/样式/搜索态），
+    // 签名未变 ⇒ 复用上次解析结果（不重读配置/壁纸），行为等价（同签名 ⇒ 同解析结果）；
+    // 签名变化才重算。这也是 G-03 能断言「Compose 顶栏宿主真实引用契约签名」的落点（门禁 §3.1 前置）。
+    val styleSignature = remember(themeVersion) {
+        TopBarConfig.currentSignature(AppConfig.isNightTheme)
+    }
+    // bugfix-0908f 尺寸单源：按钮容器/图标尺寸经 TopBarConfig 唯一口径取值
+    // （regular 36/20，default 34/18，×fontScale），与 MainTopBarView 完全同源，禁止写死
+    val actionContainer = TopBarConfig.actionContainerSize(context)
+    val actionIcon = TopBarConfig.actionIconSize(context)
+    val config = remember(styleSignature) {
+        TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+    }
+    val isRegular = config.style == TopBarConfig.STYLE_REGULAR
+    // 顶栏包背景：仅 regular 样式消费（对齐 MainTopBarView renderBackgroundLayer）
+    val wallpaperFile = remember(styleSignature, isRegular) {
+        if (isRegular && !config.wallpaperPath.isNullOrBlank()) {
+            TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
+        } else {
+            null
+        }
+    }
+    // 简化说明: 壁纸全幅显示，crop 裁切按 MainTopBarView 视觉近似
+    // 已知上限: 裁切取景与 View 侧实现存在像素级偏差，极端宽高比壁纸观感可能有差
+    // 升级路径: 精确对齐归后续统一顶栏组件
+    val wallpaper = remember(wallpaperFile) { wallpaperFile?.let(::decodeTopBarWallpaper) }
+    // 顶栏最终色唯一取色入口（AD-01 v1.5）：色相+透明度合一（与 AppManagementTopBar/MainTopBarView 同源），
+    // 禁止组件各自计算；wallpaperAlpha 只作用于壁纸图
+    val defaultColor = remember(styleSignature) {
+        Color(TopBarConfig.resolvePageBarColorWithAlpha(context, config))
+    }
+    // 默认容器色：跟随 TopBarConfig（regular）/「颜色主题」colorPrimary（默认），可覆盖
+    val barColor = containerColor ?: defaultColor
+    // 默认阴影：跟随 barElevation 设置（View 侧 context.elevation，px→dp），可覆盖
+    val barElevation = elevation ?: with(LocalDensity.current) { context.elevation.toDp() }
+    // 内容色：按容器色亮度取黑/白（亮底黑 / 暗底白），与 View Toolbar 对比度一致
+    val contentColor = contrastOn(barColor)
+    val cornerRadius = remember(styleSignature, isRegular) {
+        if (isRegular) TopBarConfig.cornerRadius(context, config) else 0f
+    }
+    // shadow 仅实色容器生效（W0 定稿）：半透明/透明顶栏画阴影会形成可见灰白框（真机实锤）
+    val useCustomLayout = barHeight != null || secondRow != null
+    // W6.5：标题字体槽（管理族 titleFontFamily 跟随页面包）最优先；
+    // bugfix-0908f 铁律：无槽时标题走 TopBarTitleText（AndroidView 桥，主 Tab 同码路径
+    // applyUiTitleTypeface——含主题自定义标题字体文件），禁止 systemTypefaces 三态近似折中
+    val titleStyle = MaterialTheme.typography.titleLarge.copy(
+        fontFamily = titleFontFamily,
+        fontWeight = FontWeight.Normal
+    )
+    Box(modifier = Modifier.shadow(if (barColor.alpha >= 0.99f) barElevation else 0.dp)) {
+        if (wallpaper != null) {
+            Image(
+                bitmap = wallpaper.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alpha = config.wallpaperAlpha.coerceIn(0, 100) / 100f,
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(if (cornerRadius > 0f) Modifier.clip(RoundedCornerShape(cornerRadius)) else Modifier)
+            )
+        }
+        if (useCustomLayout) {
+            // W6.5 自绘分支（管理族委托形态，对齐原 AppManagementTopBar 布局）：
+            // statusBars 内嵌 + 单行(高度槽)/双行(搜索槽) + corner clip 背景
+            // bugfix-0908f T2：补内容色作用域——M3 分支经 navigationIcon/actionIconContentColor
+            // 提供对比度内容色，自绘分支此前漏包 LocalContentColor，nav/action 图标回落主题
+            // onSurface（黑），日夜主题不跟随顶栏容器色（真机实锤：书源管理返回/编辑书源图标黑）
+            CompositionLocalProvider(LocalContentColor provides contentColor) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(barColor)
+                        .then(
+                            if (cornerRadius > 0f) {
+                                Modifier.clip(RoundedCornerShape(cornerRadius))
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(barHeight ?: 64.dp)
+                            .padding(start = 4.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (onNavClick != null) {
+                            // 容器/图标尺寸走 TopBarConfig 单源（与主 Tab 完全同口径）
+                            IconButton(onClick = onNavClick, modifier = Modifier.size(actionContainer.dp)) {
+                                NavIconSlot(navIcon = navIcon, size = actionIcon.dp)
+                            }
+                        }
+                        if (subtitle != null) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 12.dp)
+                            ) {
+                                // bugfix-0908f：标题走同码桥（主题标题字体精确跟随）
+                                TopBarTitleText(
+                                    text = title,
+                                    contentColor = contentColor,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    color = contentColor.copy(alpha = 0.8f)
+                                )
+                            }
+                        } else {
+                            TopBarTitleText(
+                                text = title,
+                                contentColor = contentColor,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 12.dp)
+                            )
+                        }
+                        actions()
+                    }
+                    secondRow?.invoke(this)
+                }
+            }
+        } else {
+            TopAppBar(
+            modifier = if (cornerRadius > 0f) Modifier.clip(RoundedCornerShape(cornerRadius)) else Modifier,
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = if (wallpaper != null) Color.Transparent else barColor,
+                scrolledContainerColor = if (wallpaper != null) Color.Transparent else barColor,
+                navigationIconContentColor = contentColor,
+                titleContentColor = contentColor,
+                actionIconContentColor = contentColor
+            ),
+            title = {
+                if (titleFontFamily == null) {
+                    // bugfix-0908f：无主题包字体槽时走同码桥（主题标题字体精确跟随）
+                    TopBarTitleText(text = title, contentColor = contentColor)
+                } else {
+                    if (subtitle != null) {
+                        Column {
+                            Text(
+                                text = title,
+                                style = titleStyle,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                color = contentColor.copy(alpha = 0.8f)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = title,
+                            style = titleStyle,
+                            maxLines = 1
+                        )
+                    }
+                }
+            },
+            navigationIcon = {
+                if (onNavClick != null) {
+                    // 容器/图标尺寸走 TopBarConfig 单源（与主 Tab 完全同口径）
+                    IconButton(
+                        onClick = onNavClick,
+                        modifier = Modifier.size(actionContainer.dp)
+                    ) {
+                        NavIconSlot(navIcon = navIcon, size = actionIcon.dp)
+                    }
+                }
+            },
+            actions = actions
+        )
+        }
+    }
+}
+
+/**
+ * 返回位图标槽（顶栏包 §1.6 / AD-TB-09 + 顶栏图标资产统一铁律）。
+ *
+ * 语义：
+ * · **返回位由 `onNavClick` 驱动**——`onNavClick == null` ⇒ 不渲染返回位。与旧门槛
+ *   `navIcon != null && onNavClick != null` 在现网**全部调用点等价**（实施前已机检：全仓
+ *   「有 onNavClick 但无 navIcon」的宿主数 = 0）。
+ * · 图标取 `navIcon`，但**「默认返回」语义（Material `Icons.AutoMirrored.Filled.ArrowBack`）归一为
+ *   项目资产 `R.drawable.ic_back`**；其余图标（如选择态 `Icons.Default.Close`）按传入值渲染。
+ *
+ * 为什么必须归一（而不是改成「凡传即生效」）：全仓 **52 处**调用点都传同一个 Material ArrowBack，
+ * 而原实现**完全忽略 navIcon、恒渲染 `ic_back`**；若改成「凡传即生效」，这 52 处会统一切到 Material
+ * 粗线资产 ⇒ 直接违反「顶栏图标资产统一（细线 `ic_back`）」铁律。归一后收益：
+ * ①这 52 处像素零变化；②`LogManageScreen` 选择态的 `Icons.Default.Close` **首次真正生效**
+ * （原实现属「传了也不显示」的真缺陷）；③`onNavClick` 成为返回位的唯一驱动，语义单源。
+ */
+@Composable
+private fun NavIconSlot(navIcon: ImageVector?, size: androidx.compose.ui.unit.Dp) {
+    if (navIcon != null && navIcon !== Icons.AutoMirrored.Filled.ArrowBack) {
+        Icon(
+            imageVector = navIcon,
+            contentDescription = null,
+            modifier = Modifier.size(size)
+        )
+    } else {
+        Icon(
+            // 顶栏包 §1.1：默认返回资产改为**契约取值**（原先写死 R.drawable.ic_back ⇒ 换资产必漏改）
+            painter = painterResource(TopBarConfig.Icons.navBack),
+            contentDescription = null,
+            modifier = Modifier.size(size)
+        )
+    }
+}
+
+/**
+ * 顶栏标题精确跟随组件（bugfix-0908f 资产统一铁律）：
+ * 无 titleFontFamily 槽时的标题渲染走主 Tab 同码路径——[applyUiTitleTypeface]
+ * （含主题"标题字体"自定义字体文件），禁止 systemTypefaces 三态近似折中。
+ * 主题变更经 ThemeSync.version 订阅触发重组重应用。
+ */
+@Composable
+private fun TopBarTitleText(
+    text: String,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    ThemeSync.version
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            TextView(ctx).apply {
+                textSize = 20f
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+        },
+        update = { tv ->
+            tv.text = text
+            tv.setTextColor(contentColor.toArgb())
+            tv.applyUiTitleTypeface(context)
+        }
+    )
+}
+
+/** 顶栏壁纸有界解码（防大图 OOM），与 ConfigActivity 顶栏同策略。 */
+internal fun decodeTopBarWallpaper(file: File, maxDim: Int = 2048): Bitmap? {
+    return runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        var sample = 1
+        while (sample * 2 <= maxDim.coerceAtLeast(1) &&
+            (bounds.outWidth / (sample * 2) >= maxDim || bounds.outHeight / (sample * 2) >= maxDim)
+        ) {
+            sample *= 2
+        }
+        BitmapFactory.decodeFile(
+            file.absolutePath,
+            BitmapFactory.Options().apply { inSampleSize = sample }
+        )
+    }.getOrNull()
+}
+
+/**
+ * H15（2026-08-28）：顶栏内容色统一取值（自绘/管理页顶栏接入 TopBarConfig 后共用）——
+ * 「顶栏管理」STYLE_REGULAR 时按包背景（含透明度合成）对比度取黑/白（对齐 GlassTopAppBar），
+ * 未启用回落主题 titleTextColor（与 View Toolbar/AppManagementTopBar 对比度口径一致）。
+ */
+@Composable
+internal fun rememberTopBarContentColor(): Color {
+    val context = LocalContext.current
+    val themeVersion = ThemeSync.version
+    val config = remember(themeVersion) {
+        TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+    }
+    return if (config.style == TopBarConfig.STYLE_REGULAR) {
+        contrastOn(
+            Color(
+                TopBarConfig.withOpacity(
+                    TopBarConfig.resolveBackgroundColor(config),
+                    config.wallpaperAlpha
+                )
+            )
+        )
+    } else {
+        Color(context.titleTextColor)
+    }
+}

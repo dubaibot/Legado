@@ -35,6 +35,11 @@ abstract class BaseService : LifecycleService() {
         block: suspend CoroutineScope.() -> T
     ) = Coroutine.async(scope, context, start, executeContext, semaphore, block)
 
+    /**
+     * D9 桥接（m 版 BaseService）：onTaskRemoved 时是否停止服务，默认 true 保持既有行为。
+     */
+    protected open val stopSelfOnTaskRemoved: Boolean = true
+
     @CallSuper
     override fun onCreate() {
         super.onCreate()
@@ -58,7 +63,7 @@ abstract class BaseService : LifecycleService() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         LogUtils.d(simpleName, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
-        stopSelf()
+        if (stopSelfOnTaskRemoved) stopSelf()
     }
 
     override fun onBind(intent: Intent): IBinder? {

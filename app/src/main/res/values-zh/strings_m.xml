@@ -20,4 +20,51 @@
     <string name="video_route_self_heal_toast">播放失败，已自动切换到线路：%1$s</string>
     <string name="video_download_no_url">视频地址不可用，无法下载</string>
     <string name="video_favorite_no_context">无法收藏：未获取到文章信息</string>
+
+    <!-- D9: 视频壳/投屏/顶栏配置（多源合并 D9, 清单 2.1.4/2.1.2 前半） -->
+    <string name="change_source">换源</string>
+    <string name="config_settings">&#37197;&#32622;</string>
+    <string name="custom_button">&#23450;&#21046;&#25353;&#38062;</string>
+    <string name="float_permission_rationale">&#38405;&#35835;&#38656;&#35201;&#24748;&#28014;&#31383;&#26435;&#38480;&#26469;&#26174;&#31034;&#25773;&#25918;&#31383;&#21475;</string>
+    <string name="float_window">&#24748;&#28014;&#31383;</string>
+    <string name="more">更多</string>
+    <string name="next">&#19979;&#19968;&#39318;</string>
+    <string name="open_other_video_player">&#20854;&#23427;&#25773;&#25918;&#22120;&#25171;&#24320;</string>
+    <string name="previous">&#19978;&#19968;&#39318;</string>
+    <string name="tip_template_empty">（空模板，该槽位不显示内容）</string>
+    <string name="tip_template_help">点选下方变量插入占位符（插入到光标处）；预览按阅读页样本值渲染，未知占位符原样显示</string>
+    <string name="tip_template_label">模板内容</string>
+    <string name="tip_template_preview">预览</string>
+    <string name="top_bar_config_missing">缺少顶栏配置</string>
+    <string name="top_bar_day_default_name">默认日间顶栏</string>
+    <string name="top_bar_name_exists">顶栏名称已存在</string>
+    <string name="top_bar_night_default_name">默认夜间顶栏</string>
+    <string name="video">&#35270;&#39057;</string>
+
+
+
+
+    <!-- D9: 第二批（cast 面板/设置组件/AI 选型） -->
+    <string name="ai_add_all_models">添加全部新模型</string>
+    <string name="ai_add_model_from_list">从接口列表选择</string>
+    <string name="ai_add_model_manual">手动填写模型 ID</string>
+    <string name="ai_api_key">API Key</string>
+    <string name="ai_balance_json_path">余额取值路径</string>
+    <string name="ai_balance_url">余额接口地址</string>
+    <string name="ai_base_url">Base URL</string>
+    <string name="ai_current_model">当前模型</string>
+    <string name="ai_custom_headers">自定义请求头</string>
+    <string name="ai_fetch_models">获取模型列表</string>
+    <string name="ai_fetch_models_add_selected">添加已选（%1$d）</string>
+    <string name="ai_fetch_models_add_selected_empty">添加已选</string>
+    <string name="ai_fetch_models_click_add_long_select">点击添加，长按多选</string>
+    <string name="ai_fetch_models_click_toggle">点击切换勾选</string>
+    <string name="ai_fetch_models_existing">已添加</string>
+    <string name="ai_fetch_models_long_press_hint">点击添加单个模型，长按模型可勾选多个。</string>
+    <string name="ai_fetch_models_selected_hint">已选择 %1$d 个模型，点击条目可调整勾选。</string>
+    <string name="ai_provider_name">提供商名称</string>
+    <string name="ai_query_balance">查询余额</string>
+
+    <string name="image_back_to_top">返回顶部</string>
+
 </resources>

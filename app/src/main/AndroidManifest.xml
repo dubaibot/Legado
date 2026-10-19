@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- D9 桥接：miuix-android 0.8.8 要求 minSdk 23，工作区保持 minSdk 21；
+         API<23 设备仅在实例化 miuix 系 Compose 组件时有风险，D10 组件库全量日正式裁决 -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
@@ -514,6 +518,11 @@
             android:foregroundServiceType="mediaPlayback" />
         <service
             android:name=".service.VideoPlayService"
+            android:foregroundServiceType="mediaPlayback" />
+        <!-- add-dlna-cast：投屏会话前台服务（承载 SSDP 发现、拉流代理与轮询保活）
+             注：用 mediaPlayback 而非 dataSync —— Android 15 对 dataSync 有每 24h 累计 6h 上限 -->
+        <service
+            android:name=".service.DlnaCastService"
             android:foregroundServiceType="mediaPlayback" />
         <service
             android:name=".service.DownloadService"
