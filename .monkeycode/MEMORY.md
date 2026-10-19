@@ -107,3 +107,15 @@ Entries discovered by the Agent during task execution should follow this format:
   - SourcePreconnectHelper/warmUpConnection 已就位，消费方（Rss.kt/BookChapterList）在 D11 接线
   - 工作区 AppLog 已在 D8 整体替换为 m 版（337 行，含 putDebug/putDebugWithTag/putSampled/Level/TAG_*），此前的"精简版降级适配"指引作废；从 m 搬日志代码可直接用 m 原文
   - 工作区 DNS 兜底/HTTP 缓存属 m 的 HttpHelper 大段演进（m 版 412 行 vs 工作区 226 行），D11 移植时整段对比；D8 已先行拉入 DohDns/HostAccessStrategy/videoStreamClient（ExoPlayerHelper 硬依赖）
+
+[Project Knowledge Summary]
+- Date: 2026-10-19
+- Context: D9 播放壳搬入完成（20 轮构建迭代收敛），沉淀依赖外溢治理与 shim 模式
+- Category: Build Methods
+- Instructions:
+  - 跨批次依赖用 shim 隔离：m 文件拖出大子系统（cloud/AI/DB v94）时，在工作区写同名最小 shim 覆盖当前消费面（D9 三例：TopBarConfig 695 行拖 AppCloudStorage→shim；AppSettingComponents 781 行拖 LazyColumnScrollbar→撤拉+shim；CoverCollectionManager 拖 sceneBookmarks Room 实体→shim），shim 文件头注明落位批次，届时以 m 原版覆盖
+  - 判断"整拉 vs 合并"用 diff 的删除行数：`diff ws m | grep -c "^<"` 为 0 即 m 纯超集可整拉；非 0 时逐行看——工作区专属行若只是 m 的旧版代码（演进关系）仍可整拉，若是工作区特色接线才需三路合并
+  - 取 m 活动内引用 DB 实体/DAO 的功能且实体未注册（schema 规则禁止）时：调用点降级为 toast stub，实体与 helper 不拉（备份到 /tmp/opencode 备份目录）
+  - sqlite3.executescript 要求语句以分号分隔，组合迁移 SQL 快照（多个 CREATE/ALTER 拼接）每条必须带分号
+  - miuix 接入技巧：exclude(group:) 排除 androidx.compose.* 与 org.jetbrains.compose* 全系传递组可让 miuix 0.8.8 在 minSdk 21 + BOM 2025.04.01 下工作，manifest 加 uses-sdk tools:overrideLibrary；D10 全量组件时复验
+  - 构建错误收敛时用 `grep "^e: file" <log> | sed 's|.*io/legado/app/||; s/:[0-9]*:[0-9]* /: /' | sort -u` 取全量唯一清单（tail 截断会漏），编译器错误是唯一真值（自制扫描器误报多）
