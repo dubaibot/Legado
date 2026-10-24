@@ -75,3 +75,14 @@ Entries discovered by the Agent during task execution should follow this format:
   - `-x lintVitalAnalyzeAppRelease -x lintVitalAnalyzeRelease` 不会跳过 `lintVitalAppRelease`（不同任务名），但该任务正常完成无需额外跳过
   - soundtouch-jni（D30 TTS 引擎依赖）需要 proguard keep 规则：`-keep class com.tianscar.soundtouch.** { *; }`（ng fork 有此规则）
   - Release APK 产物：universal 31.9MB（R8 混淆后）、arm64-v8a 23.3MB、armeabi-v7a 22.5MB
+
+[死代码审计方法教训]
+- Date: 2026-10-24
+- Context: 分支全面检测中误判 data/entities/readRecord/ReadRecord.kt 为死代码（grep head -5 截断漏掉 BackupFileValidator.kt:17 的 import），删除后 compileAppDebugKotlin 失败，恢复后通过
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 引用完整性审计禁止对 grep 结果用 head/N 截断采样——截断处之外的真实引用会漏检，必须全量输出
+  - 死代码判定需四重验证：限定 import 全量 grep + 同包未限定引用 grep（含子目录共享包声明）+ 通配 import `pkg.*` 检查 + 编译兜底
+  - 同名文件在不同包是合法的（style1/style2 书架适配器等 26 对同名文件均为正常），判定死代码看引用看包名，看文件名
+  - Launcher1-7 等类可定义在同名外文件中（WelcomeActivity.kt 内含 7 个 Launcher 顶级类），按类名全树 grep 而非按文件名找
+  - Kotlin 词法扫描需正确处理 raw string 的 `""""` 四引号结尾（末尾 3 引号是终止符，第 4 个是内容），否则误报花括号不平衡
