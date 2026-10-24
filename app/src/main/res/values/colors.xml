@@ -117,4 +117,36 @@
     <color name="ate_navigation_drawer_selected_dark">#202020</color>
 
     <color name="book_ant_10">#141414</color>
+
+    <color name="image_canvas_dark">#FF111111</color>
+
+    <color name="panel_btn_bg">#1A000000</color>
+
+    <color name="book_info_frost">#DDF1F2F6</color>
+
+    <color name="dialog_surface">#FFFFFFFF</color>
+
+    <color name="panel_btn_ripple">#33000000</color>
+
+    <color name="glass_stroke">#668FA8C8</color>
+
+    <color name="drag_handle_bg">#4D000000</color>
+    <color name="default_background">#fffbfbfb</color>
+    <color name="default_night_accent">#FFFFFF</color>
+    <color name="default_primary">#fff5f5f5</color>
+    <color name="default_night_background">#000000</color>
+    <color name="default_bottom_background">#fff5f5f5</color>
+    <color name="background_add_button">#04000000</color>
+    <color name="border_add_button">#08000000</color>
+    <color name="background_card_surface">#0F000000</color>
+    <color name="default_accent">#fff44336</color>
+    <color name="default_night_bottom_background">#000000</color>
+    <color name="default_night_primary">#000000</color>
+    <color name="background_tab_selected">#06000000</color>
+    <color name="ai_chat_bubble_user">#0D000000</color>
+    <color name="ai_chat_bubble_assistant">#0D888888</color>
+    <color name="background_action_button">#04000000</color>
+    <color name="border_card_surface">#1A000000</color>
+    <color name="background_tab_container">#0A000000</color>
+    <color name="background_preview_card">#FFFFFF</color>
 </resources>

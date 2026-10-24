@@ -36,4 +36,262 @@
     <dimen name="fastscroll_scrollbar_padding_end">8dp</dimen>
 
     <dimen name="fixed_height_bottom_padding">8dp</dimen>
+
+    <dimen name="bookshelf_tag_item_min_width">36dp</dimen>
+
+    <dimen name="bookshelf_title_select_height">42dp</dimen>
+
+    <dimen name="text_22sp">22sp</dimen>
+
+    <dimen name="bookshelf_top_overlay_gap">6dp</dimen>
+
+    <dimen name="text_20sp">20sp</dimen>
+
+    <dimen name="main_sidebar_header_padding_top">28dp</dimen>
+
+    <dimen name="bookshelf_tag_bar_margin_horizontal">16dp</dimen>
+
+    <dimen name="manga_control_bar_radius">24dp</dimen>
+
+    <dimen name="main_sidebar_goal_text_margin_start">14dp</dimen>
+
+    <dimen name="rss_free_text_block_height">46sp</dimen>
+
+    <dimen name="waterfall_card_min_height">260dp</dimen>
+
+    <dimen name="corner_extra_small">4dp</dimen>
+
+    <dimen name="elevation_level4">8dp</dimen>
+
+    <dimen name="text_17sp">17sp</dimen>
+
+    <dimen name="main_bottom_bar_corner_radius">24dp</dimen>
+
+    <dimen name="main_sidebar_item_icon_padding">11dp</dimen>
+
+    <dimen name="text_label_small">11sp</dimen>
+
+    <dimen name="elevation_level2">3dp</dimen>
+
+    <dimen name="bookshelf_tag_bar_margin_top">8dp</dimen>
+
+    <dimen name="text_title_medium">16sp</dimen>
+
+    <dimen name="main_sidebar_goal_card_padding">18dp</dimen>
+
+        <dimen name="main_ai_floating_ball_safe_margin">24dp</dimen>
+
+    <dimen name="manga_control_seek_margin_horizontal">8dp</dimen>
+
+    <dimen name="manga_control_button_min_width">72dp</dimen>
+
+    <dimen name="main_bottom_indicator_width">52dp</dimen>
+
+    <dimen name="bookshelf_action_button_margin_end">16dp</dimen>
+
+    <dimen name="main_sidebar_item_padding_horizontal">14dp</dimen>
+
+    <dimen name="spacing_xxl">32dp</dimen>
+
+    <dimen name="text_title_large">20sp</dimen>
+
+    <dimen name="bookshelf_tag_item_height">28dp</dimen>
+
+    <dimen name="waterfall_card_min_width">82dp</dimen>
+
+    <dimen name="text_title_small">14sp</dimen>
+
+    <dimen name="bookshelf_tag_item_radius">9dp</dimen>
+    <dimen name="bookshelf_tag_item_corner_radius_selected">14dp</dimen>
+    <dimen name="bookshelf_tag_item_stroke_width">1dp</dimen>
+
+    <dimen name="bookshelf_action_button_padding">8dp</dimen>
+
+    <dimen name="manga_control_outer_margin_horizontal">16dp</dimen>
+
+        <dimen name="main_ai_floating_ball_icon_padding">13dp</dimen>
+
+    <dimen name="main_bottom_nav_horizontal_padding">6dp</dimen>
+
+    <dimen name="text_label_medium">12sp</dimen>
+
+    <dimen name="text_28sp">28sp</dimen>
+
+    <dimen name="main_sidebar_goal_text_spacing">6dp</dimen>
+
+    <dimen name="bookshelf_content_margin_top">12dp</dimen>
+
+    <dimen name="manga_control_bar_stroke_width">1dp</dimen>
+
+    <dimen name="spacing_md">12dp</dimen>
+
+    <dimen name="elevation_level1">1dp</dimen>
+
+    <dimen name="manga_control_button_padding_horizontal">12dp</dimen>
+
+    <dimen name="manga_control_bar_padding_horizontal">8dp</dimen>
+
+    <dimen name="corner_medium">12dp</dimen>
+
+    <dimen name="main_sidebar_goal_card_min_height">96dp</dimen>
+
+    <dimen name="text_36sp">36sp</dimen>
+
+    <dimen name="main_sidebar_item_text_margin_start">14dp</dimen>
+
+    <dimen name="text_12sp">12sp</dimen>
+
+    <dimen name="spacing_lg">16dp</dimen>
+
+    <dimen name="corner_large">16dp</dimen>
+
+    <dimen name="manga_control_button_text_size">13sp</dimen>
+
+    <dimen name="main_sidebar_search_icon_size">42dp</dimen>
+
+    <dimen name="text_display_small">36sp</dimen>
+
+    <dimen name="main_sidebar_search_icon_padding">10dp</dimen>
+
+    <dimen name="main_bottom_bar_gap">10dp</dimen>
+
+    <dimen name="text_body_medium">14sp</dimen>
+
+    <dimen name="main_sidebar_scroll_margin_top">16dp</dimen>
+
+    <dimen name="text_headline_medium">28sp</dimen>
+
+    <dimen name="text_16sp">16sp</dimen>
+
+    <dimen name="text_11sp">11sp</dimen>
+
+    <dimen name="text_18sp">18sp</dimen>
+
+    <dimen name="main_bottom_indicator_corner_radius">20dp</dimen>
+
+    <dimen name="main_bottom_standard_icon_size">24dp</dimen>
+
+    <dimen name="spacing_xs">4dp</dimen>
+
+    <dimen name="main_sidebar_spacing">8dp</dimen>
+
+    <dimen name="bookshelf_title_row_margin_end">10dp</dimen>
+
+    <dimen name="text_32sp">32sp</dimen>
+
+    <dimen name="bookshelf_tag_recycler_padding_vertical">4dp</dimen>
+
+    <dimen name="bookshelf_title_arrow_margin_start">0dp</dimen>
+
+    <dimen name="main_sidebar_panel_padding_vertical">18dp</dimen>
+
+    <dimen name="main_sidebar_goal_avatar_radius">27dp</dimen>
+
+    <dimen name="text_14sp">14sp</dimen>
+
+    <dimen name="text_24sp">24sp</dimen>
+
+    <dimen name="text_15sp">15sp</dimen>
+
+    <dimen name="bookshelf_tag_bar_padding_vertical">1dp</dimen>
+
+    <dimen name="main_bottom_controls_horizontal_padding">20dp</dimen>
+
+    <dimen name="corner_small">8dp</dimen>
+
+    <dimen name="text_label_large">14sp</dimen>
+
+    <dimen name="spacing_sm">8dp</dimen>
+
+    <dimen name="main_content_bottom_bar_padding">90dp</dimen>
+
+    <dimen name="text_13sp">13sp</dimen>
+
+    <dimen name="rss_unread_dot_size">8dp</dimen>
+
+    <dimen name="bookshelf_tag_item_margin_horizontal">2dp</dimen>
+
+    <dimen name="spacing_xl">24dp</dimen>
+
+    <dimen name="main_bottom_bar_height">48dp</dimen>
+
+    <dimen name="bookshelf_tag_item_max_width">96dp</dimen>
+
+    <dimen name="main_search_button_elevation">14dp</dimen>
+
+    <dimen name="bookshelf_tag_bar_height">38dp</dimen>
+
+    <dimen name="bookshelf_action_button_size">34dp</dimen>
+
+    <dimen name="main_sidebar_goal_avatar_size">54dp</dimen>
+
+    <dimen name="elevation_level5">12dp</dimen>
+
+    <dimen name="main_sidebar_search_margin_top">12dp</dimen>
+
+    <dimen name="main_bottom_indicator_margin_start">6dp</dimen>
+
+        <dimen name="main_ai_floating_ball_size">52dp</dimen>
+
+    <dimen name="bookshelf_title_arrow_size">18dp</dimen>
+
+    <dimen name="manga_control_seek_height">28dp</dimen>
+
+    <dimen name="main_bottom_standard_height">66dp</dimen>
+
+    <dimen name="ui_action_radius">9dp</dimen>
+
+    <dimen name="ui_panel_radius">10dp</dimen>
+
+    <dimen name="main_sidebar_item_icon_size">44dp</dimen>
+
+    <dimen name="elevation_level0">0dp</dimen>
+
+    <dimen name="top_bar_regular_action_size">36dp</dimen>
+
+    <dimen name="main_bottom_indicator_height">40dp</dimen>
+
+    <dimen name="bookshelf_tag_bar_padding_horizontal">3dp</dimen>
+
+    <dimen name="main_sidebar_search_height">42dp</dimen>
+
+    <dimen name="text_10sp">10sp</dimen>
+
+    <dimen name="waterfall_cover_min_height">108dp</dimen>
+
+    <dimen name="main_sidebar_row_height">60dp</dimen>
+
+    <dimen name="manga_control_bar_height">48dp</dimen>
+
+    <dimen name="main_bottom_controls_bottom_padding">10dp</dimen>
+
+    <dimen name="main_bottom_nav_icon_size">23dp</dimen>
+
+    <dimen name="bookshelf_tag_indicator_width">44dp</dimen>
+
+    <dimen name="main_bottom_bar_elevation">12dp</dimen>
+
+    <dimen name="text_headline_small">24sp</dimen>
+
+    <dimen name="main_sidebar_group_margin_bottom">8dp</dimen>
+
+    <dimen name="bookshelf_title_row_margin_top">8dp</dimen>
+
+    <dimen name="waterfall_card_gap">8dp</dimen>
+
+    <dimen name="bookshelf_title_row_margin_start">16dp</dimen>
+
+    <dimen name="elevation_level3">6dp</dimen>
+
+    <dimen name="text_body_small">12sp</dimen>
+
+    <dimen name="bookshelf_tag_bar_radius">10dp</dimen>
+
+    <dimen name="text_body_large">16sp</dimen>
+
+    <dimen name="manga_control_outer_margin_vertical">14dp</dimen>
+
+    <dimen name="bookshelf_tag_item_padding_horizontal">12dp</dimen>
+
+    <dimen name="main_sidebar_panel_padding_horizontal">18dp</dimen>
 </resources>

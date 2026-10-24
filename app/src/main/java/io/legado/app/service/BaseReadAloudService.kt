@@ -85,8 +85,37 @@ abstract class BaseReadAloudService : BaseService(),
         var timeMinute: Int = 0
             private set
 
+        @Volatile
+        @JvmStatic
+        var activeBookUrl: String? = null
+            private set
+
+        @Volatile
+        @JvmStatic
+        var activeBookCover: String? = null
+            private set
+
+        @Volatile
+        @JvmStatic
+        var pendingChapterSwitchIndex: Int? = null
+            private set
+
         fun isPlay(): Boolean {
             return isRun && !pause
+        }
+
+        fun isActiveBook(bookUrl: String?): Boolean {
+            return isRun && !bookUrl.isNullOrEmpty() && activeBookUrl == bookUrl
+        }
+
+        fun markPendingChapterSwitch(chapterIndex: Int) {
+            if (isRun) {
+                pendingChapterSwitchIndex = chapterIndex
+            }
+        }
+
+        fun hasPendingChapterSwitch(): Boolean {
+            return pendingChapterSwitchIndex != null
         }
 
         private const val TAG = "BaseReadAloudService"

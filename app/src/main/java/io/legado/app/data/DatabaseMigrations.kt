@@ -20,7 +20,134 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
+            migration_94_95, migration_95_96,
         )
+    }
+
+    // 94 -> 95: readRecord 升级为 max 语义（新增 bookAuthor 列并纳入主键，附 durChapterTitle/durChapterIndex 快照列）
+    // PK 变更 Room AutoMigration 不支持，需手动重建表
+    private val migration_94_95 = object : Migration(94, 95) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE readRecord_new(
+                    deviceId TEXT NOT NULL,
+                    bookName TEXT NOT NULL,
+                    bookAuthor TEXT NOT NULL DEFAULT '',
+                    readTime INTEGER NOT NULL DEFAULT 0,
+                    lastRead INTEGER NOT NULL DEFAULT 0,
+                    durChapterTitle TEXT NOT NULL DEFAULT '',
+                    durChapterIndex INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(deviceId, bookName, bookAuthor)
+                )"""
+            )
+            db.execSQL(
+                """INSERT INTO readRecord_new(deviceId, bookName, bookAuthor, readTime, lastRead, durChapterTitle, durChapterIndex)
+                   SELECT r.deviceId, r.bookName,
+                          (SELECT b.author FROM books b WHERE b.name = r.bookName LIMIT 1),
+                          r.readTime, r.lastRead, '', 0
+                   FROM readRecord r"""
+            )
+            db.execSQL("DROP TABLE readRecord")
+            db.execSQL("ALTER TABLE readRecord_new RENAME TO readRecord")
+        }
+    }
+
+
+    // 95 -> 96: 移植 ng AI/Agent/书友角色子系统（12 表 + 索引），createSql 取自 ng schema 119.json
+    private val migration_95_96 = object : Migration(95, 96) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE bookSources ADD COLUMN mainJs TEXT")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `bookCharacterProfiles` (`workKey` TEXT NOT NULL, `bookName` TEXT NOT NULL DEFAULT '', `bookAuthor` TEXT NOT NULL DEFAULT '', `latestBookUrl` TEXT, `characterCount` INTEGER NOT NULL DEFAULT 0, `enabled` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`workKey`))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `bookCharacters` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `workKey` TEXT NOT NULL DEFAULT '', `name` TEXT NOT NULL DEFAULT '', `gender` TEXT NOT NULL DEFAULT 'unknown', `roleTag` TEXT NOT NULL DEFAULT 'unknown', `identity` TEXT, `aliasesJson` TEXT, `intro` TEXT, `shortIntro` TEXT, `avatarUri` TEXT, `portraitUri` TEXT, `imagePrompt` TEXT, `enabled` INTEGER NOT NULL DEFAULT 1, `sortOrder` INTEGER NOT NULL DEFAULT 0, `source` TEXT NOT NULL DEFAULT 'manual', `confidence` REAL NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`workKey`) REFERENCES `bookCharacterProfiles`(`workKey`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_bookCharacters_workKey` ON `bookCharacters` (`workKey`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_bookCharacters_workKey_name` ON `bookCharacters` (`workKey`, `name`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `bookCharacterTtsBindings` (`workKey` TEXT NOT NULL DEFAULT '', `targetType` TEXT NOT NULL DEFAULT 'character', `targetId` INTEGER NOT NULL DEFAULT 0, `engineId` TEXT NOT NULL DEFAULT '', `voiceId` TEXT, `bindingMode` TEXT NOT NULL DEFAULT 'manual', `emotionStyleMapJson` TEXT NOT NULL DEFAULT '{}', `autoConfidence` REAL NOT NULL DEFAULT 1.0, `autoEvidenceSignature` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`workKey`, `targetType`, `targetId`, `engineId`), FOREIGN KEY(`workKey`) REFERENCES `bookCharacterProfiles`(`workKey`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_bookCharacterTtsBindings_workKey` ON `bookCharacterTtsBindings` (`workKey`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_bookCharacterTtsBindings_workKey_targetType_targetId_engineId` ON `bookCharacterTtsBindings` (`workKey`, `targetType`, `targetId`, `engineId`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `bookTtsCastRoleContributions` (`workKey` TEXT NOT NULL DEFAULT '', `chapterIndex` INTEGER NOT NULL DEFAULT 0, `roleId` INTEGER NOT NULL DEFAULT 0, `cacheKey` TEXT NOT NULL DEFAULT '', `cacheRevision` INTEGER NOT NULL DEFAULT 0, `namesJson` TEXT NOT NULL DEFAULT '[]', `gender` TEXT NOT NULL DEFAULT 'unknown', `identityState` TEXT NOT NULL DEFAULT 'pending', `nameType` TEXT NOT NULL DEFAULT 'unknown', `identityEvidence` TEXT NOT NULL DEFAULT 'unknown', `genderEvidence` TEXT NOT NULL DEFAULT 'unknown', `occurrenceCount` INTEGER NOT NULL DEFAULT 0, `representativeTextsJson` TEXT NOT NULL DEFAULT '[]', `identityEvidenceJson` TEXT NOT NULL DEFAULT '[]', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`workKey`, `chapterIndex`, `roleId`), FOREIGN KEY(`workKey`) REFERENCES `bookCharacterProfiles`(`workKey`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`roleId`) REFERENCES `bookTtsCastRoles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_bookTtsCastRoleContributions_workKey_chapterIndex` ON `bookTtsCastRoleContributions` (`workKey`, `chapterIndex`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_bookTtsCastRoleContributions_roleId` ON `bookTtsCastRoleContributions` (`roleId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_bookTtsCastRoleContributions_cacheKey` ON `bookTtsCastRoleContributions` (`cacheKey`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `aiChatConversations` (`id` TEXT NOT NULL, `assistantId` TEXT NOT NULL DEFAULT 'default', `agentModeRevision` TEXT NOT NULL DEFAULT '', `modeEntryContext` TEXT NOT NULL DEFAULT '', `modeEntryStarted` INTEGER NOT NULL DEFAULT 0, `title` TEXT NOT NULL DEFAULT '', `createAt` INTEGER NOT NULL DEFAULT 0, `updateAt` INTEGER NOT NULL DEFAULT 0, `isPinned` INTEGER NOT NULL DEFAULT 0, `customSystemPrompt` TEXT NOT NULL DEFAULT '', `loadedSkillIds` TEXT NOT NULL DEFAULT '[]', `enabledMcpCapabilityIds` TEXT NOT NULL DEFAULT '[]', `uploadMessages` TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(`id`))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `aiChatMessageNodes` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL DEFAULT '', `nodeIndex` INTEGER NOT NULL DEFAULT 0, `messages` TEXT NOT NULL DEFAULT '[]', `selectIndex` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`), FOREIGN KEY(`conversationId`) REFERENCES `aiChatConversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_aiChatMessageNodes_conversationId` ON `aiChatMessageNodes` (`conversationId`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `aiSkills` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `content` TEXT NOT NULL, `scope` TEXT NOT NULL, `builtIn` INTEGER NOT NULL DEFAULT 0, `enabled` INTEGER NOT NULL DEFAULT 1, `userModified` INTEGER NOT NULL DEFAULT 0, `customOrder` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `agentMemories` (`id` TEXT NOT NULL, `scopeType` TEXT NOT NULL DEFAULT '', `scopeKey` TEXT NOT NULL DEFAULT '', `subject` TEXT NOT NULL DEFAULT '', `domain` TEXT NOT NULL DEFAULT '', `memoryType` TEXT NOT NULL DEFAULT 'note', `title` TEXT NOT NULL DEFAULT '', `content` TEXT NOT NULL DEFAULT '', `dataJson` TEXT NOT NULL DEFAULT '{}', `tags` TEXT NOT NULL DEFAULT '', `confidence` REAL NOT NULL DEFAULT 1, `source` TEXT NOT NULL DEFAULT 'ai', `status` TEXT NOT NULL DEFAULT 'active', `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentMemories_scopeType_scopeKey` ON `agentMemories` (`scopeType`, `scopeKey`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentMemories_domain_memoryType_status` ON `agentMemories` (`domain`, `memoryType`, `status`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentMemories_updatedAt` ON `agentMemories` (`updatedAt`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `agentToolResultArtifacts` (`receiptId` TEXT NOT NULL DEFAULT '', `conversationId` TEXT NOT NULL DEFAULT '', `turnId` TEXT NOT NULL DEFAULT '', `toolCallId` TEXT NOT NULL DEFAULT '', `toolName` TEXT NOT NULL DEFAULT '', `skillRevision` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `argumentsHash` TEXT NOT NULL DEFAULT '', `resultHash` TEXT NOT NULL DEFAULT '', `payload` TEXT NOT NULL DEFAULT '', `success` INTEGER NOT NULL DEFAULT 0, `complete` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`receiptId`))"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_agentToolResultArtifacts_conversationId_turnId_toolCallId` ON `agentToolResultArtifacts` (`conversationId`, `turnId`, `toolCallId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentToolResultArtifacts_turnId` ON `agentToolResultArtifacts` (`turnId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentToolResultArtifacts_createdAt` ON `agentToolResultArtifacts` (`createdAt`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `agentToolExecutionIntents` (`receiptId` TEXT NOT NULL DEFAULT '', `conversationId` TEXT NOT NULL DEFAULT '', `turnId` TEXT NOT NULL DEFAULT '', `toolCallId` TEXT NOT NULL DEFAULT '', `toolName` TEXT NOT NULL DEFAULT '', `skillRevision` TEXT NOT NULL DEFAULT '', `contentHash` TEXT NOT NULL DEFAULT '', `argumentsHash` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`receiptId`))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentToolExecutionIntents_conversationId_turnId_toolName_argumentsHash` ON `agentToolExecutionIntents` (`conversationId`, `turnId`, `toolName`, `argumentsHash`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentToolExecutionIntents_createdAt` ON `agentToolExecutionIntents` (`createdAt`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `agentToolReceiptAcknowledgements` (`receiptId` TEXT NOT NULL DEFAULT '', `consumerType` TEXT NOT NULL DEFAULT '', `consumerKey` TEXT NOT NULL DEFAULT '', `conversationId` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`receiptId`, `consumerType`, `consumerKey`), FOREIGN KEY(`receiptId`) REFERENCES `agentToolResultArtifacts`(`receiptId`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentToolReceiptAcknowledgements_receiptId` ON `agentToolReceiptAcknowledgements` (`receiptId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentToolReceiptAcknowledgements_conversationId` ON `agentToolReceiptAcknowledgements` (`conversationId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_agentToolReceiptAcknowledgements_consumerType_consumerKey` ON `agentToolReceiptAcknowledgements` (`consumerType`, `consumerKey`);"
+            )
+        }
     }
 
     private val migration_10_11 = object : Migration(10, 11) {

@@ -11,6 +11,12 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/menu_debug"
+        android:icon="@drawable/ic_bug_report"
+        android:title="@string/debug"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/menu_save"
         android:icon="@drawable/ic_save"
         android:title="@string/action_save"

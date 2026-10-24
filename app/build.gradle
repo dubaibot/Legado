@@ -1,6 +1,7 @@
 plugins {
     alias libs.plugins.android.application
     alias libs.plugins.kotlin.android
+    alias libs.plugins.kotlin.compose
     alias libs.plugins.kotlin.parcelize
     alias libs.plugins.room
     alias libs.plugins.ksp
@@ -48,7 +49,8 @@ android {
     }
     defaultConfig {
         applicationId "com.myreader.reader"
-        minSdk 21
+        // media3 1.10.1（m 视频栈）硬性要求 minSdk 23，与 fork m 决策一致
+        minSdk 23
         targetSdk 36
         versionCode Math.max(10001, 10000 + gitCommits)
         versionName version
@@ -71,6 +73,7 @@ android {
     buildFeatures {
         buildConfig = true
         viewBinding = true
+        compose = true
     }
     buildTypes {
         release {
@@ -88,6 +91,7 @@ android {
 
             minifyEnabled true
             shrinkResources = true
+            buildConfigField "boolean", "BUILD_DEBUG", "false"
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
         debug {
@@ -98,6 +102,7 @@ android {
 
             applicationIdSuffix '.debug'
             versionNameSuffix 'debug'
+            buildConfigField "boolean", "BUILD_DEBUG", "true"
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
@@ -229,10 +234,18 @@ dependencies {
     implementation(libs.media.media)
     // For media playback using ExoPlayer
     implementation(libs.media3.exoplayer)
-    //implementation(libs.media3.exoplayer.hls)
+    // R3: 显式声明 HLS 依赖（ExoPlayerHelper 使用 HlsMediaSource 处理 m3u8 格式）
+    implementation(libs.media3.exoplayer.hls)
+    // video-player-image-enhance B 批：GlEffect/RgbMatrix/SeparableConvolution 等效果类（画质增强锐化/降噪）
+    implementation(libs.media3.effect)
     //implementation(libs.media3.ui)
     // For loading data using the OkHttp network stack
     implementation(libs.media3.datasource.okhttp)
+    // P0: Cronet DataSource（TLS 指纹与 Chrome 一致，解决 CDN TLS 指纹检测导致 m3u8 播放失败）
+    // 排除 cronet-api 传递依赖：cronet-dynamic-download 路线下 API 由本地 cronetlib/cronet_api.jar 提供
+    implementation(libs.media3.datasource.cronet) {
+        exclude group: 'org.chromium.net', module: 'cronet-api'
+    }
     // For exposing and controlling media sessions
     //implementation "androidx.media3:media3-session:$media3_version"
 
@@ -268,12 +281,16 @@ dependencies {
 
     //网络
     implementation(libs.okhttp)
+    implementation(libs.okhttp.dnsoverhttps)
     implementation(fileTree(dir: 'cronetlib', include: ['*.jar', '*.aar']))
     implementation(libs.protobuf.javalite)
 
     //Glide
     implementation(libs.glide.glide)
     implementation(libs.glide.okhttp)
+    implementation(libs.subsampling.scale.image.view)
+    // arc autoTask Compose 组件库（Miuix 风格基础组件）
+    implementation(libs.miuix)
     ksp(libs.glide.ksp)
 
     //Svg
@@ -284,6 +301,12 @@ dependencies {
     //webServer
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
+
+    //Reorderable
+    implementation(libs.reorderable)
+
+    //LazyColumnScrollbar
+    implementation(libs.lazycolumnscrollbar)
 
     //二维码
     //noinspection GradleDependency
@@ -329,4 +352,18 @@ dependencies {
     implementation(platform(libs.soraEditor.bom))
     implementation(libs.soraEditor.core)
     implementation(libs.soraEditor.language.textmate)
+
+    // Jetpack Compose (多源合并基础设施)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.activity.compose)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.glide.compose)
+    debugImplementation(libs.androidx.compose.ui.tooling)
 }

@@ -2,10 +2,13 @@
 
 package io.legado.app.ui.main
 
+import android.graphics.Color
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.MenuItem
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
+import io.legado.app.utils.ColorUtils
 import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.core.view.get
@@ -29,10 +32,16 @@ import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.NavigationBarConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.Selector
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.utils.getPrefInt
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.association.ImportBookSourceDialog
@@ -194,6 +203,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 }
             }
         }
+    }
+
+    /**
+     * 计算底栏占用的总高度，用于设置 Fragment 内容的底部内边距，防止底栏遮挡内容。
+     */
+    fun mainContentBottomPadding(): Int {
+        val bottomNav = binding.bottomNavigationView
+        return bottomNav.height.takeIf { it > 0 } ?: bottomNav.minimumHeight
     }
 
     private fun initView() = binding.run {
@@ -394,6 +411,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val showDiscovery = AppConfig.showDiscovery
         val showRss = AppConfig.showRSS
         binding.bottomNavigationView.menu.let { menu ->
+            menu.findItem(R.id.menu_homepage)?.isVisible = false
             menu.findItem(R.id.menu_discovery).isVisible = showDiscovery
             menu.findItem(R.id.menu_rss).isVisible = showRss
         }
@@ -410,6 +428,42 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         realPositions[index] = idMy
         bottomMenuCount = index + 1
         adapter.notifyDataSetChanged()
+        applyNavigationBarPackage()
+    }
+
+    /**
+     * 应用底栏导航栏配置（4.2.2 底栏管理）：背景色、自定义图标、标签配色
+     */
+    private fun applyNavigationBarPackage() = binding.run {
+        val config = NavigationBarConfig.activeConfig(this@MainActivity, AppConfig.isNightTheme)
+        val bgColor = resolveNavigationBarBackground(config)
+        val hasCustomIcons = NavigationBarConfig.applyToMenu(
+            bottomNavigationView.menu,
+            this@MainActivity,
+            AppConfig.isNightTheme,
+            bgColor,
+        )
+        if (hasCustomIcons) {
+            bottomNavigationView.itemIconTintList = null
+        } else {
+            bottomNavigationView.restoreThemeIconTint(bgColor)
+        }
+        val textIsDark = ColorUtils.isColorLight(bgColor)
+        bottomNavigationView.itemTextColor = Selector.colorBuild()
+            .setDefaultColor(getSecondaryTextColor(textIsDark))
+            .setSelectedColor(accentColor)
+            .create()
+    }
+
+    private fun resolveNavigationBarBackground(config: NavigationBarConfig): Int {
+        val baseColor = if (config.isBuiltin) {
+            bottomBackground
+        } else if (AppConfig.isNightTheme) {
+            getPrefInt(PreferKey.cNBBackground, ContextCompat.getColor(this, R.color.default_night_bottom_background))
+        } else {
+            getPrefInt(PreferKey.cBBackground, ContextCompat.getColor(this, R.color.default_bottom_background))
+        }
+        return NavigationBarConfig.resolveBottomColor(baseColor, config)
     }
 
     private fun upHomePage() {

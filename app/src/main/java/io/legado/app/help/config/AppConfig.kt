@@ -24,6 +24,10 @@ import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 import java.net.InetAddress
+import io.legado.app.lib.theme.ThemeRuntimeKeys
+import io.legado.app.model.debug.DebugCategory
+import io.legado.app.ui.main.ai.AiProviderConfig
+import io.legado.app.ui.main.ai.AiModelConfig
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
@@ -312,6 +316,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.threadCount, value)
         }
 
+    var updateCacheThreadCount: Int
+        get() = appCtx.getPrefInt(PreferKey.updateCacheThreadCount, 16)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.updateCacheThreadCount, value.coerceIn(1, 256))
+        }
+
     var remoteServerId: Long
         get() = appCtx.getPrefLong(PreferKey.remoteServerId)
         set(value) {
@@ -379,6 +389,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.readUrlOpenInBrowser)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.readUrlOpenInBrowser, value)
+        }
+
+    var imageArticlePrefetch: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.imageArticlePrefetch, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.imageArticlePrefetch, value)
         }
 
     var exportCharset: String
@@ -829,5 +845,486 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefBoolean(PreferKey.isNewExplore, value)
         }
-}
 
+fun aiProviderForModel(model: AiModelConfig?): AiProviderConfig? {
+        val providerId = model?.providerId ?: return null
+        return GSON.fromJsonObject<List<AiProviderConfig>>(appCtx.getPrefString(PreferKey.aiProvidersJson)).getOrDefault(emptyList()).firstOrNull { it.id == providerId }
+    }
+
+    var aiSceneDescEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiSceneDescEnabled, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiSceneDescEnabled, value)
+
+    var aiSummaryModelConfig: AiModelConfig?
+        get() = GSON.fromJsonObject<AiModelConfig>(appCtx.getPrefString(PreferKey.aiSummaryModelConfig)).getOrNull()
+        set(value) = appCtx.putPrefString(PreferKey.aiSummaryModelConfig, GSON.toJson(value))
+
+    var autoBackup: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.autoBackup, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.autoBackup, value)
+
+    var autoSwitchS3Container
+        get() = appCtx.getPrefBoolean(PreferKey.autoSwitchS3Container, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.autoSwitchS3Container, value)
+
+    // 向前预下载章节数量
+    var backwardPreDownloadNum
+        get() = appCtx.getPrefInt(PreferKey.backwardPreDownloadNum, 0)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.backwardPreDownloadNum, value)
+        }
+
+    var bookCoverShadow: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookCoverShadow, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookCoverShadow, value)
+        }
+
+    var bookLayout: Int
+        get() = appCtx.getPrefInt(PreferKey.bookLayout, 0)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bookLayout, value)
+        }
+
+    var bookSourceCacheFirst = appCtx.getPrefBoolean(PreferKey.bookSourceCacheFirst, false)
+
+    // P0-S2/S4 书源安全开关：默认关=现状全局 CacheManager（应急回退通道）；观察日志默认开（灰度观察档数据收集）
+    val bookSourceCacheScoped get() = appCtx.getPrefBoolean(PreferKey.bookSourceCacheScoped, false)
+
+    // ===== 以下为当前项目独有配置（archive-ui P1-F 时从原 AppConfig 恢复，避免 archive 版覆盖丢失） =====
+    var bookSourceContentBlacklist = appCtx.getPrefString(PreferKey.bookSourceContentBlacklist)
+
+    var bookSourceContentWhitelist = appCtx.getPrefString(PreferKey.bookSourceContentWhitelist)
+
+    // P0-S1/S3 书源安全开关：computed getter 实时读 SP（无设置页时 adb 改 SP 即时生效，避免单例加载期求值镜像假开关）
+    val bookSourceFileSandbox get() = appCtx.getPrefBoolean(PreferKey.bookSourceFileSandbox, false)
+
+    var bookshelfGroupTags: Map<Long, List<String>>
+        get() {
+            val rawMap = GSON.fromJsonObject<Map<String, List<String>>>(
+                appCtx.getPrefString(PreferKey.bookshelfGroupTags)
+            ).getOrDefault(emptyMap())
+            return rawMap.mapNotNull { (key, value) ->
+                key.toLongOrNull()?.let { groupId ->
+                    groupId to value.map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                }
+            }.filter { it.second.isNotEmpty() }.toMap()
+        }
+        set(value) {
+            val normalized = value
+                .mapValues { (_, tags) -> tags.map { it.trim() }.filter { it.isNotBlank() }.distinct() }
+                .filterValues { it.isNotEmpty() }
+                .mapKeys { it.key.toString() }
+            if (normalized.isEmpty()) {
+                appCtx.removePref(PreferKey.bookshelfGroupTags)
+            } else {
+                appCtx.putPrefString(PreferKey.bookshelfGroupTags, GSON.toJson(normalized))
+            }
+        }
+
+    var bookshelfHiddenTags: Map<Long, Set<String>>
+        get() {
+            val rawMap = GSON.fromJsonObject<Map<String, List<String>>>(
+                appCtx.getPrefString(PreferKey.bookshelfHiddenTags)
+            ).getOrDefault(emptyMap())
+            return rawMap.mapNotNull { (key, value) ->
+                key.toLongOrNull()?.let { groupId ->
+                    groupId to value.map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .toSet()
+                }
+            }.toMap()
+        }
+        set(value) {
+            val normalized = value
+                .mapValues { (_, tags) -> tags.map { it.trim() }.filter { it.isNotBlank() }.distinct() }
+                .filterValues { it.isNotEmpty() }
+                .mapKeys { it.key.toString() }
+            if (normalized.isEmpty()) {
+                appCtx.removePref(PreferKey.bookshelfHiddenTags)
+            } else {
+                appCtx.putPrefString(PreferKey.bookshelfHiddenTags, GSON.toJson(normalized))
+            }
+        }
+
+    var bottomBarEffectMode: String
+        get() = appCtx.getPrefString(PreferKey.bottomBarEffectMode, "glass")
+            ?.takeIf { it in setOf("glass", "frosted", "solid") }
+            ?: "glass"
+        set(value) {
+            appCtx.putPrefString(
+                PreferKey.bottomBarEffectMode,
+                value.takeIf { it in setOf("glass", "frosted", "solid") } ?: "glass"
+            )
+        }
+
+    var bottomBarLayoutMode: String
+        get() = appCtx.getPrefString(PreferKey.bottomBarLayoutMode, "floating")
+            ?.takeIf { it in setOf("floating", "sidebar", "standard") }
+            ?: "floating"
+        set(value) {
+            appCtx.putPrefString(
+                PreferKey.bottomBarLayoutMode,
+                value.takeIf { it in setOf("floating", "sidebar", "standard") } ?: "floating"
+            )
+        }
+
+    var bottomBarSidebarGravity: String
+        get() = appCtx.getPrefString(PreferKey.bottomBarSidebarGravity, "start")
+            ?.takeIf { it in setOf("start", "end") }
+            ?: "start"
+        set(value) {
+            appCtx.putPrefString(
+                PreferKey.bottomBarSidebarGravity,
+                value.takeIf { it in setOf("start", "end") } ?: "start"
+            )
+        }
+
+    // 默认 true：底栏悬浮搜索按钮删除后（用户裁决 2026-09-27），顶栏搜索成为「书架 / 我的」
+    // 两模式的搜索入口 ⇒ 默认必须可见，否则用户无从搜索（用户仍可在顶栏包里关掉）。
+
+    var cacheConcurrentRate: String?
+        get() = appCtx.getPrefString(PreferKey.cacheConcurrentRate)
+        set(value) {
+            if (value.isNullOrBlank()) {
+                appCtx.removePref(PreferKey.cacheConcurrentRate)
+            } else {
+                appCtx.putPrefString(PreferKey.cacheConcurrentRate, value)
+            }
+        }
+
+    var debugLogFloatingBall = appCtx.getPrefBoolean(PreferKey.debugLogFloatingBall, false)
+
+    // P0-S1/S3 书源安全开关：computed getter 实时读 SP（无设置页时 adb 改 SP 即时生效，避免单例加载期求值镜像假开关）
+
+    var debugLogOnlyCategories: Set<DebugCategory>
+        get() {
+            val raw = appCtx.getPrefString(PreferKey.debugLogOnlyCategories) ?: ""
+            return DebugLogOnlyConfig.parseCategories(raw)
+        }
+        set(value) {
+            appCtx.putPrefString(PreferKey.debugLogOnlyCategories, DebugLogOnlyConfig.serializeCategories(value))
+        }
+
+    var debugLogOnlyEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.debugLogOnlyEnabled, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.debugLogOnlyEnabled, value)
+        }
+
+    /** 被标记为"只进调试界面"的 DebugCategory 集合（持久化为逗号分隔字符串） */
+
+    var dialogAlpha: Int
+        get() = appCtx.getPrefInt(ThemeRuntimeKeys.dialogAlpha(isNightTheme), 100).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(ThemeRuntimeKeys.dialogAlpha(isNightTheme), value.coerceIn(0, 100))
+        }
+
+    // C6 审计（2026-09-22）：原两个 @Deprecated("Use uiLayoutAlpha") 属性
+    // `uiCornerEffectMode`（getter 恒返回 "solid"、setter 仅写死键）与
+    // `uiCornerEffectLevel`（转发 uiLayoutAlpha）在全仓（含 modules/）**零调用** ⇒ 删除死件。
+    // 保留的常量：`PreferKey.uiCornerEffectLevel` 仍被 ThemeConfig / ThemeUiPalette /
+    // ThemeManageActivity / 上方 uiLayoutAlpha 的旧值回落使用；`PreferKey.uiCornerEffectMode`
+    // 属偏好键数据契约（旧数据兼容），不随属性一并删。
+
+    // 下拉选择分组开关（默认关闭，仅在分组样式为标签时生效）
+    var dropdownSelectGroup: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.dropdownSelectGroup, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.dropdownSelectGroup, value)
+        }
+
+    // 显示标签栏开关（默认关闭，开启后在书架分组下方显示二级标签栏）
+
+    var fastScrollerTouchTargetDp: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.fastScrollerTouchTargetDp,
+            DEFAULT_FAST_SCROLLER_TOUCH_TARGET_DP
+        ).coerceIn(MIN_FAST_SCROLLER_TOUCH_TARGET_DP, MAX_FAST_SCROLLER_TOUCH_TARGET_DP)
+        set(value) {
+            appCtx.putPrefInt(
+                PreferKey.fastScrollerTouchTargetDp,
+                value.coerceIn(MIN_FAST_SCROLLER_TOUCH_TARGET_DP, MAX_FAST_SCROLLER_TOUCH_TARGET_DP)
+            )
+        }
+
+    var folderLayout: Int
+        get() = appCtx.getPrefInt(PreferKey.folderLayout, 0)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.folderLayout, value)
+        }
+
+    var forceSoftwareParagraphBubble: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.forceSoftwareParagraphBubble, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.forceSoftwareParagraphBubble, value)
+        }
+
+    val immersiveManageBar: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.immersiveManageBar, true)
+
+    /**
+     * 管理页背景透明度 fraction（followup F4 v3 最终语义）：0f=不透明（默认，原状），
+     * 1f=全透明（透出 decorView 底图/背景）。E-Ink 强制 0f（不透明契约）。
+     * 消费点：内容层根/顶栏 backgroundColor.copy(alpha=fraction) 半透明叠加，可透出底图；
+     * 禁止预混不透明色（v2 教训：底图透出被消灭）。
+     */
+
+    // 简介显示行数（默认2行，范围1-10）
+    var introLinesInList: Int
+        get() = appCtx.getPrefInt(PreferKey.introLinesInList, 2)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.introLinesInList, value.coerceIn(1, 10))
+        }
+
+    // 下拉选择分组开关（默认关闭，仅在分组样式为标签时生效）
+
+    val isTocPartialLoad: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.tocPartialLoad)
+
+    // 阅读时保留正文原文里的空行（默认关闭，入口在阅读菜单的「设置」面板）
+    var keepBlankLine = appCtx.getPrefBoolean(PreferKey.keepBlankLine, false)
+
+    var keyPageAnimSpeed: Int
+        get() = appCtx.getPrefInt(PreferKey.keyPageAnimSpeed, 100)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.keyPageAnimSpeed, value)
+        }
+
+    var loadCoverHighQuality = appCtx.getPrefBoolean(PreferKey.loadCoverHighQuality, false)
+
+    val manageBgAlphaFraction: Float
+        get() {
+            if (isEInkMode) return 0f
+            return appCtx.getPrefInt(PreferKey.manageBgAlpha, 0).coerceIn(0, 100) / 100f
+        }
+
+    // MD链接用内置浏览器打开，默认关闭
+    val mdLinkInnerBrowser: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.mdLinkInnerBrowser, false)
+
+    val navItemOrder: List<String>
+        get() {
+            val stored = appCtx.getPrefString(PreferKey.navItemOrder)
+            if (!stored.isNullOrBlank()) {
+                val parsed = stored.split(",").filter { it.isNotBlank() }
+                if (parsed.isNotEmpty()) return parsed
+            }
+            return listOf("bookshelf", "homepage", "explore", "rss", "my")
+        }
+
+    val readAloudFloatingUi get() = appCtx.getPrefBoolean(PreferKey.readAloudFloatingUi, false)
+
+    var recordNetworkLog = appCtx.getPrefBoolean(PreferKey.recordNetworkLog, false)
+
+    var recordUrl: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.recordUrl, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.recordUrl, value)
+        }
+
+    var rssParseConcurrency: Int
+        get() = appCtx.getPrefInt(PreferKey.rssParseConcurrency, 3)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.rssParseConcurrency, value)
+        }
+
+    var rssSearchGroup: String
+        get() = appCtx.getPrefString("rssSearchGroup") ?: ""
+        set(value) {
+            appCtx.putPrefString("rssSearchGroup", value)
+        }
+
+    var rssSearchScope: String
+        get() = appCtx.getPrefString("rssSearchScope") ?: ""
+        set(value) {
+            appCtx.putPrefString("rssSearchScope", value)
+        }
+
+    var searchThreadCount: Int
+        get() = appCtx.getPrefInt(PreferKey.searchThreadCount, 32)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.searchThreadCount, value.coerceIn(1, 128))
+        }
+
+    fun setDefaultHomePage(key: String) {
+        appCtx.putPrefString(PreferKey.defaultHomePage, key)
+    }
+
+    fun setNavItemOrder(order: List<String>) {
+        appCtx.putPrefString(PreferKey.navItemOrder, order.joinToString(","))
+    }
+
+    // 书籍外边框开关（默认关闭，仅在列表/紧凑列表视图时生效）
+    var showBookBorder: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showBookBorder, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showBookBorder, value)
+        }
+
+    // 简介显示行数（默认2行，范围1-10）
+
+    var showBookshelfReadProgress: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showBookshelfReadProgress, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showBookshelfReadProgress, value)
+        }
+
+    // 显示标签栏开关（默认关闭，开启后在书架分组下方显示二级标签栏）
+    var showBookshelfTagBar: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showBookshelfTagBar, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showBookshelfTagBar, value)
+        }
+
+    /**
+     * 书架每个分组配置的标签列表。
+     * key = groupId, value = 标签名列表
+     */
+
+    var showCategoryInfoInList: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showCategoryInfoInList, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showCategoryInfoInList, value)
+        }
+
+    val showHomepage: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showHomepage, true)
+
+    // 调试模式，开启后"我的"页面显示调试工具入口
+
+    var showIntroInList: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showIntroInList, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showIntroInList, value)
+        }
+
+    var showMoreInfoInList: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showMoreInfoInList, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.showMoreInfoInList, value)
+        }
+
+    // W2 / REQ-14 / AD-05：视频嗅探赛马化（默认开启；关闭即回落原串行链 ⇒ 零回归回滚点）
+    var sniffRaceEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.sniffRaceEnabled, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.sniffRaceEnabled, value)
+
+    // W7 8.2 / REQ-30：文章级离线预取（默认关闭）。
+    // 开启后打开文章即把该文章全部图片逐条 `downloadOnly` 落到 Glide 磁盘缓存，
+    // 口径固定为「并发 2 / 单文章 ≤200 张 / 单张失败不阻塞」（见 ImageCanvasViewModel.prefetchArticleImages）。
+
+    var sourceQueryCacheEnabled = appCtx.getPrefBoolean(PreferKey.sourceQueryCacheEnabled, true)
+    // log-system-upgrade AD-01: 默认值按包类型区分——debug 测试包默认 true（AI 解析需要详细日志），release 默认 false
+    // 用户显式设置后 key 存在，getPrefBoolean 以设置为准（两类包行为一致）
+
+    var sourceRecycleBinEnabled = appCtx.getPrefBoolean(PreferKey.sourceRecycleBinEnabled, false)
+
+    var textBoldMode: Int
+        get() = appCtx.getPrefInt(PreferKey.textBoldMode, 0)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.textBoldMode, value)
+        }
+
+    /**
+     * 书架状态图标样式
+     * - 0: 新版样式（封面右上角显示图标）
+     * - 1: 经典样式（书名前显示小绿点）
+     */
+
+    var titleFontColor: String
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.titleFontColor(isNightTheme), "").orEmpty()
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.titleFontColor(isNightTheme), value)
+        }
+
+    var titleFontPath: String
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.titleFontPath(isNightTheme)).orEmpty()
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.titleFontPath(isNightTheme), value)
+        }
+
+    var tocCollapseVolumeName: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.tocCollapseVolumeName)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.tocCollapseVolumeName, value)
+        }
+
+    var tocPartialLoadInterval: Int
+        get() = appCtx.getPrefInt(PreferKey.tocPartialLoadInterval, 0)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.tocPartialLoadInterval, value)
+        }
+
+    var tocShowFullChapterName: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.tocShowFullChapterName)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.tocShowFullChapterName, value)
+        }
+
+    var touchPageAnimSpeed: Int
+        get() = appCtx.getPrefInt(PreferKey.touchPageAnimSpeed, 300)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.touchPageAnimSpeed, value)
+        }
+
+    /** 按键翻页动画速度(毫秒)，数值越小动画越快 */
+
+    val uiCornerReplyFollow: Boolean
+        get() = appCtx.getPrefBoolean(ThemeRuntimeKeys.uiCornerReplyFollow(isNightTheme), false)
+
+    var uiCornerScale: Float
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.uiCornerScale(isNightTheme), "1")
+            ?.toFloatOrNull()
+            ?.coerceIn(0f, 3f)
+            ?: 1f
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.uiCornerScale(isNightTheme), value.coerceIn(0f, 3f).toPlainScale())
+        }
+
+    val uiCornerSearchFollow: Boolean
+        get() = appCtx.getPrefBoolean(ThemeRuntimeKeys.uiCornerSearchFollow(isNightTheme), false)
+
+    var uiFontColor: String
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.uiFontColor(isNightTheme), "").orEmpty()
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.uiFontColor(isNightTheme), value)
+        }
+
+    var uiFontPath: String
+        get() = appCtx.getPrefString(ThemeRuntimeKeys.uiFontPath(isNightTheme)).orEmpty()
+        set(value) {
+            appCtx.putPrefString(ThemeRuntimeKeys.uiFontPath(isNightTheme), value)
+        }
+
+    var uiLayoutAlpha: Int
+        get() = appCtx.getPrefInt(
+            ThemeRuntimeKeys.uiLayoutAlpha(isNightTheme),
+            appCtx.getPrefInt(PreferKey.uiCornerEffectLevel, 100)
+        ).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(ThemeRuntimeKeys.uiLayoutAlpha(isNightTheme), value.coerceIn(0, 100))
+        }
+
+    var verboseUpdateLog: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.verboseUpdateLog, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.verboseUpdateLog, value)
+        }
+
+    const val DEFAULT_FAST_SCROLLER_TOUCH_TARGET_DP = 44
+
+    const val MIN_FAST_SCROLLER_TOUCH_TARGET_DP = 32
+
+    const val MAX_FAST_SCROLLER_TOUCH_TARGET_DP = 60
+
+    private fun Float.toPlainScale(): String {
+        return if (this % 1f == 0f) {
+            this.toInt().toString()
+        } else {
+            String.format(java.util.Locale.US, "%.2f", this).trimEnd('0').trimEnd('.')
+        }
+    }
+}

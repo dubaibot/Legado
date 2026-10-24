@@ -23,6 +23,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
+import io.legado.app.help.book.BookTagMatcher
+import io.legado.app.help.book.toSmartTagSnapshot
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
@@ -35,6 +37,7 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import splitties.init.appCtx
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -52,13 +55,14 @@ import kotlin.math.max
 class BooksFragment() : BaseFragment(R.layout.fragment_books),
     BaseBooksAdapter.CallBack {
 
-    constructor(position: Int, group: BookGroup) : this() {
+    constructor(position: Int, group: BookGroup, initialTag: String? = null) : this() {
         val bundle = Bundle()
         bundle.putInt("position", position)
         bundle.putLong("groupId", group.groupId)
         bundle.putInt("bookSort", group.getRealBookSort())
         bundle.putBoolean("enableRefresh", group.enableRefresh)
         bundle.putBoolean("onlyUpdateRead", group.onlyUpdateRead)
+        bundle.putString("initialTag", initialTag)
         arguments = bundle
     }
 
@@ -88,9 +92,15 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var upLastUpdateTimeJob: Job? = null
     private var enableRefresh = true
     private var onlyUpdateRead = false
+    private var tagFilter: String? = null
     private val bookshelfMargin by lazy { AppConfig.bookshelfMargin }
     private var itemCount = 0
     private var totalRows = 0
+    private var bottomPaddingPx = 0
+
+    fun updateMainBottomPadding(bottomPadding: Int) {
+        bottomPaddingPx = bottomPadding
+    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -99,6 +109,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             bookSort = it.getInt("bookSort", 0)
             enableRefresh = it.getBoolean("enableRefresh", true)
             onlyUpdateRead = it.getBoolean("onlyUpdateRead", false)
+            tagFilter = it.getString("initialTag")
             binding.refreshLayout.isEnabled = enableRefresh
         }
         initRecyclerView()
@@ -217,25 +228,40 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
             appDb.bookDao.flowByGroup(groupId).map { list ->
+                //标签筛选
+                val filterTag = tagFilter
+                val filtered = if (filterTag.isNullOrEmpty()) {
+                    list
+                } else {
+                    val rules = BookTagMatcher.enabledRules(appCtx)
+                    list.filter {
+                        BookTagMatcher.matches(
+                            filterTag,
+                            it.customTag,
+                            it.toSmartTagSnapshot(),
+                            rules
+                        )
+                    }
+                }
                 //排序
                 when (bookSort) {
-                    1 -> list.sortedByDescending { it.latestChapterTime }
-                    2 -> list.sortedWith { o1, o2 ->
+                    1 -> filtered.sortedByDescending { it.latestChapterTime }
+                    2 -> filtered.sortedWith { o1, o2 ->
                         o1.name.cnCompare(o2.name)
                     }
 
-                    3 -> list.sortedBy { it.order }
+                    3 -> filtered.sortedBy { it.order }
 
                     // 综合排序 issue #3192
-                    4 -> list.sortedByDescending {
+                    4 -> filtered.sortedByDescending {
                         max(it.latestChapterTime, it.durChapterTime)
                     }
                     // 按作者排序
-                    5 -> list.sortedWith { o1, o2 ->
+                    5 -> filtered.sortedWith { o1, o2 ->
                         o1.author.cnCompare(o2.author)
                     }
 
-                    else -> list.sortedByDescending { it.durChapterTime }
+                    else -> filtered.sortedByDescending { it.durChapterTime }
                 }
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
@@ -286,6 +312,15 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     fun getBooksCount(): Int {
         return booksAdapter.itemCount
+    }
+
+    /**
+     * 按标签筛选书籍。传 null 表示清除筛选。
+     */
+    fun filterByTag(tag: String?) {
+        if (tag == tagFilter) return
+        tagFilter = tag
+        upRecyclerData()
     }
 
     override fun onDestroyView() {

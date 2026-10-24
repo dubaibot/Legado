@@ -7,35 +7,75 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.textclassifier.TextClassifier
+import io.legado.app.lib.permission.Permissions
+import io.legado.app.lib.permission.PermissionsCompat
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.OptIn
+import androidx.appcompat.app.AlertDialog
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PictureInPicture
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
+import androidx.viewpager2.widget.ViewPager2
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.core.widget.NestedScrollView
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
 import com.shuyu.gsyvideoplayer.listener.GSYSampleCallBack
+import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
+import com.shuyu.gsyvideoplayer.video.base.GSYVideoView
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.PlayHistoryStore
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.RssEpisode
+import io.legado.app.data.entities.RssRoute
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityVideoPlayerBinding
 import io.legado.app.help.GlideImageGetter
@@ -43,8 +83,16 @@ import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.player.PlaybackErrorPolicy
+// add-dlna-cast：DLNA/UPnP 投屏（菜单入口 + 本地播放器控制通道 + 会话状态）
+import io.legado.app.help.dlna.CastPhase
+import io.legado.app.help.dlna.DlnaCastManager
+import io.legado.app.help.dlna.PlayerControl
+import io.legado.app.help.exoplayer.FirstFramePreloader
 import io.legado.app.help.gsyVideo.VideoPlayer
+import io.legado.app.help.player.ErrorMapper
 import io.legado.app.help.webView.PooledWebView
+import io.legado.app.help.webView.SilentSslWebViewClient
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
@@ -53,9 +101,14 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.VideoPlay
+import io.legado.app.model.VideoPlaybackQueue
+import io.legado.app.help.video.VideoPlaylistHolder
 import io.legado.app.service.VideoPlayService
+import io.legado.app.service.DlnaCastService
+import io.legado.app.ui.video.cast.DlnaCastDialog
+import io.legado.app.ui.widget.compose.AppUiTokens
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.association.OnLineImportActivity
@@ -63,13 +116,20 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.rss.favorites.RssFavoritesDialog
+import io.legado.app.ui.rss.search.ChangeRssArticleSourceDialog
+import io.legado.app.ui.rss.search.RssSearchSourceHolder
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.video.config.SettingsDialog
+import io.legado.app.ui.theme.LegadoTheme
+import io.legado.app.ui.widget.components.AppDropdownMenu
+import io.legado.app.ui.widget.components.GlassTopAppBar
+import io.legado.app.ui.widget.components.MenuAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.text.ScrollTextView
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.invisible
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.observeEvent
@@ -78,7 +138,6 @@ import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setMarkdown
-import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -90,15 +149,59 @@ import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.glide.GlideImagesPlugin
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlayerViewModel>(),
-    SettingsDialog.CallBack,RssFavoritesDialog.Callback {
+    SettingsDialog.CallBack, RssFavoritesDialog.Callback, VideoSettingsPanel.SettingsPanelCallback {
+
+    companion object {
+        const val EXTRA_PREPARE_BOOK_INFO = "prepareBookInfo"
+
+        /**
+         * F182：布局切换提示的保持时长。
+         *
+         * 切换本身的同步段（释放旧容器 + 挂新容器）只有几百 ms，但**新容器起播是异步的**：
+         * `restorePlayHistory` 内含 2s 延迟 seek，且真实源多为网络流（prepare 时长随源波动）。
+         * 取 4s 覆盖「无画面 + 旧画面已释放」的整个窗口（过短用户来不及看清，等于没提示）；
+         * 代价是新画面已回来后提示还会滞留 1~2s——顶栏第二行属非侵入位，可接受。
+         */
+        private const val LAYOUT_SWITCH_NOTICE_MS = 4000L
+    }
+
     override val binding by viewBinding(ActivityVideoPlayerBinding::inflate)
     override val viewModel by viewModels<VideoPlayerViewModel>()
+
+    // 主题架构 v2：沉浸播放页不随主题事件重建（避免打断播放），Compose 侧经 ThemeSync 刷新
+    override val recreateOnThemeChange: Boolean
+        get() = false
+    // P0-1: playerView 从 legacyContainer 获取（legacyContainer 已隐藏但 XML 保留避免编译错误）
+    // ViewPager2 模式下使用 currentFragment?.playerView，此字段仅供 Legacy 代码路径引用
     private val playerView: VideoPlayer by lazy { binding.playerView }
-    private var starMenuItem: MenuItem? = null
+
+    // Compose 顶栏（L-D9 S5 改造）状态
+    private var composeTitle by mutableStateOf("")
+    private var menuExpanded by mutableStateOf(false)
+    private var starChecked by mutableStateOf(false)
+    private var starVisible by mutableStateOf(false)
+    private var showCustomBtn by mutableStateOf(false)
+    // F182（2026-09-21）：布局切换过渡反馈状态（顶栏第二行「正在切换布局…」）
+    private var layoutSwitching by mutableStateOf(false)
+    private var showRefresh by mutableStateOf(false)
+    private var showLogin by mutableStateOf(false)
+    private var showChangeSource by mutableStateOf(false)
+
+    // R3 沉浸竖滑风格：ViewPager2 相关
+    // video-player-dual-layout D1：初值由持久化 layoutMode 决定（0=沉浸式 ViewPager，1=传统 legacy）
+    private var useViewPagerMode = VideoPlay.layoutMode == 0
+    private var videoPagerAdapter: VideoPagerAdapter? = null
+    private var currentFragment: VideoFragment? = null
+    internal var settingsPanel: VideoSettingsPanel? = null  // 阶段5：当前打开的设置面板引用
+    // P0-1.4: 视频播放错误对话框引用（防止重复弹窗）
+    private var errorDialog: AlertDialog? = null
     private var initIntroView = false
     private val introTextView by lazy {
         initIntroView = true
@@ -134,14 +237,114 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         })
     }
     private var isNew = true
-    private var isFullScreen = false
+    internal var isFullScreen = false
     private var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-    private var menuCustomBtn: MenuItem? = null
+
+    /**
+     * singleTask 复用：ViewPager2 页面切换回调引用（onNewIntent 重置时需 unregister，防止重复注册）
+     */
+    private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
+
+    // video-playlist-continuity：快速滑动防错乱——滑动中只记录落点页，停稳（IDLE）后统一处理
+    private var vpScrollState: Int = ViewPager2.SCROLL_STATE_IDLE
+    private var pendingPosition: Int = -1
+
+    /** initView 幂等守卫：onNewIntent 重初始化时避免重复注册 ViewModel 观察者 */
+    private var isViewInitialized = false
+
+    /**
+     * T2.8: initSource 协程 Job 引用（onPause 时取消，解决 Bug-25：onPause 后 initSource 仍运行导致资源泄漏）
+     */
+    private var initSourceJob: Job? = null
+
+    /**
+     * AD-04: 播放历史定时保存 Job（每10s保存一次，onPause取消）
+     */
+    private var historySaveJob: Job? = null
+
+    /**
+     * AD-04: 获取当前文章URL（用于PlayHistory复合主键）
+     * 订阅源模式返回当前文章link，单URL模式返回空字符串
+     */
+    private fun getCurrentArticleUrl(): String {
+        return VideoPlay.rssArticles?.getOrNull(VideoPlay.rssArticleIndex)?.link ?: ""
+    }
+
+    /**
+     * AD-04: 保存当前播放进度到PlayHistoryStore
+     * 失败不影响主播放链路（PlayHistoryStore内部runCatching包裹）
+     * video-player-dual-layout AD-05：switchLayoutMode 场景支持 force+positionOverride
+     * （切换窗口绕过互斥标记强制落库精确位置，供恢复链使用）
+     */
+    private fun savePlayHistory(force: Boolean = false, positionOverride: Long = -1L) {
+        // AD-06：切换窗口短路——旧片进度不得写入新影片历史键（historyKeyUrl 已随 initSource 变更）
+        // video-player-dual-layout AD-05：布局切换重建窗口同样短路
+        if (!force && (VideoPlay.switchingInProgress || VideoPlay.layoutSwitchInProgress)) return
+        // 4.8b（Z9）：键改用 historyKeyUrl（嗅探前原始 URL，源侧 token 轮换后仍可重嗅）；
+        // rssSourceId 填充真实订阅源 ID（原恒空串）
+        val videoUrl = VideoPlay.historyKeyUrl ?: return
+        if (videoUrl.isBlank()) return
+        val position = if (positionOverride > 0) positionOverride else VideoPlay.videoManager.currentPosition
+        val duration = VideoPlay.videoManager.duration
+        if (position <= 0) return
+        PlayHistoryStore.save(
+            articleUrl = getCurrentArticleUrl(),
+            videoUrl = videoUrl,
+            position = position,
+            duration = duration,
+            rssSourceId = (VideoPlay.source as? RssSource)?.sourceUrl ?: ""
+        )
+    }
+
+    /**
+     * AD-04: 恢复播放进度（initSource成功后调用）
+     * 异步加载PlayHistory，若position>10s则延迟2s后seekTo+Toast提示
+     * 失败不影响主播放链路
+     */
+    private fun restorePlayHistory() {
+        // 4.8b（Z9）：恢复键与保存键一致（嗅探前原始 URL）
+        val videoUrl = VideoPlay.historyKeyUrl ?: return
+        if (videoUrl.isBlank()) return
+        val articleUrl = getCurrentArticleUrl()
+        lifecycleScope.launch {
+            val history = PlayHistoryStore.load(articleUrl, videoUrl)
+            if (history != null && history.position > 10_000) {
+                // 延迟2s给ExoPlayer prepare时间
+                delay(2_000)
+                withContext(Main) {
+                    try {
+                        val player = playerView.getCurrentPlayer()
+                        player.seekTo(history.position)
+                        val minutes = history.position / 60_000
+                        val seconds = (history.position % 60_000) / 1_000
+                        toastOnUi(String.format(getString(R.string.player_history_resume), minutes, seconds))
+                        AppLog.put("PlayHistoryStore: resume to ${history.position}ms")
+                    } catch (e: Exception) {
+                        AppLog.put("PlayHistoryStore: resume failed, error=${e.javaClass.simpleName}")
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * T1.13 方案B: VideoPlay 状态快照（解决 Bug-14 + Bug-24 + Bug-6：8 实例快速切换状态串扰）
+     *
+     * 思路：onActivityCreated 时保存 VideoPlay 单例的关键状态快照到 Activity 字段，
+     * 后续此 Activity 内部优先使用快照字段，避免被其他 Activity 实例修改 VideoPlay 单例后状态串扰。
+     *
+     * 注：本方案为"状态快照"（方案B），保留 VideoPlay object 单例不变，风险最低。
+     * 后续如需彻底解决，可升级为方案A（改为 class，每个 Activity 持有独立实例）。
+     */
+    private var snapshotVideoUrl: String? = null
+    private var snapshotVideoTitle: String? = null
+    private var snapshotSingleUrl: Boolean = false
+    private var snapshotInBookshelf: Boolean = true
     private val bookSourceEditResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
             if (it.resultCode == RESULT_OK) {
                 viewModel.upSource {
-                    menuCustomBtn?.isVisible = (VideoPlay.source as? BookSource)?.customButton == true
+                    showCustomBtn = (VideoPlay.source as? BookSource)?.customButton == true
                 }
             }
         }
@@ -175,37 +378,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     @OptIn(UnstableApi::class)
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        playerView.enlargeImageRes = R.drawable.ic_fullscreen
-        isNew = intent.getBooleanExtra("isNew", true)
-        if (isNew) {
-            intent.getStringExtra("videoUrl")?.let {
-                VideoPlay.videoUrl = it
-                VideoPlay.singleUrl = true
-            }
-            intent.getStringExtra("videoTitle")?.let {
-                binding.titleBar.title = it
-                VideoPlay.videoTitle = it
-            }
-            val sourceKey = intent.getStringExtra("sourceKey")
-            val sourceType = intent.getIntExtra("sourceType", 0)
-            val bookUrl = intent.getStringExtra("bookUrl")
-            val record = intent.getStringExtra("record")
-            VideoPlay.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            if (!VideoPlay.initSource(sourceKey, sourceType, bookUrl, record)) {
-                finish()
-                return
-            }
-            VideoPlay.startPlay(playerView)
-            VideoPlay.saveRead()
-        } else {
-            VideoPlay.clonePlayState(playerView)
-            playerView.setSurfaceToPlay()
-            playerView.startAfterPrepared()
-            binding.titleBar.title = VideoPlay.videoTitle
-        }
-        setupPlayerView()
-        initView()
-        upView()
+        initFromIntent(intent)
+        initComposeTopBar()
         onBackPressedDispatcher.addCallback(this) {
             if (isFullScreen) {
                 toggleFullScreen()
@@ -215,27 +389,1151 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
-    private fun initView() {
-        viewModel.upStarMenuData.observe(this) { upStarMenu() }
-        binding.root.setBackgroundColor(backgroundColor)
-        val book = VideoPlay.book
-        if (book == null) {
-            binding.data.invisible()
-            binding.chaptersContainer.invisible()
+    /**
+     * singleTask 复用：旧播放会话 Teardown + 按新 Intent 重建会话
+     *
+     * 根因（用户2026-08-26反馈）：VideoPlayerActivity 为 singleTask 启动模式，
+     * 已存在实例时新 Intent 走 onNewIntent，若不复用处理，新播放请求被静默忽略，
+     * VideoPlay 单例残留上一次播放状态（如下载视频的 videoUrl/singleUrl），
+     * 导致"下载管理播放完下载视频后，再从订阅源在线播放"仍播放旧视频，
+     * 破坏内置播放器的订阅源嗅探播放功能。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val newIntent = intent
+        val isNewPlayRequest = intent.getBooleanExtra("isNew", true)
+        if (!isNewPlayRequest) {
+            // 悬浮窗/PiP 恢复会话（VideoPlayService 传 isNew=false）：继续原视频，禁止重置
+            AppLog.put("VideoPlayerActivity onNewIntent: isNew=false 悬浮窗恢复, skip reset")
             return
         }
-        showBook(book)
-        if (VideoPlay.episodes.isNullOrEmpty()) {
-            binding.chapters.gone()
-        } else {
-            binding.chapters.visible()
-            showToc(VideoPlay.episodes!!)
+        AppLog.put("VideoPlayerActivity onNewIntent: singleTask 收到新播放意图, reset old session")
+        // 1. 取消进行中的 initSource 协程
+        if (initSourceJob?.isActive == true) {
+            initSourceJob?.cancel()
+            AppLog.put("VideoPlayerActivity onNewIntent: old initSourceJob cancelled")
         }
-        if (VideoPlay.volumes.isEmpty()) {
-            binding.volumes.gone()
+        // 2. 释放旧会话播放器（video-player-dual-layout D4：按当前布局模式拆卸，防 GSY 全屏窗口残留）
+        if (useViewPagerMode) {
+            currentFragment?.deactivatePlayer()
+            currentFragment?.releasePlayer()
+            currentFragment = null
+            pageChangeCallback?.let { binding.viewPager.unregisterOnPageChangeCallback(it) }
+            pageChangeCallback = null
+            binding.viewPager.adapter = null
+            videoPagerAdapter = null
+            // 显式 FragmentTransaction API（不依赖 fragment-ktx 的顶层扩展）
+            supportFragmentManager.beginTransaction().apply {
+                supportFragmentManager.fragments.filterIsInstance<VideoFragment>()
+                    .forEach { remove(it) }
+                commitAllowingStateLoss()
+            }
+            supportFragmentManager.executePendingTransactions()
         } else {
-            binding.volumes.visible()
-            showVolumes(VideoPlay.volumes)
+            // 传统布局拆卸：先退 GSY 全屏窗口（backFromFull），再释放播放器
+            runCatching { playerView.backFromFull(this) }
+            runCatching { playerView.getCurrentPlayer().release() }
+        }
+        // 旧会话若处于全屏态，复位为常规态（新视频从常态开始播放）
+        if (isFullScreen) {
+            isFullScreen = false
+            binding.composeTopBar.visible()
+            requestedOrientation = orientation
+        }
+        // 3. 重置 VideoPlay 单会话状态（订阅源文章列表上下文由 ReadRss 在 startActivity 前写入）
+        // 仅当新意图的 record 命中当前 VideoPlay.rssArticles 列表时才保留文章场景上下文；
+        // 否则（如历史记录单篇播放：同传 sourceKey+record 却不带文章列表）清空，
+        // 防止上一会话残留列表导致 ViewPager2 文章模式数据错配
+        val rssRecord = newIntent.getStringExtra("record")
+        val rssList = VideoPlay.rssArticles
+        val isRssArticleIntent = !rssList.isNullOrEmpty() && !rssRecord.isNullOrBlank() &&
+            rssList.any { it.link == rssRecord }
+        VideoPlay.resetForNewIntent(preserveRssArticlesContext = isRssArticleIntent)
+        // 4. 重新走初始化流程（与首次启动一致）
+        initFromIntent(newIntent)
+        initComposeTopBar()
+    }
+
+    /**
+     * 按 Intent 初始化播放会话（onActivityCreated 与 onNewIntent 共用）
+     */
+    private fun initFromIntent(intent: Intent) {
+        isNew = intent.getBooleanExtra("isNew", true)
+        if (isNew) {
+            intent.getStringExtra("videoUrl")?.let {
+                VideoPlay.videoUrl = it
+                VideoPlay.singleUrl = true
+            } ?: run {
+                // 修复（用户2026-08-26 真机日志铁证）：新播放请求未带 videoUrl（订阅源/书源嗅探场景）时，
+                // 若上一会话残留单URL状态（如下载管理播放完下载视频后 Activity 销毁退出，VideoPlay 单例
+                // 未清理 singleUrl=true + videoUrl=file://），startPlay 会误进 singleUrl 分支播放旧下载视频。
+                // 此处清残留，让 startPlay 走 source（RssSource/BookSource）嗅探分支播放新内容。
+                if (VideoPlay.singleUrl || VideoPlay.videoUrl != null) {
+                    AppLog.put("VideoPlayerActivity initFromIntent: clear stale singleUrl state, singleUrl=${VideoPlay.singleUrl}, videoUrl=${VideoPlay.videoUrl?.take(2)}")
+                    VideoPlay.singleUrl = false
+                    VideoPlay.videoUrl = null
+                }
+            }
+            intent.getStringExtra("videoTitle")?.let {
+                VideoPlay.videoTitle = it
+            }
+            val sourceKey = intent.getStringExtra("sourceKey")
+            val sourceType = intent.getIntExtra("sourceType", 0)
+            val bookUrl = intent.getStringExtra("bookUrl")
+            val record = intent.getStringExtra("record")
+            // P0-7：真实书架身份改由 VideoPlay.initSource 按**库中 notShelf 位**解析
+            // （resolveVideoBookshelfState），此处只给结构性缺省：
+            // - 无 bookUrl（纯 URL 直连/下载播放）没有书籍身份 ⇒ 恒「已入架」，退出不弹加入书架
+            // - 有 bookUrl ⇒ 先取传入值，随后的 initSource 会用库中身份纠正（旧行为恒 true 会误判临时书）
+            VideoPlay.inBookshelf = if (bookUrl.isNullOrBlank()) {
+                true
+            } else {
+                intent.getBooleanExtra("inBookshelf", true)
+            }
+            // T1.13 方案B: 保存 VideoPlay 状态快照到 Activity 字段（解决 8 实例快速切换状态串扰）
+            snapshotVideoUrl = VideoPlay.videoUrl
+            snapshotVideoTitle = VideoPlay.videoTitle
+            snapshotSingleUrl = VideoPlay.singleUrl
+            snapshotInBookshelf = VideoPlay.inBookshelf
+            AppLog.put("VideoPlayerActivity state snapshot saved: singleUrl=$snapshotSingleUrl, inBookshelf=$snapshotInBookshelf")
+            // T2.8: 保存 initSource 协程 Job 引用，onPause 时取消
+            initSourceJob = lifecycleScope.launch {
+                if (!VideoPlay.initSource(sourceKey, sourceType, bookUrl, record)) {
+                    // V-004-P0-2: initSource 失败记录日志（VideoPlay.initSource 内部已记录详细原因）
+                    // 根因：004 日志 18:48-19:16 期间 9 次 Activity 启动但播放器未初始化，原 finish() 无日志
+                    AppLog.put("VideoPlayerActivity initSource failed, finish activity, sourceKey=${sourceKey?.take(2)}***")
+                    finish()
+                    return@launch
+                }
+                // P0-1: 统一 ViewPager2 模式（video-player-dual-layout D2 起按持久化 layoutMode 分发：沉浸式走 ViewPager2，传统布局走 legacyContainer）
+                // 书源/单URL模式：单 Fragment + 禁用滑动
+                // 订阅源模式：多 Fragment + 垂直滑动
+                // startPlay 由首个 Fragment 的 activatePlayer() 触发
+                // video-player-dual-layout D2：新会话按持久化 layoutMode 分发（沉浸式/传统布局）
+                dispatchLayoutMode()
+                initView()
+                upView()
+                // video-live-favorite-fix AD-03：首次进入即刷新收藏按钮状态
+                // （修复「顶栏星标此前只在收藏增删改后才刷新 ⇒ 首次进入恒不显示」）
+                upStarMenu()
+                // AD-04: 恢复播放进度
+                restorePlayHistory()
+                // video-source-multiline-l0-preload AD-02：进入播放器即步进预取"前方一部"目录
+                // （书源场景：使首次上滑切换命中 DB 缓存秒起播；非书源 prefetchNextNeighbor 内部 guard 跳过）
+                VideoPlay.prefetchNextNeighbor()
+            }
+        } else {
+            // 非新建恢复：从悬浮窗返回，按 layoutMode 分发布局（D3）
+            VideoPlay.isResumeFromFloat = true
+            // T1.13 方案B: 恢复场景也保存状态快照
+            snapshotVideoUrl = VideoPlay.videoUrl
+            snapshotVideoTitle = VideoPlay.videoTitle
+            snapshotSingleUrl = VideoPlay.singleUrl
+            snapshotInBookshelf = VideoPlay.inBookshelf
+            // video-player-dual-layout D3：悬浮窗恢复按 layoutMode 分发，布局不漂移（R10）
+            dispatchLayoutMode()
+            initView()
+            upView()
+        }
+    }
+
+    /**
+     * T2.8: onPause 取消 initSource 协程（解决 Bug-25：onPause 后 initSource 仍运行导致资源泄漏）
+     *
+     * 场景：用户快速切 Activity 时，initSource 协程可能在 onPause 后仍在运行（如等待网络请求），
+     * 导致资源泄漏 + 状态污染。onPause 时主动取消。
+     */
+    /**
+     * add-dlna-cast AD-14：向投屏会话暴露**本地播放器控制通道**。
+     *
+     * 故意不缓存播放器引用：每次调用都经 [currentFragment] 现取句柄，
+     * 这样布局切换/Activity 重建后不会指向已销毁的旧实例（避免内存泄漏与空指针）。
+     * 全程 runCatching —— 通道是"尽力而为"，失败不该影响投屏主流程。
+     */
+    private val castPlayerControl = object : PlayerControl {
+        override fun pauseLocal() {
+            // 本通道由 DlnaCastManager 在 IO 线程调用，而 ExoPlayer 要求主线程访问：
+            // 直接调用会抛 "Player is accessed on the wrong thread"（异常被内层吞掉后
+            // 本地实际未暂停 → 手机与电视双路播放；2026-09-16 真机日志实证）
+            runOnUiThread {
+                kotlin.runCatching { currentFragment?.playerView?.currentPlayer?.onVideoPause() }
+            }
+        }
+
+        override fun resumeLocal() {
+            runOnUiThread {
+                kotlin.runCatching { currentFragment?.playerView?.currentPlayer?.onVideoResume() }
+            }
+        }
+
+        override fun currentPositionMs(): Long =
+            kotlin.runCatching { VideoPlay.videoManager.currentPosition }.getOrDefault(0L)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // add-dlna-cast AD-14：Activity 离开前台即注销通道，防止单例持有 Activity
+        DlnaCastManager.playerControl = null
+        if (initSourceJob?.isActive == true) {
+            initSourceJob?.cancel()
+            AppLog.put("VideoPlayerActivity onPause: initSourceJob cancelled")
+        }
+        // AD-04: 取消定时保存 + 保存最后一次播放进度
+        historySaveJob?.cancel()
+        savePlayHistory()
+        // A3 修复：onPause 延迟清理预加载缓存（30s 后清理，避免快速切回时缓存失效）
+        FirstFramePreloader.delayedClearCache()
+    }
+
+    /**
+     * A3 修复：onResume 取消延迟清理（保留预加载缓存）
+     *
+     * 场景：用户快速切回时取消延迟清理，缓存命中首帧秒开。
+     */
+    override fun onResume() {
+        super.onResume()
+        FirstFramePreloader.cancelDelayedClear()
+        // add-dlna-cast：注册本地播放器控制通道（与 onPause 的注销成对）
+        DlnaCastManager.playerControl = castPlayerControl
+        // AD-05 兜底：通知曾被系统清理时重建，保证"会话在跑就一定能看到入口"
+        if (DlnaCastManager.isCastingActive()) {
+            DlnaCastService.start(this)
+        }
+        // AD-04: 启动定时保存播放进度（每10s）
+        historySaveJob = lifecycleScope.launch {
+            while (true) {
+                delay(10_000)
+                savePlayHistory()
+            }
+        }
+    }
+
+    // 修复：重写 onSupportNavigateUp，Toolbar 返回箭头委托给 onBackPressedDispatcher
+    // 之前未重写此方法，点击左上角返回箭头时调用默认 NavUtils.navigateUpFromSameTask，
+    // 该方法依赖 AndroidManifest 中 PARENT_ACTIVITY 声明，未声明时返回按钮无响应。
+    // 现委托给 onBackPressedDispatcher，与系统返回键行为一致（全屏退出全屏，非全屏 finish）
+    override fun onSupportNavigateUp(): Boolean {
+        onBackPressedDispatcher.onBackPressed()
+        return true
+    }
+
+    // ==================== R3 沉浸竖滑风格：ViewPager2 模式管理 ====================
+
+    /**
+     * R3 沉浸竖滑风格：切换到 ViewPager2 沉浸式模式
+     *
+     * 隐藏旧模式布局，显示 ViewPager2 容器。
+     * 订阅源非单URL时在 initSource 后调用。
+     * 首个 Fragment 的播放由 onFragmentViewReady → activatePlayer 触发。
+     */
+    private fun switchToViewPagerMode() {
+        useViewPagerMode = true
+        binding.legacyContainer.gone()
+        binding.viewPagerContainer.visible()
+
+        // L-D9 S5 改造：顶栏已 Compose 化（GlassTopAppBar），不再绑定 ActionBar，
+        // 返回按钮由 initComposeTopBar 的 onNavClick 直接委托 onBackPressedDispatcher。
+        // 原 B1 双 TitleBar setSupportActionBar 冲突问题随 ActionBar 移除而消失。
+        updateSourceDependentMenu()
+
+        // P0-1: 书源/单URL模式禁用滑动（单 Fragment），订阅源模式保持垂直滑动
+        // video-booksource-align-rss AD-01：书源视频单页化——恒 1 页禁滑，集数/线路切换仅经
+        // 选择器与详情抽屉；上滑=列表下一影片由手势层驱动（onBookVerticalFling → switchToBookFromList）
+        val isSinglePage = VideoPlay.singleUrl || VideoPlay.book != null
+
+        // 配置 ViewPager2
+        videoPagerAdapter = VideoPagerAdapter(this)
+        binding.viewPager.apply {
+            orientation = ViewPager2.ORIENTATION_VERTICAL
+            offscreenPageLimit = 1
+            // 书源/单URL模式禁用滑动
+            isUserInputEnabled = !isSinglePage
+            adapter = videoPagerAdapter
+            pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageScrollStateChanged(state: Int) {
+                    super.onPageScrollStateChanged(state)
+                    vpScrollState = state
+                    // 快速滑动防错乱核心：停稳后才统一处理落点页（写索引/标题/触发切换）
+                    if (state == ViewPager2.SCROLL_STATE_IDLE && pendingPosition != -1) {
+                        val pos = pendingPosition
+                        pendingPosition = -1
+                        handlePageSelected(pos)
+                    }
+                }
+
+                override fun onPageSelected(position: Int) {
+                    super.onPageSelected(position)
+                    // 滑动中（DRAGGING/SETTLING）只记录落点，不写索引不改标题，防止快速滑动时中间页污染状态
+                    if (vpScrollState != ViewPager2.SCROLL_STATE_IDLE) {
+                        pendingPosition = position
+                        return
+                    }
+                    handlePageSelected(position)
+                }
+            }
+            registerOnPageChangeCallback(pageChangeCallback!!)
+        }
+
+        // 文章列表模式：定位到用户点击的文章索引（非0时需设置）
+        // 索引钳制：rssArticles 可能被替换为更短列表而 rssArticleIndex 未同步复位，
+        // 直接 setCurrentItem 越界会触发预取帧校验崩溃（IndexOutOfBoundsException）
+        VideoPlay.rssArticles?.takeIf { it.isNotEmpty() }?.let { articles ->
+            if (VideoPlay.rssArticleIndex > 0) {
+                val target = VideoPlay.rssArticleIndex.coerceAtMost(articles.size - 1)
+                binding.viewPager.setCurrentItem(target, false)
+            }
+        }
+        // video-booksource-align-rss AD-01：书源单页恒 0，历史集数定位由
+        // startPlay 内 chapterInVolumeIndex 章节解析承担，无需 ViewPager 定位
+
+        // 设置标题
+        composeTitle = VideoPlay.videoTitle ?: ""
+    }
+
+    // ==================== video-player-dual-layout：布局分发与传统布局 ====================
+
+    /**
+     * D1/D2/D3 统一分发入口：按持久化 layoutMode 挂载对应容器（AD-01 四分发点路由）
+     */
+    private fun dispatchLayoutMode() {
+        if (VideoPlay.layoutMode == 1) {
+            setupLegacyMode()
+        } else {
+            switchToViewPagerMode()
+        }
+    }
+
+    /**
+     * 传统布局挂载（K1-K7 骨架复活）：
+     * 顶栏已在根布局共用（AD-10）；播放器槽位本就在 legacyContainer（无实例迁移）；
+     * setupPlayerView 复活接线（16:9/全屏按钮/返回监听/onPrepared 校准）；
+     * 起播由 startLegacyPlayback 显式触发（K3，不依赖 Fragment.activatePlayer）；
+     * 信息区经 bindLegacyInfo 双源绑定（K7）。
+     */
+    private fun setupLegacyMode() {
+        useViewPagerMode = false
+        binding.viewPagerContainer.gone()
+        binding.legacyContainer.visible()
+        updateSourceDependentMenu()
+        setupPlayerView()
+        bindLegacyActions()
+        bindLegacyInfo()
+        composeTitle = VideoPlay.videoTitle ?: ""
+        startLegacyPlayback()
+    }
+
+    /**
+     * video-player-dual-layout W2-B2（用户反馈②）：传统布局功能按钮区
+     * 对齐沉浸式核心能力——下载/收藏/悬浮窗/设置（收藏与设置复用沉浸式同一调用链）
+     */
+    private fun bindLegacyActions() {
+        // 下载：与 VideoFragment.btn_download 同链（videoUrl 非空且非 file:// 直连才可下载）
+        binding.actionDownload.setOnClickListener {
+            val url = VideoPlay.videoUrl
+            if (url.isNullOrBlank() || url.startsWith("file://")) {
+                toastOnUi(getString(R.string.video_no_play_url))
+                return@setOnClickListener
+            }
+            val taskType = if (url.endsWith(".m3u8")) {
+                io.legado.app.service.DownloadTaskType.HLS
+            } else {
+                io.legado.app.service.DownloadTaskType.DIRECT
+            }
+            io.legado.app.model.Download.start(this, url, VideoPlay.videoTitle ?: "", taskType, VideoPlay.currentPlayHeaders)
+            toastOnUi(getString(R.string.action_download))
+        }
+        // 收藏：复用沉浸式同一链（已收藏弹编辑框，未收藏先收藏）
+        binding.actionStar.setOnClickListener { onFragmentStarClicked() }
+        // W3（用户反馈①②）：上一部/下一部——书源队列 → 订阅源文章列表（等价沉浸式上滑/下滑语义）
+        binding.actionPrev.setOnClickListener { switchLegacyFilm(-1) }
+        binding.actionNext.setOnClickListener { switchLegacyFilm(+1) }
+        // 悬浮窗：复用既有双分支实现（legacy 自动取 playerView）
+        binding.actionFloat.setOnClickListener { startFloatingWindow() }
+        // 设置：BottomSheet 面板（与沉浸式同一组件，host=PLAYER_PAGE）
+        binding.actionSettings.setOnClickListener { showLegacySettingsPanel() }
+        // add-dlna-cast AD-05 兜底②：投屏中状态条 —— 面板被关/通知被清后用户仍能看到并回到面板
+        lifecycleScope.launch {
+            DlnaCastManager.state.collect { st ->
+                if (st.phase == CastPhase.CASTING) {
+                    binding.dlnaCastBanner.text =
+                        getString(R.string.dlna_casting_banner, st.currentDevice?.friendlyName ?: "")
+                    binding.dlnaCastBanner.visible()
+                } else {
+                    binding.dlnaCastBanner.gone()
+                }
+            }
+        }
+        binding.dlnaCastBanner.setOnClickListener { openCastPanel() }
+    }
+
+    /** W2-B2：打开设置面板（镜像 VideoFragment.showSettingsPanel 的 Activity 版） */
+    private fun showLegacySettingsPanel() {
+        val panel = VideoSettingsPanel.newInstance()
+        panel.playerView = playerView
+        panel.callback = this
+        settingsPanel = panel
+        panel.show(supportFragmentManager, VideoSettingsPanel.TAG)
+    }
+
+    /**
+     * 传统布局收藏按钮同步（video-live-favorite-fix AD-03 接线：此前从未被调用）。
+     *
+     * 可见性口径与 Compose 顶栏完全一致（`VideoPlay.canFavoriteCurrent()`）——
+     * 书源视频/单 URL 直连不出现收藏入口；订阅源视频恒出现。
+     * 用 INVISIBLE 而非 GONE：该按钮与其它动作按钮均分权重，GONE 会让其余按钮变宽（布局跳动）。
+     */
+    private fun upLegacyStarState() {
+        binding.ivActionStar.setImageResource(
+            if (VideoPlay.rssStar != null) R.drawable.ic_star else R.drawable.ic_star_border
+        )
+        binding.actionStar.visibility =
+            if (VideoPlay.canFavoriteCurrent()) View.VISIBLE else View.INVISIBLE
+    }
+
+    /**
+     * K3 传统布局起播：镜像 VideoFragment.activatePlayer 的分支逻辑
+     * （悬浮窗恢复走 clonePlayState 链；书源/文章/集数三分支与沉浸式一致）
+     */
+    private fun startLegacyPlayback() {
+        val pv = playerView
+        if (VideoPlay.isResumeFromFloat) {
+            // D3：悬浮窗恢复——clonePlayState 链与 VideoPlayService 同构（R10）
+            VideoPlay.isResumeFromFloat = false
+            VideoPlay.clonePlayState(pv)
+            pv.setSurfaceToPlay()
+            pv.startAfterPrepared()
+        } else {
+            when {
+                VideoPlay.book != null -> VideoPlay.startPlay(pv)
+                !VideoPlay.rssArticles.isNullOrEmpty() ->
+                    VideoPlay.switchToArticle(VideoPlay.rssArticleIndex, pv)
+                else -> {
+                    val episode = VideoPlay.rssEpisodes?.getOrNull(VideoPlay.rssEpisodeIndex)
+                    if (episode != null) {
+                        VideoPlay.playRssEpisode(pv, episode)
+                    } else {
+                        VideoPlay.startPlay(pv)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * K7 传统布局信息区双源绑定：书源分支复用现有渲染链（showCover/showBook/showToc/showVolumes），
+     * 订阅源分支由 UP_VIDEO_INFO legacy 分支接管（showRssRoutes/showRssEpisodes）；
+     * 缺失区块优雅隐藏；「下一部」入口仅书源列表队列场景可见（R5）。
+     * 注：rssEpisode.cover/duration 为预留字段（当前恒空），封面回退 rssArticle.image、时长隐藏。
+     */
+    private fun bindLegacyInfo() {
+        // video-source-dual-track AD-04：线路/集数列表已并入 legacy_scroll 整体滚动（wrap_content），
+        // 关闭其自身嵌套滚动，避免与外层 NestedScrollView 争抢手势。
+        // 注意：该属性只能在视图构造完成后于运行时设置——若写在 XML 的 android:nestedScrollingEnabled 上，
+        // 会在 View.<init> 阶段回调 setNestedScrollingEnabled()，而 NestedScrollView/RecyclerView 的
+        // NestedScrollingChildHelper 此时尚未创建，直接抛 NPE（2026-09-18 真机崩溃实证）。
+        binding.volumes.isNestedScrollingEnabled = false
+        binding.chapters.isNestedScrollingEnabled = false
+        val book = VideoPlay.book
+        // W3 诊断日志：确认分支走向与数据状态（图片/按钮问题定位）
+        AppLog.put("bindLegacyInfo: book=${if (book != null) book.name.take(4) else "null"}, routes=${VideoPlay.rssRoutes?.size}, episodes=${VideoPlay.rssEpisodes?.size}, articles=${VideoPlay.rssArticles?.size}, articleIdx=${VideoPlay.rssArticleIndex}, articleImg=${VideoPlay.rssArticles?.getOrNull(VideoPlay.rssArticleIndex)?.image?.isNotBlank()}")
+        when {
+            book != null -> {
+                binding.data.visible()
+                showBook(book)
+                val volumes = VideoPlay.volumes
+                if (volumes.isNotEmpty()) {
+                    binding.chaptersContainer.visible()
+                    showVolumes(volumes)
+                } else {
+                    binding.volumes.gone()
+                    binding.tvRouteLabel.gone()
+                }
+                if (!VideoPlay.episodes.isNullOrEmpty()) {
+                    binding.chaptersContainer.visible()
+                    binding.chapters.visible()
+                    showToc(VideoPlay.episodes!!)
+                } else {
+                    binding.chapters.gone()
+                    binding.tvEpisodeLabel.gone()
+                }
+                upNextFilmVisible()
+            }
+            !VideoPlay.rssRoutes.isNullOrEmpty() || !VideoPlay.rssEpisodes.isNullOrEmpty() -> {
+                // 订阅源：封面/简介为文章或集数据（rssArticle.image 回退 rssEpisode.cover 预留字段）
+                binding.data.visible()
+                showRssLegacyInfo()
+                binding.chaptersContainer.visible()
+                val routes = VideoPlay.rssRoutes
+                if (!routes.isNullOrEmpty() && routes.size > 1) {
+                    showRssRoutes(routes)
+                } else {
+                    binding.volumes.gone()
+                    val episodes = VideoPlay.rssEpisodes
+                    if (!episodes.isNullOrEmpty()) {
+                        binding.chapters.visible()
+                        showRssEpisodes(episodes)
+                    } else {
+                        binding.chapters.gone()
+                        binding.tvEpisodeLabel.gone()
+                    }
+                }
+                upNextFilmVisible()
+            }
+            else -> {
+                // 单URL 直链：仅标题（W2-B4 列表信息自动对接——无列表上下文则优雅降级）
+                binding.data.visible()
+                binding.tvName.text = VideoPlay.videoTitle ?: ""
+                binding.tvAuthor.gone()
+                binding.tvRouteLabel.gone()
+                binding.tvEpisodeLabel.gone()
+                upNextFilmVisible()
+            }
+        }
+    }
+
+    /**
+     * K7 订阅源信息区绑定（W2-B4 用户反馈⑤：列表信息自动对接，零新增字段）
+     * - 名称：videoTitle ←（回退）rssArticle.title
+     * - 副信息行：播放列表上下文计数（第N篇/共M篇 或 第N集/共M集）
+     * - 简介：rssArticle.description ←（兜底）content 去 HTML 标签纯文本
+     * - 封面：rssArticle.image ←（兜底）rssEpisode.cover[预留字段恒空] → 默认图
+     */
+    private fun showRssLegacyInfo() {
+        // W3（用户反馈④）：article 兜底链补全——集数模式（rssArticles 空）接 rssStar/rssRecord.toRssArticle()，
+        //   封面/简介从阅读记录/收藏实体带过来，不再空白
+        val article = VideoPlay.rssArticles?.getOrNull(VideoPlay.rssArticleIndex)
+            ?: VideoPlay.rssStar?.toRssArticle()
+            ?: VideoPlay.rssRecord?.toRssArticle()
+        binding.tvName.text = VideoPlay.videoTitle ?: article?.title ?: ""
+        // 副信息行：列表计数
+        val articles = VideoPlay.rssArticles
+        val episodes = VideoPlay.rssEpisodes
+        val subInfo = when {
+            !articles.isNullOrEmpty() ->
+                getString(R.string.video_playlist_position_article, VideoPlay.rssArticleIndex + 1, articles.size)
+            !episodes.isNullOrEmpty() ->
+                getString(R.string.video_playlist_position_episode, VideoPlay.rssEpisodeIndex + 1, episodes.size)
+            else -> ""
+        }
+        if (subInfo.isNotBlank()) {
+            binding.tvAuthor.visible()
+            binding.tvAuthor.text = subInfo
+        } else {
+            binding.tvAuthor.gone()
+        }
+        // 简介：description → content 去标签兜底（订阅源常无 description）
+        val rawIntro = article?.description?.takeIf { it.isNotBlank() }
+            ?: article?.content?.takeIf { it.isNotBlank() }?.let { html ->
+                Regex("<[^>]*>").replace(html, " ").replace(Regex("\\s+"), " ").trim().take(300)
+            }
+        if (!rawIntro.isNullOrBlank()) {
+            binding.tvAuthor.visible()
+            showPlainIntro(rawIntro)
+        } else {
+            // 无简介：清空容器，隐藏占位
+            binding.tvIntroContainer.removeAllViews()
+        }
+        // 封面：article.image → rssEpisode.cover（预留字段恒空，保留兜底链）
+        val coverUrl = article?.image
+            ?: VideoPlay.rssEpisodes?.getOrNull(VideoPlay.rssEpisodeIndex)?.cover
+        binding.ivCover.visible()
+        if (!coverUrl.isNullOrBlank()) {
+            binding.ivCover.load(coverUrl)
+        }
+        // coverUrl 空时保留 XML 默认占位图
+    }
+
+    /** W2-B4：纯文本简介渲染（无 usehtml/useweb 特性，直接 TextView 展示） */
+    private fun showPlainIntro(text: String) {
+        if (!initIntroView || pooledWebView != null) {
+            destroyWeb()
+            binding.tvIntroContainer.removeAllViews()
+            binding.tvIntroContainer.addView(introTextView)
+        }
+        introTextView.text = text
+    }
+
+    /**
+     * 播放页内即时切换布局（AD-05 六步时序契约）：
+     * 1 直读当前位置 → 2 互斥标记短路 saveRead/定时保存 → 3 主线程串行释放旧容器 →
+     * 4 新容器 setUp → 5 PlayHistoryStore 权威恢复（双恢复点去重）→ 6 清标记
+     *
+     * @return true = 实际执行了切换；false = 目标模式与当前一致，未做任何事
+     *（供 F182 过渡反馈判断是否要亮提示，避免同模式点击也闪一条提示）
+     */
+    internal fun switchLayoutMode(targetMode: Int): Boolean {
+        val normalized = if (targetMode == 1) 1 else 0
+        val currentMode = if (useViewPagerMode) 0 else 1
+        if (normalized == currentMode) return false
+        VideoPlay.layoutMode = normalized
+        AppLog.put("VideoPlayerActivity switchLayoutMode: $currentMode -> $normalized")
+        // 2：互斥标记（savePlayHistory/内部链短路，防切换窗口串写）
+        VideoPlay.layoutSwitchInProgress = true
+        try {
+            // 1：直读当前位置（不等 10s 定时落库）
+            val position = runCatching { VideoPlay.videoManager.currentPosition }.getOrDefault(0L)
+            // 3：主线程串行释放旧容器
+            if (useViewPagerMode) {
+                currentFragment?.deactivatePlayer()
+                currentFragment?.releasePlayer()
+                currentFragment = null
+                pageChangeCallback?.let { binding.viewPager.unregisterOnPageChangeCallback(it) }
+                pageChangeCallback = null
+                binding.viewPager.adapter = null
+                videoPagerAdapter = null
+                supportFragmentManager.beginTransaction().apply {
+                    supportFragmentManager.fragments.filterIsInstance<VideoFragment>()
+                        .forEach { remove(it) }
+                    commitAllowingStateLoss()
+                }
+                supportFragmentManager.executePendingTransactions()
+            } else {
+                runCatching { playerView.getCurrentPlayer().release() }
+            }
+            if (isFullScreen) {
+                isFullScreen = false
+                requestedOrientation = orientation
+            }
+            binding.composeTopBar.visible()
+            runCatching { playerView.backFromFull(this) }
+            // 保存精确位置到 PlayHistoryStore（绕过互斥标记的强制保存）
+            savePlayHistory(force = true, positionOverride = position)
+            // 4：挂载新容器并起播
+            if (normalized == 1) {
+                setupLegacyMode()
+            } else {
+                switchToViewPagerMode()
+            }
+            // 5：PlayHistoryStore 权威恢复（延迟 2s seek，双恢复点去重）
+            restorePlayHistory()
+        } finally {
+            // 6：清互斥标记
+            VideoPlay.layoutSwitchInProgress = false
+        }
+        return true
+    }
+
+    /**
+     * F182（2026-09-21）：带过渡反馈的布局切换入口。
+     *
+     * 布局切换是**重代价操作**（旧容器释放 + 新容器挂载 + 续播恢复，期间播放器区无画面），
+     * 原先无任何提示，用户会把 1~2 秒空窗误判为「黑屏/坏了」并重复点击。
+     *
+     * 时序：置位提示 → **让出一帧**（`post`，否则「提示刚提交就被同步切换覆盖」等于没显示）
+     * → 执行切换 → 保持 [LAYOUT_SWITCH_NOTICE_MS] 后自动消退（新容器起播是异步的：
+     * `restorePlayHistory` 内含 2s 延迟 seek，用上界时长覆盖该窗口）。
+     */
+    private fun requestLayoutModeSwitch(targetMode: Int) {
+        layoutSwitching = true
+        binding.root.post {
+            val switched = switchLayoutMode(targetMode)
+            if (!switched) {
+                layoutSwitching = false
+                return@post
+            }
+            binding.root.postDelayed({ layoutSwitching = false }, LAYOUT_SWITCH_NOTICE_MS)
+        }
+    }
+
+    /**
+     * K6/W3：跨影片切换上一部/下一部（用户反馈①②）
+     * 优先级：①书源播放列表队列（switchToBookFromList，内部含边界 toast）
+     *        ②订阅源文章列表（switchToArticle，文章数据已切换 → 立即 bindLegacyInfo 刷新信息区）
+     *        ③订阅源集数模式（rssArticles 空）→ 无跨文章上下文，按钮已隐藏
+     */
+    private fun switchLegacyFilm(offset: Int) {
+        // add-dlna-cast REQ-08：投屏中切"上一部/下一部"先终止会话再放行
+        endCastForLocalSwitch()
+        val current = VideoPlay.book?.bookUrl
+        val articles = VideoPlay.rssArticles
+        if (current != null && VideoPlaylistHolder.containsBookUrl(current)
+            && VideoPlaylistHolder.neighborOf(current, offset) != null
+        ) {
+            VideoPlay.switchToBookFromList(offset, playerView.getCurrentPlayer())
+            return
+        }
+        // video-regression-fix-0906 AD-04 修订（整体考虑）：书源无跨影片邻居时降级集内切换
+        // （上/下一集），与沉浸式上滑降级语义一致；越界由 upDurIndex 内部 toast
+        if (VideoPlay.book != null) {
+            val eps = VideoPlay.episodes
+            val targetIdx = VideoPlay.chapterInVolumeIndex + offset
+            if (!eps.isNullOrEmpty() && targetIdx >= 0 && targetIdx < eps.size) {
+                val stdPlayer = playerView.getCurrentPlayer() as? StandardGSYVideoPlayer
+                if (stdPlayer != null) {
+                    VideoPlay.upDurIndex(offset, stdPlayer)
+                    return
+                }
+            }
+            toastOnUi(if (offset > 0) "已是最后一个视频" else "已到开头")
+            return
+        }
+        if (!articles.isNullOrEmpty()) {
+            val target = VideoPlay.rssArticleIndex + offset
+            if (target in articles.indices) {
+                VideoPlay.switchToArticle(target, playerView)
+                // 文章元数据（title/image/description）已同步切换，立即刷新信息区
+                bindLegacyInfo()
+            } else {
+                toastOnUi(if (offset > 0) "已是最后一个" else "已是第一个")
+            }
+        } else {
+            toastOnUi(if (offset > 0) "暂无下一部" else "暂无上一部")
+        }
+    }
+
+    /**
+     * K6/W3：「上一部/下一部」入口可见性（用户反馈①②）
+     * - 书源：VideoPlaylistHolder 队列有邻居才显示
+     * - 订阅源文章模式：列表索引范围内显示
+     * - 订阅源集数模式/单URL：隐藏
+     */
+    private fun upNextFilmVisible() {
+        if (useViewPagerMode) {
+            binding.actionPrev.gone()
+            binding.actionNext.gone()
+            return
+        }
+        val current = VideoPlay.book?.bookUrl
+        val hasPrev: Boolean
+        val hasNext: Boolean
+        if (VideoPlay.book != null || VideoPlaylistHolder.containsBookUrl(current)) {
+            // video-regression-fix-0906 AD-04 修订（整体考虑）：书源跨影片邻居或集内邻居任一存在即显示
+            // （集内邻居=上一集/下一集，与沉浸式上滑降级语义一致）
+            val crossPrev = VideoPlaylistHolder.neighborOf(current, -1) != null
+            val crossNext = VideoPlaylistHolder.neighborOf(current, +1) != null
+            val eps = VideoPlay.episodes
+            val inPrev = !eps.isNullOrEmpty() && VideoPlay.chapterInVolumeIndex - 1 >= 0
+            val inNext = !eps.isNullOrEmpty() && VideoPlay.chapterInVolumeIndex + 1 < eps.size
+            hasPrev = crossPrev || inPrev
+            hasNext = crossNext || inNext
+        } else if (!VideoPlay.rssArticles.isNullOrEmpty()) {
+            hasPrev = VideoPlay.rssArticleIndex > 0
+            hasNext = VideoPlay.rssArticleIndex < VideoPlay.rssArticles!!.size - 1
+        } else {
+            hasPrev = false
+            hasNext = false
+        }
+        binding.actionPrev.visibility = if (hasPrev) View.VISIBLE else View.GONE
+        binding.actionNext.visibility = if (hasNext) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * video-playlist-continuity：页面落点统一处理（仅在 SCROLL_STATE_IDLE 时调用）
+     *
+     * 快速滑动防错乱：滑动过程中 onPageSelected 的中间页不再立即写索引/改标题/触发切换，
+     * 防止 1) 中间页污染 VideoPlay 索引与标题；2) 快速越过末集时占位页提前触发跨影片切换，
+     * 数据集崩缩导致 ViewPager 页面被强拽、标题与内容错乱。
+     */
+    private fun handlePageSelected(position: Int) {
+        // add-dlna-cast REQ-08：投屏中滑动切文章/切集先终止会话再放行
+        endCastForLocalSwitch()
+        // 旧 Fragment 暂停
+        currentFragment?.deactivatePlayer()
+        // video-booksource-align-rss AD-01：书源占位页/集数索引映射分支删除（单页化后
+        // ViewPager 恒 1 页无滑动，跨影片切换走手势层 switchToBookFromList + 显式激活链）
+        // 根据数据源更新索引（文章模式 vs 集数模式），
+        // 并同步底部集数/线路列表选中态（停稳后落点集必须高亮跟随）
+        when {
+            !VideoPlay.rssArticles.isNullOrEmpty() -> {
+                VideoPlay.rssArticleIndex = position
+                // 文章模式集数/线路选择器由 UP_VIDEO_INFO 事件整体重建，此处无需刷新
+            }
+            VideoPlay.book != null -> {
+                // 书源单页：position 恒 0，集索引权威链为 initSource/playBookEpisode，不映射
+                upEpisodesView()
+            }
+            else -> {
+                VideoPlay.rssEpisodeIndex = position
+                upRssEpisodesView()
+            }
+        }
+        // 获取新 Fragment
+        val fragment = getVideoFragment(position)
+        currentFragment = fragment
+        // 激活播放（playerView 可能未就绪，由 onFragmentViewReady 兜底）
+        if (fragment?.playerView != null) {
+            fragment.activatePlayer()
+        }
+        // 更新标题（适配文章模式/集数模式/书源单页模式）
+        composeTitle = when {
+            !VideoPlay.rssArticles.isNullOrEmpty() ->
+                VideoPlay.rssArticles?.getOrNull(position)?.title ?: ""
+            VideoPlay.book != null ->
+                VideoPlay.displayEpisodeTitle(VideoPlay.episodes?.getOrNull(VideoPlay.chapterInVolumeIndex)?.title)
+            !VideoPlay.rssEpisodes.isNullOrEmpty() ->
+                VideoPlay.rssEpisodes?.getOrNull(position)?.title ?: VideoPlay.videoTitle ?: ""
+            else -> VideoPlay.videoTitle ?: ""
+        }
+        // 左下角标题同步：滑动停稳后当前 Fragment 的 tv_video_title 必须与头部标题一致
+        currentFragment?.updateVideoTitle(composeTitle)
+        // 阶段8 F9：滑到最后一个文章时触发分页加载
+        val articles = VideoPlay.rssArticles
+        if (!articles.isNullOrEmpty() && position == articles.size - 1) {
+            VideoPlay.loadMoreArticles()
+        }
+    }
+
+    /**
+     * R3 沉浸竖滑风格：Fragment 视图就绪回调
+     *
+     * VideoFragment.onViewCreated 中调用，确保 playerView 已初始化后再激活播放。
+     * 解决 ViewPager2 创建 Fragment 异步时序问题：onPageSelected 可能在 Fragment 视图创建前触发。
+     */
+    fun onFragmentViewReady(fragment: VideoFragment, position: Int) {
+        if (!useViewPagerMode) return
+        if (position == binding.viewPager.currentItem && currentFragment == null) {
+            // 首次就绪：激活播放
+            currentFragment = fragment
+            fragment.activatePlayer()
+        } else if (position == binding.viewPager.currentItem) {
+            // 当前页 Fragment 重建（如回收后恢复）：也需要激活播放
+            // Bug修复：原代码只设置 currentFragment 不调用 activatePlayer，
+            // 导致 onPageSelected 在 Fragment 视图创建前触发时（playerView=null 跳过 activatePlayer），
+            // onFragmentViewReady 兜底也不激活播放，视频永远不播放
+            currentFragment = fragment
+            fragment.activatePlayer()
+        }
+        // 非当前页 Fragment 就绪：不做操作，等 onPageSelected 触发
+    }
+
+    /**
+     * R3 沉浸竖滑风格：获取指定位置的 VideoFragment
+     */
+    private fun getVideoFragment(position: Int): VideoFragment? {
+        return supportFragmentManager.findFragmentByTag("f$position") as? VideoFragment
+    }
+
+    /**
+     * video-booksource-align-rss AD-02/AD-05：书源单页模式垂直滑动接线
+     *
+     * VideoFragment 手势层检测到垂直 fling 时回调（书源模式 ViewPager 已禁滑，
+     * 由本方法驱动列表切换）；上滑(velocityY<0)=列表下一影片，下滑=上一影片。
+     * 订阅源文章/集数模式不走此路径（其垂直滑动由 ViewPager2 翻页消费）。
+     */
+    fun onBookVerticalFling(velocityY: Float) {
+        if (!useViewPagerMode) return
+        if (VideoPlay.book == null) return
+        // add-dlna-cast REQ-08：投屏中竖滑切影片先终止会话再放行
+        endCastForLocalSwitch()
+        // video-regression-fix-0906 AD-04：播放器未就绪时 toast 明示，不再静默无反应
+        val player = currentFragment?.playerView?.currentPlayer ?: run {
+            splitties.init.appCtx.toastOnUi("播放器尚未就绪，请稍候再滑动")
+            return
+        }
+        if (velocityY < 0) {
+            VideoPlay.switchToBookFromList(+1, player)
+        } else {
+            VideoPlay.switchToBookFromList(-1, player)
+        }
+    }
+
+    /**
+     * R3 沉浸竖滑风格：线路切换后更新 ViewPager2
+     */
+    fun onRssRouteChangedForViewPager() {
+        // 先归位到 0 再 notify：若先 notify，ViewPager2 同步期间 currentItem 可能仍指向
+        // 已收缩数据之外的旧位置，预取帧校验越界（与 ARTICLES_LOADED 越界插入同类风险）
+        binding.viewPager.setCurrentItem(0, false)
+        videoPagerAdapter?.notifyDataSetChanged()
+    }
+
+    private fun initView() {
+        if (isViewInitialized) {
+            // onNewIntent 重初始化时已初始化过，避免重复注册 ViewModel 观察者
+            return
+        }
+        isViewInitialized = true
+        viewModel.upStarMenuData.observe(this) { upStarMenu() }
+        binding.root.setBackgroundColor(backgroundColor)
+        // P0-1: 统一 ViewPager2 模式，旧版 UI 初始化全部移除
+        // Fragment 自行管理播放器和控件，设置面板由 VideoSettingsPanel 提供
+        // 返回按钮由 Compose 顶栏 initComposeTopBar 的 onNavClick 直接委托 onBackPressedDispatcher
+    }
+
+    /**
+     * Compose 顶栏（L-D9 S5 改造）：GlassTopAppBar + 自定义/刷新/收藏图标按钮 + MoreVert 下拉菜单
+     *
+     * - 标题：composeTitle 状态驱动（VIDEO_SUB_TITLE / UP_VIDEO_INFO / onPageSelected 更新）
+     * - 全屏显隐：toggleFullScreen() 通过 binding.composeTopBar.gone()/visible() 控制
+     * - 返回按钮：直接委托 onBackPressedDispatcher（全屏退出全屏，非全屏 finish）
+     */
+    private fun initComposeTopBar() {
+        composeTitle = VideoPlay.videoTitle ?: ""
+        updateSourceDependentMenu()
+        binding.composeTopBar.setContent {
+            LegadoTheme {
+                GlassTopAppBar(
+                    title = composeTitle,
+                    navIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                    onNavClick = { onBackPressedDispatcher.onBackPressed() },
+                    actions = {
+                        if (showCustomBtn) {
+                            IconButton(onClick = { clickCustomButton() }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Tune,
+                                    contentDescription = getString(R.string.custom_button)
+                                )
+                            }
+                        }
+                        if (showRefresh) {
+                            IconButton(onClick = { recreate() }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = getString(R.string.refresh)
+                                )
+                            }
+                        }
+                        if (starVisible) {
+                            IconButton(onClick = { onFragmentStarClicked() }) {
+                                Icon(
+                                    imageVector = if (starChecked) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                    contentDescription = getString(R.string.favorite)
+                                )
+                            }
+                        }
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = getString(R.string.more)
+                                )
+                            }
+                            AppDropdownMenu(
+                                expanded = menuExpanded,
+                                onDismiss = { menuExpanded = false },
+                                actions = buildMenuActions()
+                            )
+                        }
+                    },
+                    // F182（2026-09-21）：布局切换过渡反馈——状态类第二行必须走 secondRow
+                    //（F317：subtitle 槽在固定栏高下会被裁掉不可见）
+                    secondRow = when {
+                        layoutSwitching -> {
+                            {
+                                Text(
+                                    text = getString(R.string.video_layout_switching),
+                                    color = AppUiTokens.settingPalette().accent,
+                                    fontSize = MaterialTheme.typography.labelMedium.fontSize,
+                                    // 第二行无内建内边距（GlassTopAppBar 只给标题行加），
+                                    // 留 16dp 与标题左缘对齐，否则文字会贴屏边
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp)
+                                )
+                            }
+                        }
+
+                        else -> null
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * 源相关菜单项可见性（源初始化完成/编辑返回后刷新）
+     */
+    private fun updateSourceDependentMenu() {
+        showCustomBtn = (VideoPlay.source as? BookSource)?.customButton == true
+        showRefresh = VideoPlay.source is RssSource
+        showLogin = !VideoPlay.source?.loginUrl.isNullOrBlank()
+        showChangeSource = (RssSearchSourceHolder.articles?.size ?: 0) > 1
+    }
+
+    /**
+     * 下拉菜单数据驱动（迁移自 video_play.xml + onCompatOptionsItemSelected）
+     */
+    private fun buildMenuActions(): List<MenuAction> {
+        val actions = mutableListOf<MenuAction>()
+        // 浮窗播放
+        actions += MenuAction(
+            icon = Icons.Filled.PictureInPicture,
+            title = getString(R.string.float_window),
+            onClick = { startFloatingWindow() }
+        )
+        // 投屏（add-dlna-cast REQ-01）：受「启用投屏功能」与"有播放地址"双重门控
+        if (DlnaCastManager.isEntryAvailable()) {
+            actions += MenuAction(
+                icon = Icons.Filled.Cast,
+                title = getString(R.string.dlna_cast),
+                onClick = { openCastPanel() }
+            )
+        }
+        // 配置设置
+        actions += MenuAction(
+            icon = Icons.Filled.Settings,
+            title = getString(R.string.config_settings),
+            onClick = {
+                // video-player-dual-layout：设置弹框内切换布局模式 → 即时重建续播（R7）
+                showDialogFragment(SettingsDialog(this).apply {
+                    onLayoutModeSelected = { target -> requestLayoutModeSwitch(target) }
+                })
+            }
+        )        // 登录（源配置了登录地址才显示）
+        if (showLogin) {
+            actions += MenuAction(
+                icon = Icons.Filled.Login,
+                title = getString(R.string.login),
+                onClick = { openSourceLogin() }
+            )
+        }
+        // 复制播放地址
+        actions += MenuAction(
+            icon = Icons.Filled.ContentCopy,
+            title = getString(R.string.copy_play_url),
+            onClick = { copyVideoUrl() }
+        )
+        // 浏览器打开
+        actions += MenuAction(
+            icon = Icons.Filled.OpenInBrowser,
+            title = getString(R.string.open_in_browser),
+            onClick = { openVideoInBrowser() }
+        )
+        // 其他播放器打开
+        actions += MenuAction(
+            icon = Icons.Filled.Movie,
+            title = getString(R.string.open_other_video_player),
+            onClick = { openInOtherPlayer() }
+        )
+        // 换源（搜索结果多源场景显示）
+        if (showChangeSource) {
+            actions += MenuAction(
+                icon = Icons.Filled.SwapVert,
+                title = getString(R.string.change_source),
+                onClick = { showDialogFragment(ChangeRssArticleSourceDialog()) }
+            )
+        }
+        // 编辑书源
+        actions += MenuAction(
+            icon = Icons.Filled.Edit,
+            title = getString(R.string.edit_book_source),
+            onClick = { editSource() }
+        )
+        // 日志
+        actions += MenuAction(
+            icon = Icons.Filled.Info,
+            title = getString(R.string.log),
+            onClick = { showDialogFragment<AppLogDialog>() }
+        )
+        return actions
+    }
+
+    // ==================== 下拉菜单动作实现（迁移自 onCompatOptionsItemSelected） ====================
+
+    private fun clickCustomButton() {
+        (VideoPlay.source as? BookSource)?.let { source ->
+            VideoPlay.book?.let { book ->
+                SourceCallBack.callBackBtn(
+                    this,
+                    SourceCallBack.CLICK_CUSTOM_BUTTON,
+                    source,
+                    book,
+                    VideoPlay.chapter,
+                    BookType.video
+                )
+            }
+        }
+    }
+
+    private fun openSourceLogin() {
+        VideoPlay.source?.let { s ->
+            when (s) {
+                is BookSource -> startActivity<SourceLoginActivity> {
+                    putExtra("bookType", BookType.video)
+                }
+                is RssSource -> startActivity<SourceLoginActivity> {
+                    putExtra("type", "rssSource")
+                    putExtra("key", s.getKey())
+                }
+            }
+        }
+    }
+
+    /**
+     * add-dlna-cast REQ-01 / REQ-03：打开投屏面板。
+     *
+     * 顺序：先拉起投屏前台服务（承载发现 / 代理 / 轮询的保活），再展示设备面板。
+     * 若已有会话在跑，面板因"状态唯一来源"（[DlnaCastManager.state]）会直接落到控制态，
+     * 而不是重新发现设备（REQ-03 Scenario「投屏中重新打开面板」）。
+     */
+    private fun openCastPanel() {
+        if (VideoPlay.videoUrl.isNullOrBlank()) {
+            toastOnUi(getString(R.string.video_no_play_url))
+            return
+        }
+        DlnaCastService.start(this)
+        showDialogFragment(DlnaCastDialog())
+    }
+
+    /**
+     * add-dlna-cast REQ-08 / AD-07：切集/换线路/换文章等本地切换的前置拦截。
+     *
+     * 投屏会话存活（CASTING 或 CONNECTING）时：先终止会话（Stop 下发 + 代理注销 +
+     * 服务停止），再放行本地切换，并回到投屏面板供用户重新点投屏（不做静默续投）。
+     *
+     * @return true 表示终止了一个投屏会话
+     */
+    private fun endCastForLocalSwitch(): Boolean {
+        if (!DlnaCastManager.isSessionBusy()) return false
+        DlnaCastManager.stopByUser()
+        toastOnUi(getString(R.string.dlna_stopped_local_paused))
+        openCastPanel()
+        return true
+    }
+
+    private fun copyVideoUrl() {
+        val url = VideoPlay.videoUrl
+        if (url.isNullOrBlank()) {
+            this.toastOnUi(getString(R.string.video_no_play_url))
+            return
+        }
+        VideoPlay.book?.let {
+            SourceCallBack.callBackBtn(
+                this,
+                SourceCallBack.CLICK_COPY_PLAY_URL,
+                VideoPlay.source as? BookSource,
+                it,
+                VideoPlay.chapter,
+                BookType.video,
+                url
+            ) {
+                sendToClip(url)
+            }
+        }
+    }
+
+    private fun openVideoInBrowser() {
+        // 浏览器打开：优先用视频URL，其次用 RSS 文章链接
+        val url = VideoPlay.videoUrl
+            ?: VideoPlay.rssArticles?.getOrNull(VideoPlay.rssArticleIndex)?.link
+        if (url.isNullOrBlank()) {
+            this.toastOnUi(getString(R.string.video_no_available_url))
+        } else {
+            openUrl(url)
+        }
+    }
+
+    private fun openInOtherPlayer() {
+        val url = VideoPlay.videoUrl
+        if (url.isNullOrBlank()) {
+            this.toastOnUi(getString(R.string.video_no_play_url))
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(url.toUri(), "video/*")
+        }
+        startActivity(intent)
+    }
+
+    private fun editSource() {
+        VideoPlay.source?.let { s ->
+            when (s) {
+                is BookSource -> bookSourceEditResult.launch {
+                    putExtra("sourceUrl", s.getKey())
+                }
+                is RssSource -> rssSourceEditResult.launch {
+                    putExtra("sourceUrl", s.getKey())
+                }
+            }
         }
     }
 
@@ -250,7 +1548,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
-    inner class CustomWebViewClient : WebViewClient() {
+    inner class CustomWebViewClient : SilentSslWebViewClient() {
         private val jsStr = getInjectionString
         override fun shouldOverrideUrlLoading(
             view: WebView?,
@@ -399,16 +1697,16 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     private fun showToc(toc: List<BookChapter>) {
-        binding.ivChapter.setOnClickListener {
-            VideoPlay.book?.bookUrl?.let {
-                tocActivityResult.launch(it)
-            }
-        }
+        // video-player-dual-layout W2-B3（用户反馈③）：去掉 iv_chapter 二级目录页入口，
+        // 选集直接页内平铺（tocActivityResult 保留给未来页内展开复用）
+        // 2026-09-14 布局重排二轮：多集网格平铺（一行 N 个按集名平均分配宽度，列数屏宽自适应）
         val recyclerView = binding.chapters
-        val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        recyclerView.layoutManager = layoutManager
-        val adapter = ChapterAdapter(toc,VideoPlay.chapterInVolumeIndex, false) { chapter, index ->
+        recyclerView.layoutManager = GridLayoutManager(this, episodeGridSpanCount())
+        val adapter = ChapterAdapter(toc, VideoPlay.chapterInVolumeIndex, false,
+            R.layout.item_video_chapter_vertical) { chapter, index ->
             if (index != VideoPlay.chapterInVolumeIndex) {
+                // add-dlna-cast REQ-08：投屏中选集先终止会话再放行
+                endCastForLocalSwitch()
                 VideoPlay.chapterInVolumeIndex = index
                 VideoPlay.saveRead(0)
                 upEpisodesView()
@@ -419,12 +1717,161 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         scrollToDurChapter(recyclerView, VideoPlay.chapterInVolumeIndex)
     }
 
+    /**
+     * 2026-09-14 布局重排二轮：多集网格列数自适应
+     * 按屏宽/110dp（item 目标最小宽度）估算，钳制 [3,6]，横竖屏旋转后重进页面自动重算
+     */
+    private fun episodeGridSpanCount(): Int {
+        val screenWidthDp = resources.configuration.screenWidthDp
+        return (screenWidthDp / 110).coerceIn(3, 6)
+    }
+
+    /**
+     * R3 多线路支持：显示线路选择器
+     *
+     * 复用 binding.volumes（RecyclerView）显示线路列表，与书源卷选择器 UI 一致。
+     * 线路数>1时显示线路选择器；线路数==1时隐藏线路选择器只显示集数。
+     */
+    private fun showRssRoutes(routes: List<RssRoute>) {
+        binding.chaptersContainer.visible()
+        if (routes.size > 1) {
+            // 多线路：显示线路选择器
+            binding.volumes.visible()
+            val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+            binding.volumes.layoutManager = layoutManager
+            val routeNames = routes.map { it.name }
+            val adapter = RssRouteAdapter(routeNames, VideoPlay.rssRouteIndex) { _, index ->
+                if (index != VideoPlay.rssRouteIndex) {
+                    // add-dlna-cast REQ-08：投屏中换线路先终止会话再放行
+                    endCastForLocalSwitch()
+                    if (VideoPlay.isNewRoutesMode()) {
+                        // 新模式：异步按需采集（switchToRoute 内部处理播放+UI更新）
+                        VideoPlay.switchToRoute(index, playerView)
+                        upRssRoutesView()
+                    } else {
+                        // 旧模式：内存切换
+                        val episode = VideoPlay.switchRssRoute(index)
+                        if (episode != null) {
+                            upRssRoutesView()
+                            VideoPlay.playRssEpisode(playerView, episode)
+                            upRssEpisodesView()
+                        }
+                    }
+                }
+            }
+            binding.volumes.adapter = adapter
+            scrollToDurChapter(binding.volumes, VideoPlay.rssRouteIndex)
+        } else {
+            // 单线路：隐藏线路选择器
+            binding.volumes.gone()
+        }
+        // 显示当前线路的集数列表
+        val episodes = routes.getOrNull(VideoPlay.rssRouteIndex)?.episodes
+        if (!episodes.isNullOrEmpty()) {
+            binding.chapters.visible()
+            showRssEpisodes(episodes)
+        } else {
+            binding.chapters.gone()
+        }
+    }
+
+    /**
+     * R3 多线路支持：更新线路选择器选中位置
+     */
+    private fun upRssRoutesView() {
+        val routes = VideoPlay.rssRoutes
+        if (!routes.isNullOrEmpty() && routes.size > 1) {
+            val adapter = binding.volumes.adapter as? RssRouteAdapter
+            adapter?.updateSelectedPosition(VideoPlay.rssRouteIndex)
+            scrollToDurChapter(binding.volumes, VideoPlay.rssRouteIndex)
+            // 更新集数列表
+            val episodes = routes.getOrNull(VideoPlay.rssRouteIndex)?.episodes
+            if (!episodes.isNullOrEmpty()) {
+                showRssEpisodes(episodes)
+            }
+        }
+    }
+
+    /**
+     * R1 多集选择播放：显示订阅源多集列表
+     *
+     * 复用 binding.chapters（RecyclerView），与书源集数列表 UI 一致
+     */
+    private fun showRssEpisodes(episodes: List<RssEpisode>) {
+        binding.tvEpisodeLabel.visible()
+        val recyclerView = binding.chapters
+        // 2026-09-14 布局重排二轮：多集网格平铺（一行 N 个按集名平均分配宽度）
+        recyclerView.layoutManager = GridLayoutManager(this, episodeGridSpanCount())
+        val adapter = RssEpisodeAdapter(
+            episodes, VideoPlay.rssEpisodeIndex, true
+        ) { episode, index ->
+            if (index != VideoPlay.rssEpisodeIndex) {
+                // add-dlna-cast REQ-08：投屏中选集先终止会话再放行
+                endCastForLocalSwitch()
+                VideoPlay.rssEpisodeIndex = index
+                VideoPlay.playRssEpisode(playerView, episode)
+                upRssEpisodesView()
+            }
+        }
+        recyclerView.adapter = adapter
+        // F183：区块标题补位置计数（与信息区 video_playlist_position_episode 同源同串）
+        upEpisodeLabelPosition(VideoPlay.rssEpisodeIndex, episodes.size)
+        loadWatchedEpisodes(adapter)
+        scrollToDurChapter(recyclerView, VideoPlay.rssEpisodeIndex)
+    }
+
+    /**
+     * F183（2026-09-21）：选集区块标题的位置计数（「选集 · 第3集 · 共36集」）。
+     * 索引越界钳制后再拼串，避免异步列表变更期间出现「第 0 集 / 超出总数」的失真文案。
+     */
+    private fun upEpisodeLabelPosition(episodeIndex: Int, total: Int) {
+        if (total <= 0) return
+        val safeIndex = episodeIndex.coerceIn(0, total - 1)
+        binding.tvEpisodeLabel.text = getString(R.string.video_section_episodes) +
+            " · " + getString(R.string.video_playlist_position_episode, safeIndex + 1, total)
+    }
+
+    /**
+     * F183（2026-09-21）：异步补「已看」态。
+     *
+     * 键为 `PlayHistoryStore` 存的集原始 URL（= `VideoPlay.historyKeyUrl`，多线路多集模式下即
+     * `RssEpisode.url`）⇒ 可直接与选集列表的 `episode.url` 比对。查询失败/历史关闭时返回空集，
+     * 列表退回既有两态（当前 / 未看），不产生视觉回退。
+     */
+    private fun loadWatchedEpisodes(adapter: RssEpisodeAdapter) {
+        val articleUrl = getCurrentArticleUrl()
+        if (articleUrl.isBlank()) return
+        lifecycleScope.launch {
+            val watched = PlayHistoryStore.watchedVideoUrls(articleUrl)
+            if (watched.isEmpty()) return@launch
+            adapter.watchedUrls = watched
+        }
+    }
+
+    /**
+     * R1 多集选择播放：更新订阅源多集列表选中位置
+     */
+    private fun upRssEpisodesView() {
+        val episodes = VideoPlay.rssEpisodes
+        if (!episodes.isNullOrEmpty()) {
+            val adapter = binding.chapters.adapter as? RssEpisodeAdapter
+            adapter?.updateSelectedPosition(VideoPlay.rssEpisodeIndex)
+            // F183：切集同步刷新位置计数
+            upEpisodeLabelPosition(VideoPlay.rssEpisodeIndex, episodes.size)
+            scrollToDurChapter(binding.chapters, VideoPlay.rssEpisodeIndex)
+        }
+    }
+
     private fun showVolumes(volumes: List<BookChapter>) {
+        // 书源卷结构 = 线路（video-booksource-multiroute），W2-B3 区块标题
+        binding.tvRouteLabel.visible()
         val recyclerView = binding.volumes
         val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         recyclerView.layoutManager = layoutManager
         val adapter = ChapterAdapter(volumes,VideoPlay.durVolumeIndex, true) { chapter, index ->
             if (index != VideoPlay.durVolumeIndex) {
+                // add-dlna-cast REQ-08：投屏中切线路（卷）先终止会话再放行
+                endCastForLocalSwitch()
                 VideoPlay.durVolumeIndex = index
                 VideoPlay.chapterInVolumeIndex = 0
                 VideoPlay.upEpisodes()
@@ -446,19 +1893,31 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     private fun scrollToDurChapter(recyclerView: RecyclerView, index: Int) {
         recyclerView.postDelayed({
-            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
-            layoutManager?.run {
-                val smoothScroller = object : LinearSmoothScroller(this@VideoPlayerActivity) {
-                    override fun getHorizontalSnapPreference(): Int {
-                        return SNAP_TO_START // 滚动到最左边
-                    }
-                }
-                smoothScroller.targetPosition = index
-                this.startSmoothScroll(smoothScroller)
-            }
             val adapter = recyclerView.adapter as? ChapterAdapter
             adapter?.updateSelectedPosition(index)
+            // video-source-dual-track AD-04：集数区已并入 legacy_scroll 整体滚动
+            // （layout_height=wrap_content + nestedScrollingEnabled=false），RecyclerView 自身滚动范围≈0，
+            // 原 LinearSmoothScroller 定位在此形态下失效；改为计算目标子项在滚动容器内的偏移并滚动父容器。
+            val scrollContainer = findViewById<NestedScrollView>(R.id.legacy_scroll)
+            val targetChild = recyclerView.layoutManager?.findViewByPosition(index)
+            if (scrollContainer != null && targetChild != null) {
+                scrollContainer.smoothScrollTo(0, offsetInAncestor(targetChild, scrollContainer))
+            }
         }, 200)
+    }
+
+    /**
+     * 计算 [child] 相对于祖先 [ancestor] 的纵向偏移（逐级累加 top 直至命中祖先），
+     * 供集数定位时滚动父容器使用（video-source-dual-track AD-04）。
+     */
+    private fun offsetInAncestor(child: View, ancestor: View): Int {
+        var offset = 0
+        var current: View? = child
+        while (current != null && current !== ancestor) {
+            offset += current.top
+            current = current.parent as? View
+        }
+        return offset
     }
 
     private fun upView() {
@@ -478,31 +1937,73 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
-    private fun toggleFullScreen() {
+    internal fun toggleFullScreen() {
         isFullScreen = !isFullScreen
         toggleSystemBar(!isFullScreen)
         if (isFullScreen) {
             orientation = requestedOrientation
-            requestedOrientation = if (VideoPlay.isPortraitVideo) {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //竖屏
+            if (useViewPagerMode) {
+                // R3 阶段4：ViewPager2 模式直接旋转 Activity，不使用 GSY startWindowFullscreen
+                // 用户需求：根据视频方向选择全屏方向（竖屏视频→竖屏全屏，横屏视频→横屏全屏）
+                requestedOrientation = if (VideoPlay.isPortraitVideo) {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }
+                // F1 真全屏修复：用 composeTopBar.gone() 替代 supportActionBar?.hide()
+                // 根因：supportActionBar?.hide() 只隐藏 ActionBar 内容显示，但顶栏仍占据布局空间，
+                // 导致 ViewPager2 高度 = 屏幕高度 - 顶栏高度，playerView 无法铺满全屏。
+                // gone() 释放布局空间，ViewPager2 可铺满整个屏幕实现真全屏。
+                binding.composeTopBar.gone()
+                currentFragment?.onFullScreenChanged(true)
             } else {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏
+                requestedOrientation = if (VideoPlay.isPortraitVideo) {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //竖屏
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏
+                }
+                // video-player-dual-layout W2-B1：传统布局全屏同步隐藏 Compose 顶栏（与沉浸式 F1 真全屏一致）
+                binding.composeTopBar.gone()
+                supportActionBar?.hide()
+                binding.chaptersContainer.gone()
+                binding.data.gone()
+                binding.legacyActions?.gone()
+                playerView.startWindowFullscreen(this, false, false)
             }
-            supportActionBar?.hide()
-            binding.chaptersContainer.gone()
-            binding.data.gone()
-            playerView.startWindowFullscreen(this, false, false)
         } else {
-            requestedOrientation = orientation
-            supportActionBar?.show()
-            if (VideoPlay.book != null) {
-                binding.chaptersContainer.visible()
+            if (useViewPagerMode) {
+                // R3 阶段4：ViewPager2 模式恢复竖屏
+                requestedOrientation = orientation
+                // F1 真全屏修复：恢复顶栏显示（与 entering 的 gone() 对应）
+                binding.composeTopBar.visible()
+                supportActionBar?.show()
+                currentFragment?.onFullScreenChanged(false)
+            } else {
+                requestedOrientation = orientation
+                // video-player-dual-layout W2-B1：退出全屏恢复顶栏与信息区
+                binding.composeTopBar.visible()
+                supportActionBar?.show()
+                // video-player-dual-layout W3（用户反馈③）：所有源类型统一恢复 data+按钮区
+                // （原 book 分支才恢复 data，订阅源全屏返回后信息区/按钮区丢失）
                 binding.data.visible()
+                binding.legacyActions.visible()
+                if (VideoPlay.book != null) {
+                    binding.chaptersContainer.visible()
+                } else {
+                    if (!VideoPlay.rssRoutes.isNullOrEmpty() || !VideoPlay.rssEpisodes.isNullOrEmpty()) {
+                        // R3 多线路 / R1 多集：退出全屏恢复线路+集数列表
+                        binding.chaptersContainer.visible()
+                        val routes = VideoPlay.rssRoutes
+                        if (!routes.isNullOrEmpty() && routes.size > 1) {
+                            binding.volumes.visible()
+                        }
+                    }
+                }
+                playerView.postDelayed({
+                    playerView.backFromFull(this)
+                }, if (VideoPlay.isPortraitVideo) 300 else 0)
+                upView()
             }
-            playerView.postDelayed({
-                playerView.backFromFull(this)
-            }, if (VideoPlay.isPortraitVideo) 300 else 0)
-            upView()
         }
     }
 
@@ -511,12 +2012,17 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     @SuppressLint("SwitchIntDef")
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        // video-player-theme-unify：配置变化兜底刷新播放器主题高亮
+        applyVideoThemeColors()
         if (isFullScreen) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
             window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+            // R3 阶段4：ViewPager2 模式下不自动触发全屏
+            // 全屏由用户主动点击全屏按钮或双指拉伸触发，避免设备旋转后反复进入/退出全屏
+            if (useViewPagerMode) return
             when (newConfig.orientation) {
                 Configuration.ORIENTATION_LANDSCAPE -> {
                     if (!VideoPlay.isPortraitVideo) {
@@ -532,6 +2038,16 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
+    /**
+     * video-player-theme-unify：刷新所有播放器实例的 View 侧主题高亮。
+     * 小屏（Fragment 持有）+ 大屏（lazy playerView）+ 全屏实例全量刷新。
+     */
+    private fun applyVideoThemeColors() {
+        playerView.applyThemeColors()
+        currentFragment?.playerView?.applyThemeColors()
+        playerView.getFullWindowPlayer()?.applyThemeColors()
+    }
+
     private fun setupPlayerView() {
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
@@ -545,6 +2061,24 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         layoutParams.height = if (height < screenHeight / 2) height else screenHeight / 2
         playerView.layoutParams = layoutParams
         playerView.isNeedOrientationUtils = false //关闭自带的屏幕方向控制
+        // video-player-dual-layout W2-B1（用户反馈①）：全屏按钮常显并移到倍速按钮之前（底部控制栏右下区域）
+        // 仅传统布局的 playerView 实例生效（沉浸式 Fragment 实例不受影响，其全屏走覆盖层 btn_fullscreen）
+        runCatching {
+            val fsButton: View = playerView.fullscreenButton
+            fsButton.visibility = View.VISIBLE
+            val bar = fsButton.parent as ViewGroup?
+            if (bar != null) {
+                val speedBtn: View? = bar.findViewById(R.id.playback_speed)
+                if (speedBtn != null) {
+                    val speedIndex = bar.indexOfChild(speedBtn)
+                    val fsIndex = bar.indexOfChild(fsButton)
+                    if (speedIndex in 0 until fsIndex) {
+                        bar.removeView(fsButton)
+                        bar.addView(fsButton, speedIndex)
+                    }
+                }
+            }
+        }
         playerView.fullscreenButton.setOnClickListener { toggleFullScreen() }
         playerView.setBackFromFullScreenListener { toggleFullScreen() }
         playerView.setVideoAllCallBack(object : GSYSampleCallBack() {
@@ -582,157 +2116,455 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                     }
                 }
             }
+
+            override fun onAutoComplete(url: String?, vararg objects: Any?) {
+                super.onAutoComplete(url, *objects)
+                // video-player-dual-layout K5：传统布局末集播完自动连播（R5 跨影片语义）
+                // 书源：upDurIndex 末集自动切列表下一影片（无下一影片时内部 toast 边界提示）；
+                // 订阅源集数模式：顺延下一集（有队列才推进）
+                if (VideoPlay.book != null) {
+                    VideoPlay.upDurIndex(+1, playerView.getCurrentPlayer())
+                } else {
+                    val episodes = VideoPlay.rssEpisodes
+                    val next = VideoPlay.rssEpisodeIndex + 1
+                    if (!episodes.isNullOrEmpty() && next < episodes.size) {
+                        VideoPlay.rssEpisodeIndex = next
+                        VideoPlay.playRssEpisode(playerView, episodes[next])
+                        upRssEpisodesView()
+                    }
+                }
+            }
         })
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.video_play, menu)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)?.also {
-            it.isVisible = (VideoPlay.source as? BookSource)?.customButton == true
-        }
-        starMenuItem = menu.findItem(R.id.menu_rss_star)
-        upStarMenu()
-        return super.onPrepareOptionsMenu(menu)
-    }
-
+    /**
+     * L-D9 S5 改造：菜单已迁移至 Compose AppDropdownMenu，原 ActionBar 菜单体系（video_play.xml）
+     * 及 onCompatCreateOptionsMenu/onPrepareOptionsMenu/onMenuOpened/onCompatOptionsItemSelected
+     * 均已移除。收藏按钮状态改为 Compose 状态驱动（starVisible/starChecked）。
+     */
     private fun upStarMenu() {
+        val isStarred = VideoPlay.rssStar != null
+        // AD-03：可见性单源化——订阅源视频模式恒可见（不再依赖「是否已有记录/收藏」，
+        // 修复「首次进入顶栏永不显示收藏按钮」）；书源/单 URL 保持不可见。
+        starVisible = VideoPlay.canFavoriteCurrent()
+        starChecked = isStarred
+        // 三处状态同步：沉浸式悬浮星标 + 传统布局动作区图标
+        currentFragment?.updateStarState(isStarred)
+        upLegacyStarState()
+    }
+
+    /**
+     * R3 阶段2：Fragment 收藏按钮点击委托
+     *
+     * 已收藏 → 弹出 RssFavoritesDialog 编辑
+     * 未收藏 → 调用 viewModel.addFavorite 收藏
+     */
+    fun onFragmentStarClicked() {
         if (VideoPlay.rssStar != null) {
-            starMenuItem?.isVisible = true
-            starMenuItem?.setIcon(R.drawable.ic_star)
-            starMenuItem?.setTitle(R.string.in_favorites)
-            starMenuItem?.icon?.setTintMutate(primaryTextColor)
-        } else if(VideoPlay.rssRecord != null) {
-            starMenuItem?.isVisible = true
-            starMenuItem?.setIcon(R.drawable.ic_star_border)
-            starMenuItem?.setTitle(R.string.out_favorites)
-            starMenuItem?.icon?.setTintMutate(primaryTextColor)
+            VideoPlay.rssStar?.let { showDialogFragment(RssFavoritesDialog(it)) }
         } else {
-            starMenuItem?.isVisible = false
-        }
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_login)?.isVisible = !VideoPlay.source?.loginUrl.isNullOrBlank()
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_custom_btn -> {
-                (VideoPlay.source as? BookSource)?.let {source ->
-                    VideoPlay.book?.let { book ->
-                        SourceCallBack.callBackBtn(
-                            this,
-                            SourceCallBack.CLICK_CUSTOM_BUTTON,
-                            source,
-                            book,
-                            VideoPlay.chapter,
-                            BookType.video
-                        )
-                    }
-                }
-            }
-            R.id.menu_rss_star -> viewModel.addFavorite {
+            viewModel.addFavorite {
                 VideoPlay.rssStar?.let { showDialogFragment(RssFavoritesDialog(it)) }
             }
-            R.id.menu_float_window -> startFloatingWindow()
-            R.id.menu_config_settings -> showDialogFragment(SettingsDialog(this))
-            R.id.menu_login -> VideoPlay.source?.let {s ->
-               when (s) {
-                    is BookSource -> {
-                        startActivity<SourceLoginActivity> {
-                            putExtra("bookType", BookType.video)
-                        }
-                    }
-                    is RssSource -> {
-                        startActivity<SourceLoginActivity> {
-                            putExtra("type", "rssSource")
-                            putExtra("key", s.getKey())
-                        }
-                    }
-                }
-            }
-
-            R.id.menu_copy_video_url -> {
-                val url = VideoPlay.videoUrl
-                if (url.isNullOrBlank()){
-                    this.toastOnUi("暂无播放地址")
-                    return true
-                }
-                VideoPlay.book?.let {
-                    SourceCallBack.callBackBtn(
-                        this,
-                        SourceCallBack.CLICK_COPY_PLAY_URL,
-                        VideoPlay.source as? BookSource,
-                        it,
-                        VideoPlay.chapter,
-                        BookType.video,
-                        url
-                    ) {
-                        sendToClip(url)
-                    }
-                }
-            }
-            R.id.menu_open_other_video_player -> {
-                val url = VideoPlay.videoUrl
-                if (url.isNullOrBlank()){
-                    this.toastOnUi("暂无播放地址")
-                    return true
-                }
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(url.toUri(), "video/*")
-                }
-                startActivity(intent)
-            }
-            R.id.menu_edit_source -> VideoPlay.source?.let {s  ->
-                when (s) {
-                    is BookSource -> bookSourceEditResult.launch {
-                        putExtra("sourceUrl", s.getKey())
-                    }
-                    is RssSource -> rssSourceEditResult.launch {
-                        putExtra("sourceUrl", s.getKey())
-                    }
-                }
-            }
-
-            R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
-        return super.onCompatOptionsItemSelected(item)
     }
 
     private fun startFloatingWindow() {
-        VideoPlay.savePlayState(playerView)
+        // add-dlna-cast REQ-08 / AD-07：**禁止第二路播放**。
+        // 悬浮窗会让本地播放恢复，与正在投屏的那一路叠加 → 流量翻倍 + 声音重叠。
+        // 因此先终止投屏会话（含向设备下发 Stop 与代理注销），再走本地播放。
+        if (DlnaCastManager.isCastingActive()) {
+            DlnaCastManager.stopByUser()
+            toastOnUi(getString(R.string.dlna_stopped_local_paused))
+        }
+        val activePlayer = if (useViewPagerMode) {
+            currentFragment?.playerView ?: return
+        } else {
+            playerView
+        }
+        // 悬浮窗Bug修复：在启动服务之前先检查 overlay 权限
+        // 之前在 VideoPlayService.onStartCommand() 中检查权限，
+        // 发现没权限时 stopSelf() 导致服务立即销毁，悬浮窗压根没展示
+        if (!Settings.canDrawOverlays(this)) {
+            PermissionsCompat.Builder()
+                .addPermissions(Permissions.SYSTEM_ALERT_WINDOW)
+                .rationale(R.string.float_permission_rationale)
+                .onGranted {
+                    // 授权成功后重新启动悬浮窗
+                    startFloatingWindow()
+                }
+                .request()
+            return
+        }
+        VideoPlay.savePlayState(activePlayer)
         // 启动悬浮窗服务
         val intent = Intent(this, VideoPlayService::class.java).apply {
             putExtra("isNew", false)
         }
         ContextCompat.startForegroundService(this, intent)
-        playerView.needDestroy = false
-        finish() //如果在播放器复刻前活动被销毁，会导致状态继承异常（这里服务创建很快，没发现异常）
+        activePlayer.needDestroy = false
+        finish()
+    }
+
+    // ==================== R3 阶段5：VideoSettingsPanel 回调实现 ====================
+
+    override fun onRouteChanged(episode: RssEpisode) {
+        if (useViewPagerMode) {
+            // ViewPager2 模式：重新播放新集
+            val pv = currentFragment?.playerView ?: return
+            VideoPlay.playRssEpisode(pv, episode)
+            if (VideoPlay.rssArticles.isNullOrEmpty()) {
+                // 集数模式：更新 adapter + 重置到第一页（旧逻辑）
+                onRssRouteChangedForViewPager()
+            } else {
+                // 文章模式：线路切换不影响 ViewPager2（文章数量不变），只更新当前 Fragment 的集数选择器
+                currentFragment?.updateEpisodeSelector()
+            }
+        } else {
+            // Legacy 模式：走旧逻辑
+            upRssRoutesView()
+            VideoPlay.playRssEpisode(playerView, episode)
+            upRssEpisodesView()
+        }
+    }
+
+    override fun onFloatWindow() {
+        startFloatingWindow()
+    }
+
+    override fun onEditSource() {
+        VideoPlay.source?.let { s ->
+            when (s) {
+                is BookSource -> bookSourceEditResult.launch {
+                    putExtra("sourceUrl", s.getKey())
+                }
+                is RssSource -> rssSourceEditResult.launch {
+                    putExtra("sourceUrl", s.getKey())
+                }
+            }
+        }
+    }
+
+    override fun onLog() {
+        showDialogFragment<AppLogDialog>()
+    }
+
+    /**
+     * video-player-dual-layout R7：设置面板（BottomSheet）内切换布局模式 → 容器重建续播（AD-05）
+     *
+     * F182（2026-09-21）：必须与「更多菜单 → 配置设置（SettingsDialog）」走**同一个**入口
+     * `requestLayoutModeSwitch`——本页有两个布局切换入口（浮动⌘设置 BottomSheet / 溢出菜单弹框），
+     * 只改一处会导致「一个入口有过渡反馈、另一个没有」的双入口不一致（首轮 s26 假失败真因）。
+     */
+    override fun onLayoutModeSelected(target: Int) {
+        requestLayoutModeSwitch(target)
     }
 
     override fun observeLiveBus() {
 
-        observeEventSticky<String>(EventBus.VIDEO_SUB_TITLE) {
-            binding.titleBar.title = it
+        // video-player-theme-unify：主题切换不重建（recreateOnThemeChange=false），
+        // 主动刷新播放器 View 侧主题高亮（进度条/缓冲/缩略图取 accentColor）
+        observeEvent<String>(EventBus.RECREATE) {
+            applyVideoThemeColors()
         }
 
-        observeEvent<ArrayList<Int>>(EventBus.UP_VIDEO_INFO) {
-            it.forEach { value ->
-                when (value) {
-                    1 -> upEpisodesView()
+        observeEventSticky<String>(EventBus.VIDEO_SUB_TITLE) {
+            // displayEpisodeTitle：书源无语义集名（"正片"/"全集完结"等）回退影片名，订阅源恒等
+            val title = VideoPlay.displayEpisodeTitle(it)
+            if (useViewPagerMode) {
+                composeTitle = title
+                // R3 阶段2：同步更新当前 Fragment 的视频标题
+                currentFragment?.updateVideoTitle(title)
+            } else {
+                composeTitle = title
+                // video-player-dual-layout W3（用户反馈④）：传统布局信息区随播放就绪刷新
+                // （订阅源 title/image/description 分阶段到达：嗅探 setUp → VIDEO_SUB_TITLE，此时刷新信息区）
+                if (VideoPlay.book == null) {
+                    showRssLegacyInfo()
+                    upNextFilmVisible()
                 }
             }
         }
 
+        observeEvent<ArrayList<Int>>(EventBus.UP_VIDEO_INFO) {
+            AppLog.put("VideoRoutesDiag UP_VIDEO_INFO: viewPager=$useViewPagerMode, articles=${VideoPlay.rssArticles?.size}, routes=${VideoPlay.rssRoutes?.size}, episodes=${VideoPlay.rssEpisodes?.size}, book=${if (VideoPlay.book != null) 1 else 0}")
+            // video-live-favorite-fix AD-03：切文章/切线路/切集后收藏状态同步刷新
+            // （保证上滑到下一篇直播后星标可见性与实心态立即正确，而非等到下次收藏动作）
+            upStarMenu()
+            if (useViewPagerMode) {
+                // 文章列表模式：文章数量不变，只需更新当前 Fragment 的集数/线路选择器
+                if (!VideoPlay.rssArticles.isNullOrEmpty()) {
+                    currentFragment?.updateEpisodeSelector()
+                    composeTitle = VideoPlay.videoTitle ?: ""
+                    return@observeEvent
+                }
+                // 集数列表模式：增量更新 adapter 数量（避免 notifyDataSetChanged 重建首个 Fragment）
+                val newCount = if (VideoPlay.book != null) 1
+                    else (VideoPlay.rssEpisodes?.size ?: 1)
+                val oldCount = videoPagerAdapter?.itemCount ?: 0
+                if (newCount > oldCount) {
+                    videoPagerAdapter?.notifyItemRangeInserted(oldCount, newCount - oldCount)
+                } else if (newCount < oldCount) {
+                    videoPagerAdapter?.notifyItemRangeRemoved(newCount, oldCount - newCount)
+                }
+                composeTitle = VideoPlay.displayEpisodeTitle(
+                    VideoPlay.rssEpisodes?.getOrNull(VideoPlay.rssEpisodeIndex)?.title
+                )
+                // 集数模式下也更新选择器（集数列表可能变化）
+                currentFragment?.updateEpisodeSelector()
+                return@observeEvent
+            }
+            // Legacy 模式：现有逻辑不变
+            it.forEach { value ->
+                when (value) {
+                    1 -> {
+                        // R3 多线路支持：优先处理订阅源多线路列表
+                        val rssRoutes = VideoPlay.rssRoutes
+                        if (!rssRoutes.isNullOrEmpty()) {
+                            if (binding.volumes.adapter !is RssRouteAdapter && rssRoutes.size > 1) {
+                                showRssRoutes(rssRoutes)
+                            } else {
+                                upRssRoutesView()
+                            }
+                        }
+                        // R1 多集选择播放：处理订阅源多集列表
+                        val rssEpisodes = VideoPlay.rssEpisodes
+                        if (rssEpisodes != null && rssEpisodes.isNotEmpty()) {
+                            if (binding.chapters.adapter !is RssEpisodeAdapter) {
+                                binding.chaptersContainer.visible()
+                                binding.chapters.visible()
+                                showRssEpisodes(rssEpisodes)
+                            } else {
+                                upRssEpisodesView()
+                            }
+                        } else {
+                            upEpisodesView()
+                        }
+                        // video-player-dual-layout W3（用户反馈①④）：线路/集数数据异步到达后
+                        // 刷新信息区（封面/简介/计数行）与「上一部/下一部」按钮可见性
+                        showRssLegacyInfo()
+                        upNextFilmVisible()
+                    }
+                }
+            }
+        }
+
+        // 阶段8 F9：分页加载完成通知，刷新 adapter
+        observeEvent<Int>(EventBus.ARTICLES_LOADED) { addedCount ->
+            // 修复 IndexOutOfBoundsException（崩溃 20260906 position=40）：
+            // loadMoreArticles 先替换 rssArticles（N→N+M）再发事件，此时 itemCount 已是
+            // 追加后的 N+M，直接用作 positionStart 属越界插入，导致 RecyclerView 内部
+            // 计数膨胀到 N+2M 与真实 itemCount 脱钩，GapWorker 预取帧校验 position 时崩溃。
+            // 正确做法：以真实数据反推插入起点（追加前基数 N = 当前总数 - 新增数）
+            val adapter = videoPagerAdapter ?: return@observeEvent
+            val positionStart = ((VideoPlay.rssArticles?.size ?: 0) - addedCount).coerceAtLeast(0)
+            adapter.notifyItemRangeInserted(positionStart, addedCount)
+        }
+
+        // video-booksource-align-rss AD-02：书源列表切换影片完成——episodes 已整体切换（initSource 重建）
+        // 显式激活链：setCurrentItem(0) 当 currentItem 已在 0 时不会触发 onPageSelected，
+        // 必须显式 deactivate（复位 isActivated）→ activate（重新起播），不依赖页面回调
+        observeEvent<Int>(EventBus.VIDEO_BOOK_UNIT_SWITCHED) {
+            // video-player-dual-layout：传统布局无 Fragment——刷新信息区与「下一部」可见性（R5）
+            if (!useViewPagerMode) {
+                bindLegacyInfo()
+                upNextFilmVisible()
+                composeTitle = VideoPlay.displayEpisodeTitle(
+                    VideoPlay.episodes?.getOrNull(VideoPlay.chapterInVolumeIndex)?.title
+                )
+                // 书源多线路直产修复（2026-09-14 用户真机铁证 17:30:21 段落：传统模式点「下一部」
+                // 只刷新信息区未起播，播放器继续播旧章节，且 isLoading 悬挂致布局切换连锁异常）：
+                // 切换影片完成后显式走 startLegacyPlayback 用 playerView 起播新章节（book 分支 startPlay）
+                startLegacyPlayback()
+                return@observeEvent
+            }
+            currentFragment?.deactivatePlayer()
+            // 先归位到 0 再 notify：避免 notify 后 currentItem 仍指向已收缩数据之外的旧位置
+            binding.viewPager.setCurrentItem(0, false)
+            videoPagerAdapter?.notifyDataSetChanged()
+            currentFragment = getVideoFragment(0)
+            val fragment = currentFragment
+            if (fragment?.playerView != null) {
+                fragment.activatePlayer()
+            }
+            // 书源切换影片：initSource 已重建线路/集数（卷章映射/扁平回退并 postEvent UP_VIDEO_INFO），
+            // 此处主动刷新左下角选择器（ViewPager2 复用 Fragment 不重建视图，静态控件需显式刷新；
+            // 修复切换影片后选择器残留旧数据或不显示的问题）
+            currentFragment?.updateEpisodeSelector()
+            AppLog.put("VideoRoutesDiag BOOK_UNIT_SWITCHED: routes=${VideoPlay.rssRoutes?.size}, episodes=${VideoPlay.rssEpisodes?.size}, routeIdx=${VideoPlay.rssRouteIndex}, epIdx=${VideoPlay.rssEpisodeIndex}")
+            // 标题单一权威：经 displayEpisodeTitle 归一（无语义集名回退影片名）
+            composeTitle = VideoPlay.displayEpisodeTitle(
+                VideoPlay.episodes?.getOrNull(VideoPlay.chapterInVolumeIndex)?.title
+            )
+            currentFragment?.updateVideoTitle(composeTitle)
+            upView()
+            // video-source-multiline-l0-preload AD-02：切换完成后步进预取新位置"前方一部"目录
+            // （保证用户上滑后总滑向已预取的下一部；非书源 guard 跳过）
+            VideoPlay.prefetchNextNeighbor()
+        }
+
+        observeEvent<String>(EventBus.VIDEO_PLAY_ERROR) {
+            // R3 阶段5：同步更新设置面板的调试日志
+            settingsPanel?.appendDebugLog(it)
+            // W2 / REQ-13（AD-04）：**首线路失败自动换线** —— 播放器终端点已把错误大类写入
+            // `VideoPlay.lastPlaybackErrorKind` 并完成会话记账（上限 3 次 + 冷却 60s）；
+            // 此处是线路上下文唯一持有者（多线路列表 + 播放器实例），故换线动作必须落在这里。
+            // 成功换线 ⇒ 不弹统一错误提示（用户可见：线路名 toast + 线路/集数列表刷新）。
+            if (tryAutoSwitchRouteOnError(it)) return@observeEvent
+            // video-sniff-403-and-rss-classic-fix Phase 2 (3.4)：WebView 降级 observe 已删除，
+            // 统一走错误对话框"重试/系统浏览器"承接
+            showVideoPlayErrorDialog(it)
+        }
+
     }
 
+    /**
+     * W2 / REQ-13（AD-04）：播放失败时的**线路级自愈**（换下一条线路），用户可见。
+     *
+     * 判据（design 3.1 验收 + AD-04，裁决收敛在 `PlaybackErrorPolicy.decideRouteSelfHeal`）：
+     * - SELF_HEAL / DEGRADE ⇒ 可换线；ABORT（解码/DRM/未知等**不可自愈类**）⇒ **不换线**，走错误提示；
+     * - 无多线路（单线路源）或会话预算耗尽（冷却中）⇒ 不换线；
+     * - 换线目标 = 当前线路 +1（末条回卷到首条），与线路选择器语义一致。
+     *
+     * @param errorInfo 统一错误提示文本（仅用于 WARN 日志长度，不回显内容）
+     * @return true = 已换线接管（调用方不再弹错误对话框）
+     */
+    private fun tryAutoSwitchRouteOnError(errorInfo: String): Boolean {
+        val routes = VideoPlay.rssRoutes
+        if (routes.isNullOrEmpty()) return false
+        // 裁决收敛在 PlaybackErrorPolicy（纯函数，JVM 单测锁定）：不可自愈类/预算耗尽/单线路 ⇒ 不换线
+        val decision = PlaybackErrorPolicy.decideRouteSelfHeal(
+            kind = VideoPlay.lastPlaybackErrorKind,
+            routeCount = routes.size,
+            currentIndex = VideoPlay.rssRouteIndex,
+            session = VideoPlay.routeSelfHealSession
+        )
+        if (!decision.allowed) {
+            AppLog.putInfo(
+                "VideoRouteSelfHeal: 跳过换线, kind=${VideoPlay.lastPlaybackErrorKind}, " +
+                    "action=${decision.action}, attempts=${decision.attempts}/" +
+                    "${PlaybackErrorPolicy.MAX_ATTEMPTS}, cooling=${decision.coolingDown}, " +
+                    "routes=${routes.size}, errLen=${errorInfo.length}"
+            )
+            return false
+        }
+        val to = decision.targetIndex
+        AppLog.putInfo(
+            "VideoRouteSelfHeal: 换线 ${VideoPlay.rssRouteIndex}→$to, " +
+                "kind=${VideoPlay.lastPlaybackErrorKind}, action=${decision.action}, " +
+                "attempts=${decision.attempts}/${PlaybackErrorPolicy.MAX_ATTEMPTS}"
+        )
+        val switched = runCatching {
+            if (VideoPlay.isNewRoutesMode()) {
+                // 新模式：异步按需采集（与线路选择器同一入口）
+                VideoPlay.switchToRoute(to, playerView)
+                upRssRoutesView()
+                true
+            } else {
+                // 旧模式：内存切换（与线路选择器同一入口）
+                val episode = VideoPlay.switchRssRoute(to)
+                if (episode != null) {
+                    upRssRoutesView()
+                    VideoPlay.playRssEpisode(playerView, episode)
+                    upRssEpisodesView()
+                    true
+                } else {
+                    false
+                }
+            }
+        }.getOrDefault(false)
+        if (!switched) return false
+        endCastForLocalSwitch()
+        toastOnUi(getString(R.string.video_route_self_heal_toast, routes[to].name))
+        return true
+    }
+
+    /**
+     * P0-1.4 / Phase 2 (3.4+3.7) 收敛: 显示视频播放错误对话框（F2 决策日志保留）
+     *
+     * video-sniff-403-and-rss-classic-fix Phase 2：WebView 播放器已删除，
+     * 失败承接收敛为三通道——①tryNextFallback 降级链+BUFFERING 超时自愈（独立于 UI）；
+     * ②本对话框"重试"（retryExoPlayback）；③"系统浏览器"（最终兜底）。
+     *
+     * playerType 设置语义同步收敛：仅剩 自动(0)/内置播放器(1)，原 WebView(2) 存量值
+     * 由 VideoPlay.playerType 一次性迁移落 1（F-06/R-P2-2）。
+     *
+     * F2 决策日志：每个决策转换点记录 AppLog.put（永久日志）
+     * 防重复弹窗：若已有对话框显示中则跳过。
+     */
+    private fun showVideoPlayErrorDialog(errorInfo: String) {
+        if (errorDialog?.isShowing == true) return
+        // 无播放地址则不弹窗（仅记录日志）
+        val url = VideoPlay.videoUrl ?: return
+        val title = VideoPlay.videoTitle ?: ""
+        // AD-03: 接入 ErrorMapper 获取用户友好错误提示
+        val userError = ErrorMapper.map(errorInfo)
+        errorDialog = alert(title = getString(userError.titleResId), message = getString(userError.messageResId)) {
+            positiveButton(getString(R.string.retry)) {
+                // F2 决策日志：用户手动重试
+                AppLog.put("降级决策: ExoPlayer 重试(user choice), title=$title")
+                retryCurrentPlayback()
+            }
+            negativeButton(getString(R.string.open_in_browser)) {
+                // F2 决策日志：用户选择系统浏览器（系统浏览器天然具备完整 Cookie/JS 环境，
+                // 能力等价覆盖原 WebView 播放页且无维护成本）
+                AppLog.put("降级决策: ExoPlayer→系统浏览器(user choice), title=$title, urlLen=${url.length}")
+                openInSystemBrowser(url)
+            }
+        }
+    }
+
+    /**
+     * F1 Level 4: 用系统浏览器打开视频 URL（最终兜底方案）
+     *
+     * 适用场景：ExoPlayer 播放失败时，交给系统浏览器处理（原 WebView 播放器已删除，见 showVideoPlayErrorDialog 三通道收敛说明）。
+     * 注意：系统浏览器不支持自定义 Headers，仅适用于无需防盗链的直链（mp4 等）。
+     */
+    private fun openInSystemBrowser(url: String) {
+        try {
+            // P1-B 修复：本地文件不调用系统浏览器（系统浏览器无法播放 .mpd/.m3u8 清单，且 file:// 触发 FileUriExposedException）
+            if (url.startsWith("file://")) {
+                AppLog.put("系统浏览器不支持本地清单文件: urlLen=${url.length}")
+                return
+            }
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            AppLog.put("系统浏览器打开失败: urlLen=${url.length}", e)
+        }
+    }
+
+    /**
+     * P0-1.4: 重试当前播放（ExoPlayer）
+     *
+     * 由错误对话框"重试"按钮调用，重新触发当前 Fragment 的 ExoPlayer 播放。
+     */
+    private fun retryCurrentPlayback() {
+        currentFragment?.retryExoPlayback()
+    }
+
+    // video-sniff-403-and-rss-classic-fix Phase 2 (3.4)：switchCurrentToWebView 已删除
+    // （WebView 播放器移除，失败承接见 showVideoPlayErrorDialog 三通道注释）
+
     override fun finish() {
-        val book = VideoPlay.book ?: return super.finish()
+        val book = VideoPlay.book ?: run {
+            // 订阅源模式：保存位置记忆 + 清理缓存和文章列表防止内存泄漏
+            // 阶段8 F11：保存退出时正在看的文章 link，供 RssArticlesFragment.onResume 滚动定位
+            VideoPlay.lastPlayedArticleLink = VideoPlay.rssArticles?.getOrNull(VideoPlay.rssArticleIndex)?.link
+            // 阶段8 F10：清理预缓冲缓存
+            VideoPlay.clearPreloadCache()
+            // 阶段8 F9：清理分页加载上下文
+            VideoPlay.rssSortName = null
+            VideoPlay.rssSortUrl = null
+            VideoPlay.rssNextPageUrl = null
+            VideoPlay.rssArticlePage = 1
+            VideoPlay.rssArticlesHasMore = true
+            VideoPlay.isLoadingMoreArticles = false
+            VideoPlay.rssArticles = null
+            VideoPlay.rssArticleIndex = 0
+            return super.finish()
+        }
         if (VideoPlay.inBookshelf) {
             callBackBookEnd()
             return super.finish()
@@ -741,19 +2573,27 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             callBackBookEnd()
             viewModel.removeFromBookshelf { super.finish() }
         } else {
-            alert(title = getString(R.string.add_to_bookshelf)) {
-                setMessage(getString(R.string.check_add_bookshelf, book.name))
-                okButton {
-                    VideoPlay.book?.removeType(BookType.notShelf)
-                    VideoPlay.book?.save()
-                    VideoPlay.inBookshelf = true
-                    setResult(RESULT_OK)
-                }
-                noButton {
+            showComposeConfirmDialog(
+                title = getString(R.string.add_to_bookshelf),
+                message = getString(R.string.check_add_bookshelf, book.name),
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(android.R.string.no),
+                onPositive = {
+                    val book = VideoPlay.book
+                    book?.removeType(BookType.notShelf)
+                    lifecycleScope.launch(IO) {
+                        book?.save()
+                        withContext(Main) {
+                            VideoPlay.inBookshelf = true
+                            setResult(RESULT_OK)
+                        }
+                    }
+                },
+                onNegative = {
                     callBackBookEnd()
                     viewModel.removeFromBookshelf { super.finish() }
                 }
-            }
+            )
         }
     }
 
@@ -776,23 +2616,66 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
+    @SuppressLint("InlinedApi")
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // 画中画：仅 Android 8+ 且正在播放时进入
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val currentPlayer = if (useViewPagerMode) {
+                    currentFragment?.playerView?.getCurrentPlayer()
+                } else {
+                    playerView.getCurrentPlayer()
+                }
+                if (currentPlayer?.currentState == GSYVideoView.CURRENT_STATE_PLAYING) {
+                    val params = android.app.PictureInPictureParams.Builder()
+                        .setAspectRatio(android.util.Rational(16, 9))
+                        .build()
+                    enterPictureInPictureMode(params)
+                }
+            } catch (e: Exception) {
+                io.legado.app.constant.AppLog.put("VideoPlayerActivity: enterPiP", e)
+            }
+        }
+    }
+
     override fun onStop() {
         super.onStop()
+        // T2.12: Activity 切到后台时暂停视频播放（解决 Bug-26：onStop 后视频仍播放导致资源泄漏+音频泄漏）
+        // 注：deactivatePlayer 内部会判断 isActivated，仅在活跃时暂停
+        currentFragment?.deactivatePlayer()
         if (initGetter) {
             glideImageGetter.stop()
         }
     }
 
     override fun onDestroy() {
+        // app-stability-round2 P2-2: 先取消抓取协程（含嗅探 WebView），再释放播放器资源
+        // 根因：原顺序 destroyWeb 先执行、stopLoading 后置，嗅探协程取消时序混乱，且 runCatching 误捕获 CancellationException
+        // 修复：stopLoading 提前到最前，协程取消后 BackstageWebView.invokeOnCancellation 主动销毁嗅探 WebView
+        VideoPlay.stopLoading()
         destroyWeb()
         super.onDestroy()
+        // P0-1.4: 清理错误对话框，防止窗口泄漏
+        errorDialog?.dismiss()
+        errorDialog = null
         if (initGetter) {
             glideImageGetter.clear()
         }
         VideoPlay.saveRead()
-        VideoPlay.stopLoading()
-        playerView.getCurrentPlayer().release()
+        // R3: ViewPager2 模式下旧 playerView 未使用，Fragment 自行管理释放
+        if (!useViewPagerMode) {
+            playerView.getCurrentPlayer().release()
+        }
+        // T5.1: Activity 销毁时清空播放器实例池（池生命周期=Activity 生命周期，
+        // 避免 App 后台时池内实例占用解码器/缓冲区资源）
+        io.legado.app.help.exoplayer.PlayerInstancePool.clear()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // rss-unified-search: 清理换源 Holder，避免内存泄漏与跨文章串数据
+        RssSearchSourceHolder.clear()
+        // video-playlist-continuity 铁律3：清理播放列表 Holder（防残留列表导致后续单影片错误续播）
+        VideoPlaylistHolder.clear()
+        VideoPlaybackQueue.clear()
     }
 
     private fun destroyWeb() {

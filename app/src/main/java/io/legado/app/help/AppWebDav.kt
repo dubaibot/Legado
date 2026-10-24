@@ -20,6 +20,8 @@ import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.withContext
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.fromJsonObject
@@ -119,14 +121,45 @@ object AppWebDav {
     }
 
     @Throws(WebDavException::class)
-    suspend fun restoreWebDav(name: String) {
+    suspend fun downloadAndUnzipBackup(name: String) {
         authorization?.let {
             val webDav = WebDav(rootWebDavUrl + name, it)
             webDav.downloadTo(Backup.zipFilePath, true)
             FileUtils.delete(Backup.backupPath)
             ZipUtils.unZipToPath(File(Backup.zipFilePath), Backup.backupPath)
-            Restore.restoreLocked(Backup.backupPath)
         }
+    }
+
+    @Throws(WebDavException::class)
+    suspend fun restoreWebDav(name: String) {
+        downloadAndUnzipBackup(name)
+        Restore.restoreLocked(Backup.backupPath)
+    }
+
+    private val coverGalleryWebDavUrl get() = "${rootWebDavUrl}coverGallery/"
+
+    suspend fun uploadCoverGalleryPackage(fileName: String, zipFile: File) = withContext(IO) {
+        val authorization = authorization ?: throw NoStackTraceException("webDav没有配置")
+        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
+        val safeName = "${fileName.trimEnd('/').removeSuffix(".zip").normalizeFileName().ifBlank { "coverGallery" }}.zip"
+        WebDav(coverGalleryWebDavUrl, authorization).makeAsDir()
+        WebDav(coverGalleryWebDavUrl + safeName, authorization).upload(zipFile)
+    }
+
+    /**
+     * 上传书籍缓存压缩包（缓存管理页的"上传/上传全部"）
+     *
+     * 与书籍导出同放 books 目录：压缩包内是整本书的缓存目录（含 cache_manifest.json），
+     * 解压回 book_cache 即恢复缓存
+     */
+    suspend fun uploadCachePackage(fileName: String, zipFile: File) {
+        val authorization = authorization ?: throw NoStackTraceException("webDav没有配置")
+        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
+        val safeName = fileName.trimEnd('/').removeSuffix(".zip").normalizeFileName()
+            .ifBlank { "cache_${System.currentTimeMillis()}" }
+        WebDav(exportsWebDavUrl, authorization).makeAsDir()
+        WebDav(exportsWebDavUrl + "$safeName.zip", authorization)
+            .upload(zipFile, "application/zip")
     }
 
     suspend fun hasBackUp(backUpName: String): Boolean {

@@ -1,0 +1,147 @@
+package io.legado.app.ui.book.cache
+
+import android.app.Application
+import io.legado.app.R
+import io.legado.app.base.BaseViewModel
+import io.legado.app.constant.AppLog
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.externalCache
+import kotlinx.coroutines.Dispatchers.IO
+import splitties.init.appCtx
+import java.io.File
+import java.util.Locale
+import kotlin.math.max
+
+data class CacheStorageDetail(
+    val nameRes: Int,
+    val bytes: Long,
+    val deletePaths: List<String>,
+    /** F6/4.8：WebView 数据删除后需重启应用才能完全生效（webview 进程运行中会重建目录） */
+    val needRestart: Boolean = false
+)
+
+class CacheManageViewModel(application: Application) : BaseViewModel(application) {
+
+    /**
+     * 构建存储分项统计（目录级），B11 缓存分项
+     * 维度：书籍文本(book_cache)/视频(exoplayer)/音频(httpTTS)/WebView 数据（F6/4.8 置底）
+     */
+    fun buildStorageBreakdown(): Coroutine<List<CacheStorageDetail>> {
+        return execute(context = IO) {
+            val books = CacheStorageDetail(
+                R.string.cache_stats_books,
+                directorySize(File(BookHelp.cachePath)),
+                listOf(BookHelp.cachePath)
+            )
+            val video = CacheStorageDetail(
+                R.string.cache_stats_video,
+                directorySize(File(appCtx.externalCache, "exoplayer")),
+                listOf(File(appCtx.externalCache, "exoplayer").absolutePath)
+            )
+            val audio = CacheStorageDetail(
+                R.string.cache_stats_audio,
+                directorySize(File(appCtx.cacheDir, "httpTTS")),
+                listOf(File(appCtx.cacheDir, "httpTTS").absolutePath)
+            )
+            // F6/4.8：WebView 数据第 4 分项（原"其它设置→清除 WebView 数据"迁移；置底排序）
+            val webviewDirs = listOf(
+                appCtx.getDir("webview", android.content.Context.MODE_PRIVATE),
+                appCtx.getDir("hws_webview", android.content.Context.MODE_PRIVATE)
+            )
+            val webview = CacheStorageDetail(
+                R.string.cache_stats_webview,
+                webviewDirs.sumOf { directorySize(it) },
+                webviewDirs.map { it.absolutePath },
+                needRestart = true
+            )
+            val total = books.bytes + video.bytes + audio.bytes + webview.bytes
+            kotlin.runCatching {
+                AppLog.putDebugWithTag(
+                    AppLog.TAG_CACHE_STATS,
+                    "分项统计: 书籍=${formatBytes(books.bytes)} 音频=${formatBytes(audio.bytes)} " +
+                        "视频=${formatBytes(video.bytes)} WebView=${formatBytes(webview.bytes)} 总计=${formatBytes(total)}",
+                    level = AppLog.Level.INFO
+                )
+            }
+            listOf(books, video, audio, webview)
+        }
+    }
+
+    /**
+     * 删除分项缓存。视频目录在播放中时加锁拒绝删除；音频目录在朗读中时同样拒绝（红队 B12 对齐视频保护）
+     */
+    fun deleteStorageTarget(detail: CacheStorageDetail): Coroutine<Boolean> {
+        return execute(context = IO) {
+            if (detail.deletePaths.any { it.contains("exoplayer") }) {
+                if (isVideoPlaying()) {
+                    return@execute false
+                }
+            }
+            val isAudioTarget = detail.deletePaths.any { it.contains("httpTTS") }
+            if (isAudioTarget) {
+                // 音频维度保护：朗读中拒绝清理（清理动作触发播放侧文件删除会打断合成回放链）
+                if (isReadAloudRunning()) {
+                    return@execute false
+                }
+                // 清理联动（§3.7.4）：取消全部预合成任务+清空保留名单，防幽灵文件与误判 has()
+                io.legado.app.help.readaloud.prebuild.TtsPrebuildManager.cancelAllAndClearReserved()
+            }
+            val before = detail.deletePaths.sumOf { directorySize(File(it)) }
+            detail.deletePaths.forEach { path ->
+                FileUtils.delete(path, deleteRootDir = true)
+            }
+            kotlin.runCatching {
+                AppLog.putDebugWithTag(
+                    AppLog.TAG_CACHE_STATS,
+                    "分项删除完成 target=${detail.nameRes} 释放=${formatBytes(before)}",
+                    level = AppLog.Level.INFO
+                )
+            }
+            true
+        }.onError {
+            kotlin.runCatching {
+                AppLog.putDebugWithTag(
+                    AppLog.TAG_CACHE_STATS,
+                    "分项删除失败 target=${detail.nameRes}",
+                    it,
+                    AppLog.Level.ERROR
+                )
+            }
+        }
+    }
+
+    private fun isVideoPlaying(): Boolean {
+        return kotlin.runCatching {
+            com.shuyu.gsyvideoplayer.GSYVideoManager.instance()?.isPlaying() == true
+        }.getOrDefault(false)
+    }
+
+    /** 朗读运行标志（音频维度播放中保护）：服务存续即视为运行中（含暂停态，文件被删会打断恢复链） */
+    private fun isReadAloudRunning(): Boolean {
+        return kotlin.runCatching {
+            io.legado.app.service.BaseReadAloudService.isRun
+        }.getOrDefault(false)
+    }
+}
+
+internal fun directorySize(file: File): Long {
+    if (!file.exists()) return 0L
+    if (file.isFile) return max(0L, file.length())
+    return kotlin.runCatching {
+        file.listFiles()?.sumOf { directorySize(it) } ?: 0L
+    }.getOrDefault(0L)
+}
+
+internal fun formatBytes(bytes: Long): String {
+    val kb = 1024.0
+    val mb = kb * 1024.0
+    val gb = mb * 1024.0
+    return when {
+        bytes >= gb -> String.format(Locale.getDefault(), "%.2f GB", bytes / gb)
+        bytes >= mb -> String.format(Locale.getDefault(), "%.2f MB", bytes / mb)
+        bytes >= kb -> String.format(Locale.getDefault(), "%.1f KB", bytes / kb)
+        else -> "$bytes B"
+    }
+}

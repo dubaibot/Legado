@@ -30,13 +30,19 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.model.debug.ToastContext
+import io.legado.app.model.debug.ToastRuleType
+import io.legado.app.model.debug.ToastSourceType
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
+import io.legado.app.ui.book.source.usedapi.SourceUsedApiActivity
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
+import io.legado.app.ui.widget.dialog.SourceInfoDialog
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -127,9 +133,10 @@ class BookSourceEditActivity :
 
     private val textEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
+            val text = CodeEditLauncher.readText(result.data)
             val view = window.decorView.findFocus()
             if (view is EditText) {
-                result.data?.getStringExtra("text")?.let {
+                text?.let {
                     view.setText(it)
                 }
                 result.data?.getIntExtra("cursorPosition", -1)?.takeIf { it in 0 ..< view.text.length }?.let {
@@ -147,9 +154,9 @@ class BookSourceEditActivity :
             val hint = findParentTextInputLayout(view)?.hint?.toString()
             val currentText = view.text.toString()
             val intent = Intent(this, CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
                 putExtra("title", hint)
                 putExtra("cursorPosition", view.selectionStart)
+                CodeEditLauncher.putText(this, currentText)
             }
             textEditLauncher.launch(intent)
         }
@@ -172,6 +179,14 @@ class BookSourceEditActivity :
                     putExtra("key", source.bookSourceUrl)
                 }
             }
+
+            R.id.menu_used_api -> viewModel.save(getSource()) { source ->
+                startActivity<SourceUsedApiActivity> {
+                    putExtra("key", source.bookSourceUrl)
+                }
+            }
+
+            R.id.menu_source_info -> showSourceInfo()
 
             R.id.menu_clear_cookie -> viewModel.clearCookie(getSource().bookSourceUrl)
             R.id.menu_auto_complete -> viewModel.autoComplete = !viewModel.autoComplete
@@ -198,7 +213,6 @@ class BookSourceEditActivity :
             R.id.menu_search -> viewModel.save(getSource()) { source ->
                 SearchActivity.start(this, source)
             }
-
         }
         return super.onCompatOptionsItemSelected(item)
     }
@@ -254,6 +268,23 @@ class BookSourceEditActivity :
             softKeyboardTool.initialPadding = imeHeight
             windowInsets
         }
+        binding.cbNextPageLazyLoad.setOnCheckedChangeListener { buttonView, isChecked ->
+            if (isChecked) {
+                val nextContentUrl = contentEntities.find { it.key == "nextContentUrl" }?.value
+                if (nextContentUrl.isNullOrBlank()) {
+                    toastOnUi(
+                        "未填正文下一页规则",
+                        ToastContext(
+                            activityName = "BookSourceEditActivity",
+                            sourceName = viewModel.bookSource?.bookSourceName,
+                            sourceType = ToastSourceType.BOOK,
+                            ruleType = ToastRuleType.CONTENT
+                        )
+                    )
+                    buttonView.isChecked = false
+                }
+            }
+        }
     }
 
     override fun finish() {
@@ -297,6 +328,7 @@ class BookSourceEditActivity :
             binding.cbIsEnableExplore.isChecked = it.enabledExplore
             binding.spExploreStyle.setSelection(it.exploreStyle)
             binding.cbIsEnableCookie.isChecked = it.enabledCookieJar ?: false
+            binding.cbNextPageLazyLoad.isChecked = it.nextPageLazyLoad
             binding.spType.setSelection(
                 when (it.bookSourceType) {
                     BookSourceType.video -> 4
@@ -429,6 +461,7 @@ class BookSourceEditActivity :
         source.enabledExplore = binding.cbIsEnableExplore.isChecked
         source.exploreStyle = binding.spExploreStyle.selectedItemPosition
         source.enabledCookieJar = binding.cbIsEnableCookie.isChecked
+        source.nextPageLazyLoad = binding.cbNextPageLazyLoad.isChecked
         source.bookSourceType = when (binding.spType.selectedItemPosition) {
             4 -> BookSourceType.video
             3 -> BookSourceType.file
@@ -726,6 +759,24 @@ class BookSourceEditActivity :
                 }
             }
         }
+    }
+
+    /**
+     * 展示源信息：排序编号、最后更新时间、代码行数、整个源所占的文件大小。
+     * 代码行数取各规则字段内容的实际行数之和，文件大小取序列化 JSON 的字节数。
+     */
+    private fun showSourceInfo() {
+        val source = getSource()
+        val raw = GSON.toJson(source)
+        showDialogFragment(
+            SourceInfoDialog().apply {
+                sourceName = source.bookSourceName
+                customOrder = source.customOrder
+                lastUpdateTime = source.lastUpdateTime
+                codeLines = SourceInfoDialog.countSourceCodeLines(raw)
+                fileSize = raw.toByteArray(Charsets.UTF_8).size.toLong()
+            }
+        )
     }
 
     private fun setSourceVariable() {

@@ -30,4 +30,9 @@ interface ServerDao {
 
     @Query("delete from servers where id < 0")
     fun deleteDefault()
+    @Query("delete from servers")
+    fun deleteAll()
+
+    @get:Query("select count(*) from servers")
+    val count: Int
 }

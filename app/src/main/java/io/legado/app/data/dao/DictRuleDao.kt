@@ -29,4 +29,9 @@ interface DictRuleDao {
     @Delete
     fun delete(vararg dictRule: DictRule)
 
+    @Query("delete from dictRules")
+    fun deleteAll()
+
+    @get:Query("select count(*) from dictRules")
+    val count: Int
 }

@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import androidx.annotation.ColorInt
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.toColorInt
 import androidx.fragment.app.Fragment
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
@@ -149,3 +150,25 @@ val Context.filletBackground: GradientDrawable
         background.setColor(backgroundColor)
         return background
     }
+
+// 多源合并：arc 主题兼容符号（标题色暂跟随正文主色，Sigma 无独立标题色配置）
+@ColorInt
+fun String?.toThemeTextColorOrNull(): Int? {
+    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val withoutPrefix = raw
+        .removePrefix("#")
+        .removePrefix("0x")
+        .removePrefix("0X")
+    val candidate = if (
+        withoutPrefix.length in setOf(6, 8) &&
+        withoutPrefix.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+    ) {
+        "#$withoutPrefix"
+    } else {
+        raw
+    }
+    return kotlin.runCatching { candidate.toColorInt() }.getOrNull()
+}
+
+val Context.titleTextColor: Int
+    get() = primaryTextColor

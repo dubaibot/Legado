@@ -27,4 +27,10 @@ interface RuleSubDao {
 
     @Update
     fun update(vararg ruleSub: RuleSub)
+    @Query("delete from ruleSubs")
+    fun deleteAll()
+
+    @get:Query("select count(*) from ruleSubs")
+    val count: Int
+
 }

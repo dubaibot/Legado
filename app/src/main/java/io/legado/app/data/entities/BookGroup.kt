@@ -37,6 +37,8 @@ data class BookGroup(
         const val IdNetNone = -4L
         const val IdLocalNone = -5L
         const val IdVideo = -6L
+        const val IdNovel = -7L
+        const val IdManga = -8L
         const val IdError = -11L
     }
 

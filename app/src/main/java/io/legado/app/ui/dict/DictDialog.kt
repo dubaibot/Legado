@@ -20,6 +20,7 @@ import io.legado.app.help.TextViewTagHandler
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.dialog.PhotoDialog
+import io.legado.app.utils.GSON
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setLayout
@@ -43,6 +44,13 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
     constructor(word: String) : this() {
         arguments = Bundle().apply {
             putString("word", word)
+        }
+    }
+
+    constructor(word: String, dictRule: DictRule) : this() {
+        arguments = Bundle().apply {
+            putString("word", word)
+            putString("dictRule", GSON.toJson(dictRule))
         }
     }
 

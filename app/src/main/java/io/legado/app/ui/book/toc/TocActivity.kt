@@ -119,6 +119,16 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
             AppConfig.tocUiUseReplace
         menu.findItem(R.id.menu_load_word_count)?.isChecked =
             AppConfig.tocCountWords
+        menu.findItem(R.id.menu_collapse_volume_name)?.isChecked =
+            AppConfig.tocCollapseVolumeName
+        menu.findItem(R.id.menu_show_full_chapter_name)?.isChecked =
+            AppConfig.tocShowFullChapterName
+        menu.findItem(R.id.menu_bookmark_search_chapter_name)?.isChecked =
+            viewModel.searchChapterName
+        menu.findItem(R.id.menu_bookmark_search_book_text)?.isChecked =
+            viewModel.searchBookText
+        menu.findItem(R.id.menu_bookmark_search_content)?.isChecked =
+            viewModel.searchContent
         menu.findItem(R.id.menu_split_long_chapter)?.isChecked =
             viewModel.bookData.value?.getSplitLongChapter() == true
         return super.onMenuOpened(featureId, menu)
@@ -155,6 +165,34 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
             R.id.menu_load_word_count -> {
                 AppConfig.tocCountWords = !item.isChecked
                 viewModel.upChapterListAdapter()
+            }
+
+            R.id.menu_collapse_volume_name -> {
+                AppConfig.tocCollapseVolumeName = !item.isChecked
+                viewModel.chapterListCallBack?.upChapterList(searchView?.query?.toString())
+            }
+
+            R.id.menu_show_full_chapter_name -> {
+                AppConfig.tocShowFullChapterName = !item.isChecked
+                viewModel.upChapterListAdapter()
+            }
+
+            R.id.menu_bookmark_search_chapter_name -> {
+                item.isChecked = !item.isChecked
+                viewModel.searchChapterName = item.isChecked
+                viewModel.startBookmarkSearch(searchView?.query?.toString())
+            }
+
+            R.id.menu_bookmark_search_book_text -> {
+                item.isChecked = !item.isChecked
+                viewModel.searchBookText = item.isChecked
+                viewModel.startBookmarkSearch(searchView?.query?.toString())
+            }
+
+            R.id.menu_bookmark_search_content -> {
+                item.isChecked = !item.isChecked
+                viewModel.searchContent = item.isChecked
+                viewModel.startBookmarkSearch(searchView?.query?.toString())
             }
 
             R.id.menu_export_bookmark -> exportDir.launch {

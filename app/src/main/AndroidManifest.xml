@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
@@ -20,7 +22,16 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- add-dlna-cast：SSDP 组播发现需要持有 MulticastLock（仅在发现窗口内持锁） -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        tools:ignore="ApiLevel" />
+    <uses-permission
+        android:name="android.permission.ACCESS_LOCAL_NETWORK"
+        tools:ignore="UnknownIdInMarkers" />
 
     <application
         android:name=".App"
@@ -178,6 +189,16 @@
             android:name="io.legado.app.ui.video.VideoPlayerActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:launchMode="singleTask" />
+        <!-- 图片浏览器界面（image-gallery-activity spec） -->
+        <activity
+            android:name="io.legado.app.ui.image.ImageGalleryActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:launchMode="singleTask" />
+        <!-- 图片大图模式（image-player-vertical-canvas-optimization spec，V4 Phase 1.3 新增） -->
+        <activity
+            android:name="io.legado.app.ui.image.ImageDetailActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:theme="@style/AppTheme.ImageDetail" />
         <!-- 授权界面 -->
         <activity
             android:name="io.legado.app.lib.permission.PermissionActivity"
@@ -218,6 +239,32 @@
         <activity
             android:name=".ui.config.ConfigActivity"
             android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.NavigationBarManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.theme.manage.ThemeManageActivity"
+            android:configChanges="uiMode"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.theme.legacy.appTheme.ApplicationThemeActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.theme.legacy.appTheme.ApplicationThemeEditActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.TopBarManageActivity"
+            android:launchMode="standard" />
+        <!-- 搜索界面 -->
+        <activity
+            android:name=".ui.config.BubbleManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.ShareNoteTemplateManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.ai.AiProviderManageActivity"
+            android:windowSoftInputMode="adjustResize" />
         <!-- 搜索界面 -->
         <activity
             android:name=".ui.book.search.SearchActivity"
@@ -252,11 +299,83 @@
             android:name=".ui.book.manage.BookshelfManageActivity"
             android:launchMode="singleTop"
             android:screenOrientation="behind" />
+        <!-- 书架标签管理 -->
+        <activity
+            android:name=".ui.main.bookshelf.BookshelfTagManageActivity"
+            android:launchMode="singleTask"
+            android:screenOrientation="behind" />
         <!-- 书源调试 -->
         <activity
             android:name=".ui.book.source.debug.BookSourceDebugActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind" />
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 源所用API -->
+        <activity
+            android:name=".ui.book.source.usedapi.SourceUsedApiActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 调试工具 -->
+        <activity
+            android:name=".ui.debug.DebugToolsActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 存储管理 -->
+        <activity
+            android:name=".ui.book.storage.StorageManageActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 书籍缓存选择 -->
+        <activity
+            android:name=".ui.book.cacheSelector.BookCacheSelectorActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 下载管理 -->
+        <activity
+            android:name=".ui.download.DownloadManageActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.module.ModuleStatusActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 权限管理 -->
+        <activity
+            android:name=".ui.permission.PermissionManageActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- URL访问记录 -->
+        <activity
+            android:name=".ui.urlRecord.UrlRecordActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.source.recycle.SourceRecycleBinActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.debug.EncodeToolsActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.debug.HttpDebugActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.debug.CurlTestActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.debug.PingTestActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.debug.RegexTestActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.debug.TimestampConvertActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
         <!-- 目录 -->
         <activity
             android:name=".ui.book.toc.TocActivity"
@@ -328,6 +447,31 @@
         <!-- 字典管理 -->
         <activity
             android:name=".ui.dict.rule.DictRuleActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- TTS调试 -->
+        <activity
+            android:name=".ui.book.read.config.TtsDebugActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 字典调试 -->
+        <activity
+            android:name=".ui.dict.rule.DictRuleDebugActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- HTML封面模板配置 -->
+        <activity
+            android:name=".ui.config.coverhtml.CoverHtmlActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 封面图集 -->
+        <activity
+            android:name=".ui.config.covergallery.CoverGalleryActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+        <!-- 直链上传配置 -->
+        <activity
+            android:name=".ui.upload.DirectLinkUploadActivity"
             android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true" />
         <!-- 文件管理 -->
@@ -492,6 +636,9 @@
             android:name=".service.WebService"
             android:foregroundServiceType="dataSync" />
         <service
+            android:name=".service.McpService"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.WebTileService"
             android:exported="true"
             android:foregroundServiceType="dataSync"
@@ -518,6 +665,38 @@
         <service
             android:name=".service.DownloadService"
             android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".service.AutoTaskService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".service.DlnaCastService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <receiver
+            android:name=".service.AutoTaskBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 定时任务页面 -->
+        <activity
+            android:name=".ui.autoTask.AutoTaskActivity"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind" />
+        <activity
+            android:name=".ui.autoTask.AutoTaskEditActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.autoTask.AutoTaskDebugActivity"
+            android:exported="false"
+            android:launchMode="standard"
+            android:screenOrientation="behind" />
 
         <receiver
             android:name=".receiver.MediaButtonReceiver"

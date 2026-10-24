@@ -34,6 +34,13 @@ object CheckSource {
         }
     }
 
+    fun start(context: Context, sourceUrls: Collection<String>) {
+        IntentData.put("checkSourceSelectedIds", sourceUrls)
+        context.startService<CheckSourceService> {
+            action = IntentAction.start
+        }
+    }
+
     fun stop(context: Context) {
         context.startService<CheckSourceService> {
             action = IntentAction.stop

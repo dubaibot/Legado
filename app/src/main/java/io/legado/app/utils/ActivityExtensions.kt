@@ -144,9 +144,9 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
  * 设置导航栏颜色
  */
 @Suppress("DEPRECATION")
-fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
+fun Activity.setNavigationBarColorAuto(@ColorInt color: Int, transparent: Boolean = false) {
     val isLightBor = ColorUtils.isColorLight(color)
-    window.navigationBarColor = color
+    window.navigationBarColor = if (transparent) Color.TRANSPARENT else color
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         window.insetsController?.let {
             if (isLightBor) {

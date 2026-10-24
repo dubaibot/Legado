@@ -10,6 +10,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.BookHelp
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.FileDoc
@@ -24,6 +25,11 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     var bookData = MutableLiveData<Book>()
     var chapterListCallBack: ChapterListCallBack? = null
     var bookMarkCallBack: BookmarkCallBack? = null
+
+    var searchChapterName: Boolean = true
+    var searchBookText: Boolean = true
+    var searchContent: Boolean = true
+
     var searchKey: String? = null
 
     fun initBook(bookUrl: String) {
@@ -57,11 +63,24 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
             bookData.value?.apply {
                 setReverseToc(!getReverseToc())
                 val toc = appDb.bookChapterDao.getChapterList(bookUrl)
+                // 先用旧 index 创建迁移器, 记住旧缓存文件名
+                val migrator = BookHelp.createChapterCacheMigrator(this, toc)
+                // 反转后章节序号全部变化, 当前阅读章节的索引同步映射:
+                // 旧索引 i 对应新索引 (章节总数 - 1 - i), 保证选中章节不变
+                val chapterSize = toc.size
+                if (durChapterIndex in 0 until chapterSize) {
+                    durChapterIndex = chapterSize - 1 - durChapterIndex
+                }
+                // 反转并重新编号 (toc.reversed() 共享对象引用, 必须在创建 migrator 之后修改 index)
                 val newToc = toc.reversed()
                 newToc.forEachIndexed { index, bookChapter ->
                     bookChapter.index = index
                 }
+                //倒序后章节序号变化会导致缓存文件名变化, 迁移缓存文件
+                migrator.migrate(newToc)
                 appDb.bookChapterDao.insert(*newToc.toTypedArray())
+                appDb.bookDao.update(this)
+                bookData.postValue(this)
             }
         }.onSuccess {
             it?.let(success)

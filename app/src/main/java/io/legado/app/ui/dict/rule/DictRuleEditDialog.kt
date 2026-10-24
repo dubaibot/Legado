@@ -20,6 +20,7 @@ import io.legado.app.databinding.DialogDictRuleEditBinding
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
@@ -62,7 +63,7 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit, 
                 return@registerForActivityResult
             }
             view.requestFocus()
-            result.data?.getStringExtra("text")?.let {
+            CodeEditLauncher.readText(result.data)?.let {
                 view.setText(it)
             }
             result.data?.getIntExtra("cursorPosition", -1)?.takeIf { it in 0 ..< view.text.length }?.let {
@@ -77,7 +78,7 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit, 
             focusedEditText = view
             val currentText = view.text.toString()
             val intent = Intent(requireActivity(), CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
+                CodeEditLauncher.putText(this, currentText)
                 putExtra("title", hint)
                 putExtra("cursorPosition", view.selectionStart)
             }
@@ -90,6 +91,8 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit, 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_fullscreen_edit -> onFullEditClicked()
+            // 调试按钮：保存规则后弹出输入框，输入关键词进行调试
+            R.id.menu_debug -> onDebugClicked()
             R.id.menu_save -> viewModel.save(getDictRule()) {
                 dismissAllowingStateLoss()
             }
@@ -109,6 +112,31 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit, 
             addJsonPattern()
             addJsPattern()
             setText(dictRule?.showRule)
+        }
+    }
+
+    /**
+     * 调试按钮点击处理
+     * 检查规则名称是否为空，保存规则后弹出调试对话框
+     */
+    private fun onDebugClicked() {
+        val dictRule = getDictRule()
+        // 规则名称不能为空
+        if (dictRule.name.isBlank()) {
+            toastOnUi(R.string.cannot_empty)
+            return
+        }
+        // 先保存规则，再进行调试
+        viewModel.save(dictRule) {
+            showDebugDialog(dictRule)
+        }
+    }
+
+    private fun showDebugDialog(dictRule: DictRule) {
+        startActivity<DictRuleDebugActivity> {
+            putExtra("name", dictRule.name)
+            putExtra("urlRule", dictRule.urlRule)
+            putExtra("showRule", dictRule.showRule)
         }
     }
 

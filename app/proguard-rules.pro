@@ -61,6 +61,15 @@
 -keep class * extends io.legado.app.help.JsExtensions{*;}
 # 数据类
 -keep class **.data.entities.**{*;}
+# 书籍缓存索引数据类：GSON 写入 bookCacheIndex.json（常规备份与「书籍缓存选择」单独导出 ZIP 共用），
+# 不在 data.entities 包内，字段名被混淆会导致正式包恢复缓存时索引解析失败、.nb 文件无法复制
+-keep class io.legado.app.help.storage.BookCacheIndex{*;}
+-keep class io.legado.app.help.storage.ChapterCacheInfo{*;}
+# 缓存清单数据类：GSON 反射读写 book_cache/<书>/cache_manifest.json，
+# 字段名被混淆后 GSON 按名字匹配不到字段（chapters 退化成 LinkedTreeMap），
+# 缓存管理页会因 ClassCastException 崩溃、已缓存计数恒为 0
+-keep class io.legado.app.help.book.CacheBookManifest{*;}
+-keep class io.legado.app.help.book.CacheChapterManifest{*;}
 
 # Room 数据库（防止 R8 在 release 构建中剥离生成的 _Impl 类）
 -keep class io.legado.app.data.AppDatabase {*;}
@@ -71,6 +80,9 @@
 -keep class io.legado.app.data.DatabaseMigrations {*;}
 -keep class io.legado.app.data.dao.**_Impl {*;}
 -keep class io.legado.app.data.entities.BookSourcePart {*;}
+
+# AI 场景模型配置使用字段名序列化（无 @SerializedName），保持字段名不被混淆
+-keep class io.legado.app.help.ai.AiModelConfig {*;}
 -keepnames class io.legado.app.data.AppDatabase_Impl
 -keepnames class io.legado.app.data.dao.**_Impl
 
@@ -197,3 +209,32 @@ cn.hutool.core.util.**{*;}
     public <init>(android.content.Context, android.util.AttributeSet);
     public <init>(android.content.Context, android.util.AttributeSet, int);
 }
+
+# m-fork: Cronet provider/JNI 入口类保留（防 R8 移除导致运行时崩溃）
+-keep class org.chromium.net.NativeCronetProvider { *; }
+-keep class org.chromium.net.JavaCronetProvider { *; }
+-keep class org.chromium.net.HttpEngineNativeProvider { *; }
+-keep class org.chromium.net.CronetProviderInstaller { *; }
+-keep class org.chromium.net.impl.NativeCronetEngineBuilderImpl { *; }
+-keep class org.chromium.net.AndroidProxy { *; }
+-keep class org.chromium.net.AndroidProxyOptions { *; }
+-keep class org.chromium.net.Cronet { *; }
+-keep class org.chromium.net.CronetEngine { *; }
+-keep class org.chromium.net.CronetEngine$Builder { *; }
+-keep class org.chromium.net.ExperimentalCronetEngine { *; }
+-keep class org.chromium.net.ExperimentalCronetEngine$Builder { *; }
+-keep class org.chromium.net.CronetException { *; }
+-keep class org.chromium.net.UrlRequest { *; }
+-keep class org.chromium.net.UrlRequest$Callback { *; }
+-keep class org.chromium.net.UrlRequest$Status { *; }
+-keep class org.chromium.net.UrlResponseInfo { *; }
+-keep class org.chromium.net.UploadDataProvider { *; }
+-keep class org.chromium.net.UploadDataSink { *; }
+-keep class org.chromium.net.BidirectionalStream { *; }
+-keep class org.chromium.net.NetworkQualityRttListener { *; }
+-keep class org.chromium.net.NetworkQualityThroughputListener { *; }
+-keep class org.chromium.net.RequestFinishedInfo { *; }
+-keep class org.chromium.net.ResourceRequestChecker { *; }
+-keep class org.chromium.net.impl.CronetLibraryLoader { *; }
+-keep class org.chromium.net.impl.VersionField { *; }
+-keep class org.chromium.net.impl.** { *; }

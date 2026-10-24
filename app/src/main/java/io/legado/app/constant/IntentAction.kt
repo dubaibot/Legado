@@ -3,6 +3,8 @@ package io.legado.app.constant
 @Suppress("ConstPropertyName")
 object IntentAction {
     const val start = "start"
+    const val refreshSchedule = "refreshSchedule"
+    const val runAutoTask = "runAutoTask"
     const val play = "play"
     const val playNew = "playNew"
     const val stop = "stop"

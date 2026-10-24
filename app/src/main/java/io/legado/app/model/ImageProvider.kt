@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Size
 import androidx.collection.LruCache
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.gif.GifDrawable
 import io.legado.app.R
 import io.legado.app.constant.AppLog.putDebug
 import io.legado.app.data.entities.Book
@@ -21,11 +23,14 @@ import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.toastOnUi
+import io.legado.app.model.ParagraphBubbleRenderer
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 
 object ImageProvider {
@@ -33,6 +38,8 @@ object ImageProvider {
     private val errorBitmap: Bitmap by lazy {
         BitmapFactory.decodeResource(appCtx.resources, R.drawable.image_loading_error)
     }
+
+    private val gifFileCache = ConcurrentHashMap<String, Boolean>()
 
     /**
      * 缓存bitmap LruCache实现
@@ -80,19 +87,39 @@ object ImageProvider {
 
     }
 
+    /**
+     * 存储位图到缓存
+     * @param key 键
+     * @param bitmap 位图
+     */
     fun put(key: String, bitmap: Bitmap) {
         ensureLruCacheSize(bitmap)
         bitmapLruCache.put(key, bitmap)
     }
 
+    /**
+     * 从缓存获取位图
+     * @param key 键
+     * @return 位图
+     */
     fun get(key: String): Bitmap? {
         return bitmapLruCache[key]
     }
 
+    /**
+     * 从缓存移除位图
+     * @param key 键
+     * @return 被移除的位图
+     */
     fun remove(key: String): Bitmap? {
         return bitmapLruCache.remove(key)
     }
 
+    /**
+     * 获取未回收的位图
+     * @param key 键
+     * @return 位图
+     */
     private fun getNotRecycled(key: String): Bitmap? {
         val bitmap = bitmapLruCache[key] ?: return null
         if (bitmap.isRecycled) {
@@ -102,6 +129,10 @@ object ImageProvider {
         return bitmap
     }
 
+    /**
+     * 确保LRU缓存大小
+     * @param bitmap 位图
+     */
     private fun ensureLruCacheSize(bitmap: Bitmap) {
         val lruMaxSize = bitmapLruCache.maxSize()
         val lruSize = bitmapLruCache.size()
@@ -157,6 +188,9 @@ object ImageProvider {
         src: String,
         bookSource: BookSource?
     ): Size {
+        if (ParagraphBubbleRenderer.isBubbleSrc(src)) {
+            return ParagraphBubbleRenderer.getSize(src)
+        }
         val file = cacheImage(book, src, bookSource)
         val op = BitmapFactory.Options()
         // inJustDecodeBounds如果设置为true,仅仅返回图片实际的宽和高,宽和高是赋值给opts.outWidth,opts.outHeight;
@@ -173,6 +207,54 @@ object ImageProvider {
         return Size(op.outWidth, op.outHeight)
     }
 
+    suspend fun isGif(
+        book: Book,
+        src: String,
+        bookSource: BookSource?
+    ): Boolean {
+        val file = cacheImage(book, src, bookSource)
+        return isGifFile(file)
+    }
+
+    fun isGifFile(file: File): Boolean {
+        return gifFileCache.getOrPut(file.absolutePath) {
+            if (!file.exists() || file.length() < 6) {
+                return@getOrPut false
+            }
+            kotlin.runCatching {
+                FileInputStream(file).use { input ->
+                    val header = ByteArray(6)
+                    if (input.read(header) != header.size) {
+                        false
+                    } else {
+                        val signature = String(header, Charsets.US_ASCII)
+                        signature == "GIF87a" || signature == "GIF89a"
+                    }
+                }
+            }.getOrDefault(false)
+        }
+    }
+
+    suspend fun getGifDrawable(
+        book: Book,
+        src: String,
+        width: Int,
+        height: Int,
+        bookSource: BookSource?
+    ): GifDrawable? = withContext(IO) {
+        val vFile = cacheImage(book, src, bookSource)
+        if (!isGifFile(vFile)) {
+            return@withContext null
+        }
+        kotlin.runCatching {
+            Glide.with(appCtx)
+                .asGif()
+                .load(vFile)
+                .submit(width.coerceAtLeast(1), height.coerceAtLeast(1))
+                .get()
+        }.getOrNull()
+    }
+
     /**
      *获取bitmap 使用LruCache缓存
      */
@@ -182,6 +264,19 @@ object ImageProvider {
         width: Int,
         height: Int? = null
     ): Bitmap {
+        if (ParagraphBubbleRenderer.isBubbleSrc(src)) {
+            val cacheKey = ParagraphBubbleRenderer.cacheKey(src, width, height)
+            getNotRecycled(cacheKey)?.let { return it }
+            return kotlin.runCatching {
+                ParagraphBubbleRenderer.render(src, width, height)
+                    ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+            }.onSuccess {
+                put(cacheKey, it)
+            }.onFailure {
+                //错误图片占位,防止重复获取
+                put(cacheKey, errorBitmap)
+            }.getOrDefault(errorBitmap)
+        }
         //src为空白时 可能被净化替换掉了 或者规则失效
         if (book.getUseReplaceRule() && src.isBlank()) {
             book.setUseReplaceRule(false)
@@ -205,6 +300,9 @@ object ImageProvider {
         }.getOrDefault(errorBitmap)
     }
 
+    /**
+     * 清除缓存
+     */
     fun clear() {
         bitmapLruCache.evictAll()
     }

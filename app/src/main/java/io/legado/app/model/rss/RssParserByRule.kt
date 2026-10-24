@@ -2,16 +2,26 @@ package io.legado.app.model.rss
 
 import androidx.annotation.Keep
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssSource
+import io.legado.app.help.source.autoNextPageEnabled
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.config.AppConfig
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setRuleData
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.isAbsUrl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import splitties.init.appCtx
 import java.util.Locale
 
@@ -28,6 +38,11 @@ object RssParserByRule {
         ruleData: RuleData
     ): Pair<MutableList<RssArticle>, String?> {
         val sourceUrl = rssSource.sourceUrl
+        // 相对地址解析基址：`sortUrl` 可能是 `@js:`/`<js>` 规则或相对模板（不是合法绝对地址），
+        // 用它当基址会让「下一页/规则内相对地址」解析失败并抛 MalformedURLException。
+        // 此时回落到「规则求值后实际请求到的 URL」(redirectUrl)；sortUrl 本身是绝对地址时沿用，既有源零变化。
+        val listBaseUrl = resolveListBaseUrl(sortUrl, redirectUrl)
+        AppLog.putDebugWithTag(AppLog.TAG_RSS, "开始解析RSS XML sourceHash=${rssSource.sourceUrl.hashCode()} sortName=$sortName bodyLen=${body?.length ?: 0}", level = AppLog.Level.INFO)
         var nextUrl: String? = null
         if (body.isNullOrBlank()) {
             throw NoStackTraceException(
@@ -38,12 +53,13 @@ object RssParserByRule {
         var ruleArticles = rssSource.ruleArticles
         if (ruleArticles.isNullOrBlank()) {
             Debug.log(sourceUrl, "⇒列表规则为空, 使用默认规则解析")
+            AppLog.putDebugWithTag(AppLog.TAG_RSS, "RSS使用默认规则解析 sourceHash=${rssSource.sourceUrl.hashCode()}", level = AppLog.Level.INFO)
             return RssParserDefault.parseXML(sortName, body, sourceUrl)
         } else {
-            val articleList = mutableListOf<RssArticle>()
+            // 循环外的 analyzeRule 用于获取列表集合/下一页/规则拆分（串行执行，结果不可变，可安全共享）
             val analyzeRule = AnalyzeRule(ruleData, rssSource)
             analyzeRule.setCoroutineContext(currentCoroutineContext())
-            analyzeRule.setContent(body).setBaseUrl(sortUrl)
+            analyzeRule.setContent(body).setBaseUrl(listBaseUrl)
             analyzeRule.setRedirectUrl(redirectUrl)
             var reverse = false
             if (ruleArticles.startsWith("-")) {
@@ -60,10 +76,14 @@ object RssParserByRule {
                 } else {
                     nextUrl = analyzeRule.getString(rssSource.ruleNextPage)
                     if (nextUrl.isNotEmpty()) {
-                        nextUrl = NetworkUtils.getAbsoluteURL(sortUrl, nextUrl)
+                        nextUrl = NetworkUtils.getAbsoluteURL(listBaseUrl, nextUrl)
                     }
                 }
                 Debug.log(sourceUrl, "└$nextUrl")
+            } else if (rssSource.autoNextPageEnabled(sortUrl)) {
+                // 老源兼容：未填下一页规则但URL含{{page}}占位符 → 隐式PAGE模式自动翻页
+                Debug.log(sourceUrl, "┌获取下一页链接(隐式PAGE模式)")
+                nextUrl = sortUrl
             }
             val ruleTitle = analyzeRule.splitSourceRule(rssSource.ruleTitle)
             val rulePubDate = analyzeRule.splitSourceRule(rssSource.rulePubDate)
@@ -71,19 +91,50 @@ object RssParserByRule {
             val ruleImage = analyzeRule.splitSourceRule(rssSource.ruleImage)
             val ruleLink = analyzeRule.splitSourceRule(rssSource.ruleLink)
             val variable = ruleData.getVariable()
-            for ((index, item) in collections.withIndex()) {
-                getItem(
-                    sourceUrl, item, analyzeRule, variable,rssSource.type, index == 0,
-                    ruleTitle, rulePubDate, ruleDescription, ruleImage, ruleLink
-                )?.let {
-                    it.sort = sortName
-                    it.origin = sourceUrl
-                    articleList.add(it)
-                }
+            // P1-1 并行化：for 循环改 async{}.awaitAll() + Semaphore 限流
+            // 🔴 硬性前提1：每item独立 AnalyzeRule 实例（getItem内setRuleData/setContent修改实例状态，复用会并发数据错乱；AnalyzeRule evalJSCallCount++/topScopeRef/scriptCache非线程安全）
+            // 🔴 硬性前提2：articleList不在并行块内add（mutableListOf非线程安全），awaitAll后批量收集
+            // 顺序保证：mapIndexed+awaitAll保持发起顺序，filterNotNull保持顺序，与原for循环结果一致
+            // 并发数：源级parseConcurrency(>0)优先，否则使用全局配置rssParseConcurrency(默认3)
+            val parseConcurrency = if (rssSource.parseConcurrency > 0) {
+                rssSource.parseConcurrency
+            } else {
+                AppConfig.rssParseConcurrency
             }
+            Debug.log(sourceUrl, "┌并行解析列表项(共${collections.size}项,限流${parseConcurrency})")
+            val parseSemaphore = Semaphore(parseConcurrency)
+            val articleList = coroutineScope {
+                collections.mapIndexed { index, item ->
+                    async(Dispatchers.IO) {
+                        parseSemaphore.withPermit {
+                            // 硬性前提1：独立 AnalyzeRule 实例
+                            val itemRule = AnalyzeRule(ruleData, rssSource)
+                            itemRule.setCoroutineContext(currentCoroutineContext())
+                            itemRule.setBaseUrl(listBaseUrl)
+                            itemRule.setRedirectUrl(redirectUrl)
+                            try {
+                                getItem(
+                                    sourceUrl, item, itemRule, variable, rssSource.type, index == 0,
+                                    ruleTitle, rulePubDate, ruleDescription, ruleImage, ruleLink
+                                )
+                            } catch (e: Exception) {
+                                AppLog.put("RSS列表项解析失败 index=$index", e)
+                                null
+                            }
+                        }
+                    }
+                }.awaitAll().filterNotNull().toMutableList()
+            }
+            // 硬性前提2：统一设置 sort 和 origin（原在for循环内逐项设置，现批量设置）
+            articleList.forEach {
+                it.sort = sortName
+                it.origin = sourceUrl
+            }
+            Debug.log(sourceUrl, "└并行解析完成(成功${articleList.size}/${collections.size}项)")
             if (reverse) {
                 articleList.reverse()
             }
+            AppLog.putDebugWithTag(AppLog.TAG_RSS, "RSS自定义规则解析完成 sourceHash=${rssSource.sourceUrl.hashCode()} 文章数=${articleList.size} 总数=${collections.size}", level = AppLog.Level.INFO)
             return Pair(articleList, nextUrl)
         }
     }
@@ -127,6 +178,7 @@ object RssParserByRule {
             }
             Debug.log(sourceUrl, "└${rssArticle.image ?: ""}", log)
         } catch (e: Exception) {
+            AppLog.putDebugWithTag(AppLog.TAG_RSS, "RSS文章图片解析失败 sourceUrlLen=${sourceUrl.length}", e)
             Debug.log(sourceUrl, "└${e.localizedMessage}", log)
         }
         Debug.log(sourceUrl, "┌获取文章链接", log)
@@ -139,3 +191,15 @@ object RssParserByRule {
         return rssArticle
     }
 }
+
+/**
+ * 选择 RSS 列表解析时的「相对地址基址」。
+ *
+ * - `sortUrl` 本身是绝对地址（http/https）⇒ 沿用（既有源行为零变化）；
+ * - 否则（`@js:` / `<js>` 规则串、`/path?pg={{page}}` 相对模板）⇒ 用「规则求值后实际请求到的 URL」，
+ *   避免以非法基址调用 `URL(base)` 抛 `MalformedURLException` 致「下一页/规则内相对地址」解析失败。
+ *
+ * 纯函数，供 JVM 单测覆盖。
+ */
+internal fun resolveListBaseUrl(sortUrl: String, resolvedUrl: String): String =
+    if (sortUrl.isAbsUrl()) sortUrl else resolvedUrl.ifBlank { sortUrl }

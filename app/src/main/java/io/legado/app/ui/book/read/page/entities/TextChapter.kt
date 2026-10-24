@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.book.BookContent
+import io.legado.app.model.webBook.LazyContentManager
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
 import io.legado.app.ui.book.read.page.provider.TextChapterLayout
 import io.legado.app.utils.fastBinarySearchBy
@@ -32,10 +33,44 @@ data class TextChapter(
 
     private val textPages = arrayListOf<TextPage>()
     val pages: List<TextPage> get() = textPages
+    private var lastLazyPrefetchReadPosition = -1f
 
     private var layout: TextChapterLayout? = null
+    
+    var lazyContent: LazyContentManager? = null
+    var useLazyLoading: Boolean = false
 
     val layoutChannel get() = layout!!.channel
+
+    fun appendContent(newContents: List<String>) {
+        layout?.appendContent(newContents)
+    }
+
+    fun isFullyLoaded(): Boolean {
+        val fullyLoaded = !useLazyLoading || lazyContent?.isCompleted?.get() == true
+        if (fullyLoaded && lazyContent != null && useLazyLoading) {
+            lazyContent?.saveToCache()
+        }
+        return fullyLoaded
+    }
+
+    fun maybePrefetchNextPage(currentPageIndex: Int, currentPageProgress: Float = 0f) {
+        if (!useLazyLoading || currentPageIndex < 0 || pageSize <= 0) return
+        val manager = lazyContent ?: return
+        if (manager.isCompleted.get()) return
+        val readProgress = (
+            min(currentPageIndex, lastIndex).coerceAtLeast(0) +
+                currentPageProgress.coerceIn(0f, 1f)
+            ) / pageSize.toFloat()
+        if (readProgress >= 0.5f) {
+            val readPosition = min(currentPageIndex, lastIndex).coerceAtLeast(0) +
+                currentPageProgress.coerceIn(0f, 1f)
+            if (readPosition <= lastLazyPrefetchReadPosition) return
+            if (manager.prefetchNextPage()) {
+                lastLazyPrefetchReadPosition = readPosition
+            }
+        }
+    }
 
     fun getPage(index: Int): TextPage? {
         return pages.getOrNull(index)
@@ -99,7 +134,7 @@ data class TextChapter(
      * @return 是否是最后一页
      */
     fun isLastIndex(index: Int): Boolean {
-        return isCompleted && index >= pages.size - 1
+        return isFullyLoaded() && index >= pages.size - 1
     }
 
     fun isLastIndexCurrent(index: Int): Boolean {
@@ -260,6 +295,7 @@ data class TextChapter(
             page.searchResult.forEach {
                 it.selected = false
                 it.isSearchResult = false
+                it.isCurrentSearchResult = false
             }
             page.searchResult.clear()
         }
