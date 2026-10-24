@@ -167,6 +167,9 @@ cn.hutool.core.util.**{*;}
 ## ExoPlayer 如果还不能播放就取消注释这个
 # -keep class com.google.android.exoplayer2.** {*;}
 
+## SoundTouch TTS 变速变调库（JNI）
+-keep class com.tianscar.soundtouch.** { *; }
+
 ## 对外提供api
 -keep class io.legado.app.api.ReturnData{*;}
 
