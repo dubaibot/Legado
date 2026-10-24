@@ -86,3 +86,13 @@ Entries discovered by the Agent during task execution should follow this format:
   - 同名文件在不同包是合法的（style1/style2 书架适配器等 26 对同名文件均为正常），判定死代码看引用看包名，看文件名
   - Launcher1-7 等类可定义在同名外文件中（WelcomeActivity.kt 内含 7 个 Launcher 顶级类），按类名全树 grep 而非按文件名找
   - Kotlin 词法扫描需正确处理 raw string 的 `""""` 四引号结尾（末尾 3 引号是终止符，第 4 个是内容），否则误报花括号不平衡
+
+[分支盘点与收编方法]
+- Date: 2026-10-24
+- Context: 分支合并复核时发现 origin 上有 8 个从未 fetch 的旧分支（git branch -r 不可见），经 ls-remote 才暴露
+- Category: Workflow & Collaboration
+- Instructions:
+  - `git branch -r` 只显示本地已 fetch 的远程跟踪分支，全面盘点远程分支必须 `git ls-remote --heads origin`
+  - 被后续重做取代的旧分支链用 `git merge -s ours <tip>` 收编：历史统一（52 提交经第二父可达）、工作树零变化、删除安全；真合并会复活 209 个双线修改冲突与被取代的旧实现
+  - 收编前先验拓扑（merge-base --is-ancestor 两两比对找链式超集末端），只需合并超集分支一个即可覆盖全链
+  - 删除远程分支后跑 `git fetch --prune origin` 清理本地跟踪引用
