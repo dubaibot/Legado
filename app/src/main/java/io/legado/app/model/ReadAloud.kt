@@ -9,6 +9,7 @@ import io.legado.app.constant.IntentAction
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.TtsEngineSetting
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.HttpReadAloudService
 import io.legado.app.service.TTSReadAloudService
@@ -23,6 +24,9 @@ object ReadAloud {
     private var aloudClass: Class<*> = getReadAloudClass()
     val ttsEngine get() = ReadBook.book?.getTtsEngine() ?: AppConfig.ttsEngine
     var httpTTS: HttpTTS? = null
+
+    @Volatile
+    var httpTtsEngineV2: TtsEngineSetting? = null
 
     private fun getReadAloudClass(): Class<*> {
         val ttsEngine = ttsEngine
@@ -41,6 +45,33 @@ object ReadAloud {
     fun upReadAloudClass() {
         stop(appCtx)
         aloudClass = getReadAloudClass()
+    }
+
+    fun updatePreparedTtsEngine(engine: TtsEngineSetting) {
+        if (httpTtsEngineV2?.id == engine.id) {
+            httpTtsEngineV2 = engine
+        }
+    }
+
+    @Synchronized
+    fun refreshReadAloudClass() {
+        aloudClass = getReadAloudClass()
+    }
+
+    fun refreshTtsRoute(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.refreshTtsRoute
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
+    fun refreshTtsPlaybackParams(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.refreshTtsPlaybackParams
+            context.startForegroundServiceCompat(intent)
+        }
     }
 
     fun play(

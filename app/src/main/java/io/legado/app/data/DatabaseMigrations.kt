@@ -20,7 +20,7 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
-            migration_94_95, migration_95_96,
+            migration_94_95, migration_95_96, migration_96_97,
         )
     }
 
@@ -146,6 +146,26 @@ object DatabaseMigrations {
             )
             db.execSQL(
                 "CREATE INDEX IF NOT EXISTS `index_agentToolReceiptAcknowledgements_consumerType_consumerKey` ON `agentToolReceiptAcknowledgements` (`consumerType`, `consumerKey`);"
+            )
+        }
+    }
+
+    // 96 -> 97: 移植 ng TTS 引擎运行时实体（ttsVoices / ttsEngineRuntime），
+    // 并修复 95 -> 96 中遗漏的 bookTtsCastRoles 建表（96.json 已包含该表）。
+    private val migration_96_97 = object : Migration(96, 97) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `bookTtsCastRoles` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `workKey` TEXT NOT NULL DEFAULT '', `name` TEXT NOT NULL DEFAULT '', `gender` TEXT NOT NULL DEFAULT 'unknown', `aliasesJson` TEXT NOT NULL DEFAULT '[]', `firstChapterIndex` INTEGER NOT NULL DEFAULT 0, `lastChapterIndex` INTEGER NOT NULL DEFAULT 0, `occurrenceCount` INTEGER NOT NULL DEFAULT 0, `representativeTextsJson` TEXT NOT NULL DEFAULT '[]', `linkedCharacterId` INTEGER, `source` TEXT NOT NULL DEFAULT 'ai_storyboard', `identityState` TEXT NOT NULL DEFAULT 'stable', `nameType` TEXT NOT NULL DEFAULT 'unknown', `identityEvidence` TEXT NOT NULL DEFAULT 'unknown', `genderEvidence` TEXT NOT NULL DEFAULT 'unknown', `chapterOccurrencesJson` TEXT NOT NULL DEFAULT '{}', `identityEvidenceJson` TEXT NOT NULL DEFAULT '[]', `ignored` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`workKey`) REFERENCES `bookCharacterProfiles`(`workKey`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookTtsCastRoles_workKey` ON `bookTtsCastRoles` (`workKey`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_bookTtsCastRoles_workKey_name` ON `bookTtsCastRoles` (`workKey`, `name`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookTtsCastRoles_linkedCharacterId` ON `bookTtsCastRoles` (`linkedCharacterId`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `ttsVoices` (`engineId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `language` TEXT, `gender` TEXT, `style` TEXT, `tagsJson` TEXT NOT NULL DEFAULT '[]', `sampleText` TEXT, `extraJson` TEXT NOT NULL DEFAULT '{}', `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`engineId`, `id`))"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ttsVoices_engineId` ON `ttsVoices` (`engineId`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `ttsEngineRuntime` (`engineId` TEXT NOT NULL, `speed` INTEGER NOT NULL DEFAULT 50, `volume` INTEGER NOT NULL DEFAULT 50, `pitch` INTEGER NOT NULL DEFAULT 50, `voiceParamsJson` TEXT NOT NULL DEFAULT '{}', `updatedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`engineId`))"
             )
         }
     }

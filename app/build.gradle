@@ -238,6 +238,9 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     // video-player-image-enhance B 批：GlEffect/RgbMatrix/SeparableConvolution 等效果类（画质增强锐化/降噪）
     implementation(libs.media3.effect)
+    // soundtouch-jni：TTS 变速/变调音频处理（TtsSoundTouchAudioProcessor）
+    implementation(libs.soundtouch.jni.android)
+    implementation(libs.soundtouch.jni.core)
     //implementation(libs.media3.ui)
     // For loading data using the OkHttp network stack
     implementation(libs.media3.datasource.okhttp)

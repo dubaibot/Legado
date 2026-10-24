@@ -6,8 +6,10 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.book.BookContent
+import io.legado.app.help.tts.ReadAloudTextSource
 import io.legado.app.model.webBook.LazyContentManager
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
+import io.legado.app.ui.book.read.page.provider.NativeReadAloudTextSource
 import io.legado.app.ui.book.read.page.provider.TextChapterLayout
 import io.legado.app.utils.fastBinarySearchBy
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +35,7 @@ data class TextChapter(
 
     private val textPages = arrayListOf<TextPage>()
     val pages: List<TextPage> get() = textPages
+    val readAloudText: ReadAloudTextSource get() = NativeReadAloudTextSource(this)
     private var lastLazyPrefetchReadPosition = -1f
 
     private var layout: TextChapterLayout? = null

@@ -46,6 +46,8 @@ import io.legado.app.data.dao.BookCharacterDao
 import io.legado.app.data.dao.CoverGalleryDao
 import io.legado.app.data.dao.HomepageModuleDao
 import io.legado.app.data.dao.HomepageCustomSetDao
+import io.legado.app.data.dao.TtsEngineRuntimeDao
+import io.legado.app.data.dao.TtsVoiceDao
 import io.legado.app.model.AutoTaskRule
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.AgentMemory
@@ -81,6 +83,8 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.data.entities.TtsEngineRuntimeEntity
+import io.legado.app.data.entities.TtsVoiceEntity
 import io.legado.app.data.entities.PlayHistory
 import io.legado.app.data.entities.DownloadTaskEntity
 import io.legado.app.data.entities.SceneBookmark
@@ -109,7 +113,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 96,
+    version = 97,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -127,7 +131,8 @@ val appDb by lazy {
         AiChatConversation::class, AiChatMessageNode::class, AiSkill::class,
         AgentMemory::class, AgentToolResultArtifact::class,
         AgentToolExecutionIntent::class, AgentToolReceiptAcknowledgement::class,
-        HomepageModule::class, HomepageCustomSet::class],
+        HomepageModule::class, HomepageCustomSet::class,
+        TtsVoiceEntity::class, TtsEngineRuntimeEntity::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -213,6 +218,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val uploadHistoryDao: UploadHistoryDao
     abstract val coverGalleryDao: CoverGalleryDao
     abstract val bookCharacterDao: BookCharacterDao
+    abstract val ttsVoiceDao: TtsVoiceDao
+    abstract val ttsEngineRuntimeDao: TtsEngineRuntimeDao
     abstract val aiChatDao: AiChatDao
     abstract val aiSkillDao: AiSkillDao
     abstract val agentMemoryDao: AgentMemoryDao
