@@ -9,15 +9,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
-            android:id="@+id/rv_bookshelf"
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/compose_bookshelf"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:paddingTop="0dp"
-            android:paddingBottom="0dp"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            tools:listitem="@layout/item_bookshelf_list" />
+            android:layout_height="match_parent" />
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
@@ -33,4 +28,3 @@
         tools:text="TextView" />
 
 </FrameLayout>
-

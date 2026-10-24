@@ -90,13 +90,17 @@ class DictRuleEditDialog() : BaseDialogFragment(R.layout.dialog_dict_rule_edit, 
     }
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_fullscreen_edit -> onFullEditClicked()
             // 调试按钮：保存规则后弹出输入框，输入关键词进行调试
             R.id.menu_debug -> onDebugClicked()
+            // 全屏编辑按钮：跳转到代码编辑界面
+            R.id.menu_fullscreen_edit -> onFullEditClicked()
+            // 保存按钮：保存规则并关闭对话框
             R.id.menu_save -> viewModel.save(getDictRule()) {
                 dismissAllowingStateLoss()
             }
+            // 复制规则按钮：将规则JSON复制到剪贴板
             R.id.menu_copy_rule -> viewModel.copyRule(getDictRule())
+            // 粘贴规则按钮：从剪贴板粘贴规则JSON
             R.id.menu_paste_rule -> viewModel.pasteRule {
                 upRuleView(it)
             }

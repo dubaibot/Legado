@@ -6,6 +6,7 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
+import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,9 +18,13 @@ import io.legado.app.data.entities.DictRule
 import io.legado.app.databinding.ActivityDictRuleBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
+import io.legado.app.help.ExportResultHandler
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportDictRuleDialog
+import io.legado.app.ui.association.ImportUrlDialogHelper
+import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
@@ -29,6 +34,7 @@ import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StringUtils
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
 import io.legado.app.utils.sendToClip
@@ -36,13 +42,17 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.splitNotBlank
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewModel>(),
+    SearchView.OnQueryTextListener,
     PopupMenu.OnMenuItemClickListener,
     SelectActionBar.CallBack,
     DictRuleAdapter.CallBack {
@@ -51,6 +61,10 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     override val binding by viewBinding(ActivityDictRuleBinding::inflate)
     private val importRecordKey = "dictRuleUrls"
     private val adapter by lazy { DictRuleAdapter(this, this) }
+    private val searchView: SearchView by lazy {
+        binding.titleBar.findViewById(R.id.search_view)
+    }
+    private var dictRuleFlowJob: Job? = null
     private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
         showDialogFragment(ImportDictRuleDialog(it))
@@ -61,39 +75,14 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         }
     }
     private val exportResult = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            alert(R.string.export_success) {
-                val url = uri.toString()
-                if (url.isAbsUrl()) {
-                    setMessage(DirectLinkUpload.getSummary())
-                    val time = System.currentTimeMillis()
-                    shibboleth {
-                        val shibbolethUrl = StringUtils.toShibboleth(url, StringUtils.DICT_RULE, time)
-                        alert(R.string.shibboleth) {
-                            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                                editView.setText(shibbolethUrl)
-                            }
-                            customView { alertBinding.root }
-                            okButton {
-                                sendToClip(shibbolethUrl)
-                            }
-                        }
-                    }
-                }
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = getString(R.string.path)
-                    editView.setText(url)
-                }
-                customView { alertBinding.root }
-                okButton {
-                    sendToClip(url)
-                }
-            }
-        }
+        ExportResultHandler.handleExportResult(this, it, { text ->
+            sendToClip(text)
+        }, StringUtils.DICT_RULE)
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initRecyclerView()
+        initSearchView()
         initSelectActionView()
         observeDictRuleData()
     }
@@ -107,6 +96,8 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         binding.recyclerView.setEdgeEffectColor(primaryColor)
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
+        binding.recyclerView.setFastScrollEnabled(true)
+        binding.recyclerView.isVerticalScrollBarEnabled = false
         binding.recyclerView.addItemDecoration(VerticalDivider(this))
         val itemTouchCallback = ItemTouchCallback(adapter)
         itemTouchCallback.isCanDrag = true
@@ -120,6 +111,15 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
     }
 
+    /**
+     * 初始化搜索框
+     * 设置搜索提示文字和文本变化监听器
+     */
+    private fun initSearchView() {
+        searchView.applyTint(primaryTextColor)
+        searchView.queryHint = getString(R.string.dict_rule_search)
+        searchView.setOnQueryTextListener(this)
+    }
 
     private fun initSelectActionView() {
         binding.selectActionBar.setMainActionText(R.string.delete)
@@ -128,12 +128,39 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         binding.selectActionBar.setCallBack(this)
     }
 
-    private fun observeDictRuleData() {
-        lifecycleScope.launch {
-            appDb.dictRuleDao.flowAll().catch {
+    /**
+     * 监听字典规则数据变化
+     * @param searchKey 搜索关键词，支持以下格式：
+     * - null或空字符串：显示所有规则
+     * - "启用"/"禁用"：按启用状态筛选
+     * - 其他：按名称模糊搜索
+     */
+    private fun observeDictRuleData(searchKey: String? = null) {
+        // 取消之前的数据流订阅，避免重复
+        dictRuleFlowJob?.cancel()
+        dictRuleFlowJob = lifecycleScope.launch {
+            when {
+                searchKey.isNullOrEmpty() -> {
+                    appDb.dictRuleDao.flowAll()
+                }
+
+                searchKey == getString(R.string.enabled) -> {
+                    appDb.dictRuleDao.flowEnabled()
+                }
+
+                searchKey == getString(R.string.disabled) -> {
+                    appDb.dictRuleDao.flowDisabled()
+                }
+
+                else -> {
+                    // 模糊搜索，使用SQL LIKE语句，%表示任意字符
+                    appDb.dictRuleDao.flowSearch("%$searchKey%")
+                }
+            }.catch {
                 AppLog.put("字典规则获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect {
                 adapter.setItems(it, adapter.diffItemCallBack)
+                delay(100)
             }
         }
     }
@@ -159,6 +186,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
             R.id.menu_import_onLine -> showImportDialog()
             R.id.menu_import_qr -> qrCodeResult.launch()
             R.id.menu_import_default -> viewModel.importDefault()
+            R.id.menu_content_query -> showDialogFragment(DictRuleContentSearchDialog())
             R.id.menu_help -> showHelp("dictRuleHelp")
         }
         return super.onCompatOptionsItemSelected(item)
@@ -231,6 +259,21 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         )
     }
 
+    /**
+     * 搜索框文本变化时回调，实时搜索
+     */
+    override fun onQueryTextChange(newText: String?): Boolean {
+        observeDictRuleData(newText)
+        return false
+    }
+
+    /**
+     * 搜索框提交时回调（点击键盘搜索按钮）
+     */
+    override fun onQueryTextSubmit(query: String?): Boolean {
+        return false
+    }
+
     @SuppressLint("InflateParams")
     private fun showImportDialog() {
         val aCache = ACache.get(cacheDir = false)
@@ -239,17 +282,23 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
             ?.splitNotBlank(",")
             ?.toMutableList() ?: mutableListOf()
         alert(titleResource = R.string.import_on_line) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url"
-                editView.setFilterValues(cacheUrls)
-                editView.delCallBack = {
-                    cacheUrls.remove(it)
-                    aCache.put(importRecordKey, cacheUrls.joinToString(","))
+            val alertBinding = ImportUrlDialogHelper.createBinding(
+                layoutInflater = layoutInflater,
+                context = this@DictRuleActivity,
+                lifecycleOwner = this@DictRuleActivity,
+                cacheUrls = cacheUrls,
+                onUrlsChanged = {
+                    aCache.put(importRecordKey, it.joinToString(","))
+                },
+                openBrowser = { url ->
+                    startActivity<WebViewActivity> {
+                        putExtra("url", url)
+                    }
                 }
-            }
+            )
             customView { alertBinding.root }
             okButton {
-                val text = alertBinding.editView.text?.toString()
+                val text = alertBinding.editView.text?.toString()?.trim()
                 text?.let {
                     if (it.isAbsUrl() && !cacheUrls.contains(it)) {
                         cacheUrls.add(0, it)

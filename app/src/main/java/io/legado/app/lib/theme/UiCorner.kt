@@ -29,6 +29,13 @@ import io.legado.app.utils.getPrefString
 import splitties.init.appCtx
 import java.io.File
 
+/**
+ * UI 圆角工具类。
+ *
+ * 提供面板圆角、按钮圆角等常用圆角值（支持 uiCornerScale 全局缩放），以及生成圆角 Drawable 的便捷方法。
+ * 面板圆角带描边，描边颜色可自定义或根据背景亮度自动取黑/白，并支持叠加面板背景图。
+ * 按钮圆角支持按下/选中状态切换的选择器 Drawable。
+ */
 object UiCorner {
 
     private var panelBitmapKey: String? = null
@@ -38,10 +45,12 @@ object UiCorner {
         return AppConfig.uiCornerScale.coerceIn(0f, 3f)
     }
 
+    /** 获取面板圆角值（按 uiCornerScale 缩放） */
     fun panelRadius(context: Context): Float {
         return context.resources.getDimension(R.dimen.ui_panel_radius) * scale()
     }
 
+    /** 获取按钮圆角值（按 uiCornerScale 缩放） */
     fun actionRadius(context: Context): Float {
         return context.resources.getDimension(R.dimen.ui_action_radius) * scale()
     }
@@ -91,6 +100,7 @@ object UiCorner {
         }
     }
 
+    /** 生成半透明纯色圆角矩形 Drawable */
     fun rounded(color: Int, radius: Float): GradientDrawable {
         return roundedColor(color, radius, false, true)
     }
@@ -99,6 +109,7 @@ object UiCorner {
         return roundedColor(color, radius, false, false)
     }
 
+    /** 生成带描边与面板背景图的面板圆角 Drawable */
     fun panelRounded(context: Context, color: Int, radius: Float): Drawable {
         val border = panelBorderColor(context)
         val base = if (border != null) {
@@ -206,6 +217,7 @@ object UiCorner {
         }
     }
 
+    /** 生成按钮按压/选中状态选择器 Drawable */
     fun actionSelector(defaultColor: Int, pressedColor: Int, radius: Float): StateListDrawable {
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), roundedColor(pressedColor, radius, true, false))
