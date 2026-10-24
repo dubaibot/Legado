@@ -22,3 +22,5 @@ package-lock.json
 .cxx
 .vscode
 *.hprof
+# fork merge reference trees (workspace-local, 49MB)
+/_refs/

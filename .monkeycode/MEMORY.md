@@ -71,6 +71,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - Room 迁移链合并为 90→96 单步（ws 的 91-94 中间 schema 不可考）
   - AppConfig.kt 重建策略：取 HEAD 833 行提交版为基座 + fork 联合收割的 71 缺失成员
   - gradle.properties 内存收敛：-Xmx4g + in-process kotlin 编译，单堆 4GB 避免 OOM
-  - assembleRelease 验证：R8 混淆通过（proguard-rules.pro 已覆盖 Room/Cronet/media3/View 构造器等 keep 规则），总耗时约 13min
-  - lintVitalAnalyzeAppRelease 超时 30min 被 cgroup kill，跳过方式：`./gradlew :app:assembleRelease -x lintVitalAnalyzeAppRelease -x lintVitalAnalyzeRelease`
-  - Release APK 产物：universal 30MB（R8 混淆后）、arm64-v8a 22MB、armeabi-v7a 22MB
+  - assembleRelease 验证（D35）：R8 混淆通过，总耗时 23m 20s（Kotlin 编译约 8min + R8 约 2min + lintVital 约 10min + 打包约 3min）
+  - `-x lintVitalAnalyzeAppRelease -x lintVitalAnalyzeRelease` 不会跳过 `lintVitalAppRelease`（不同任务名），但该任务正常完成无需额外跳过
+  - soundtouch-jni（D30 TTS 引擎依赖）需要 proguard keep 规则：`-keep class com.tianscar.soundtouch.** { *; }`（ng fork 有此规则）
+  - Release APK 产物：universal 31.9MB（R8 混淆后）、arm64-v8a 23.3MB、armeabi-v7a 22.5MB
