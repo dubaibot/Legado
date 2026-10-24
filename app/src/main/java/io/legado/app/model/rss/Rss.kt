@@ -4,20 +4,26 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssEpisode
 import io.legado.app.data.entities.RssSource
+import io.legado.app.data.repository.debug.FlowLogRecorder
+import io.legado.app.data.repository.debug.RssExecutionRecorder
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.http.warmUpConnection
 import io.legado.app.help.source.SourceLastHostHelper
-import io.legado.app.help.video.MacCmsNormalizer
 import io.legado.app.help.source.SourceNetworkClient
 import io.legado.app.help.source.SourcePreconnectHelper
+import io.legado.app.help.video.MacCmsNormalizer
 import io.legado.app.help.video.VideoUrlExtractor
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setToastRuleType
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
+import io.legado.app.model.debug.DebugCategory
+import io.legado.app.model.debug.RssExecutionStep
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.isAbsUrl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -51,7 +57,33 @@ object Rss {
         page: Int,
         key: String? = null
     ): Pair<MutableList<RssArticle>, String?> {
+        val recorder = RssExecutionRecorder
+        recorder.startSession(rssSource.sourceUrl, rssSource.sourceName)
         AppLog.putDebugWithTag(AppLog.TAG_RSS, "开始获取RSS文章 sourceHash=${rssSource.sourceUrl.hashCode()} page=$page sortUrlLen=${sortUrl.length}", level = AppLog.Level.INFO)
+
+        // 配置检查阶段
+        recorder.check(RssExecutionStep.SOURCE_NAME, rssSource.sourceName)
+        recorder.checkWithValidation(
+            RssExecutionStep.SOURCE_URL,
+            rssSource.sourceUrl,
+            if (rssSource.sourceUrl.isAbsUrl()) true to ""
+            else false to "不是合法的 URL（缺少 http:// 或 https://）"
+        )
+        recorder.check(RssExecutionStep.SOURCE_ICON, rssSource.sourceIcon)
+        recorder.check(RssExecutionStep.SOURCE_GROUP, rssSource.sourceGroup)
+        recorder.check(RssExecutionStep.SORT_URL, rssSource.sortUrl)
+        recorder.check(RssExecutionStep.RULE_ARTICLES, rssSource.ruleArticles)
+        recorder.check(RssExecutionStep.RULE_NEXT_PAGE, rssSource.ruleNextPage)
+        recorder.check(RssExecutionStep.RULE_TITLE, rssSource.ruleTitle)
+        recorder.check(RssExecutionStep.RULE_PUB_DATE, rssSource.rulePubDate)
+        recorder.check(RssExecutionStep.RULE_DESCRIPTION, rssSource.ruleDescription)
+        recorder.check(RssExecutionStep.RULE_IMAGE, rssSource.ruleImage)
+        recorder.check(RssExecutionStep.RULE_LINK, rssSource.ruleLink)
+        recorder.check(RssExecutionStep.RULE_CONTENT, rssSource.ruleContent)
+        recorder.check(RssExecutionStep.SHOULD_OVERRIDE_URL, rssSource.shouldOverrideUrlLoading)
+
+        // 网络请求阶段
+        val netStart = System.currentTimeMillis()
         val ruleData = RuleData()
         val analyzeUrl = AnalyzeUrl(
             sortUrl,
@@ -63,13 +95,50 @@ object Rss {
             coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
+        analyzeUrl.localDebug = Debug.isLocalDebug(rssSource.sourceUrl)
         // M6 SourceNetworkClient 统一网络请求 + 登录检测 + 重定向检测 + lastHost 回填
-        val res = SourceNetworkClient.requestWithLoginCheck(
-            analyzeUrl = analyzeUrl,
-            source = rssSource,
-            checkJs = rssSource.loginCheckJs
+        val res = try {
+            SourceNetworkClient.requestWithLoginCheck(
+                analyzeUrl = analyzeUrl,
+                source = rssSource,
+                checkJs = rssSource.loginCheckJs
+            )
+        } catch (throwable: Throwable) {
+            recorder.failed(
+                RssExecutionStep.NETWORK_REQUEST,
+                throwable.message ?: "网络请求失败",
+                System.currentTimeMillis() - netStart
+            )
+            recorder.endSession()
+            throw throwable
+        }
+        recorder.success(
+            RssExecutionStep.NETWORK_REQUEST,
+            detail = analyzeUrl.ruleUrl,
+            duration = System.currentTimeMillis() - netStart
         )
-        Debug.log(rssSource.sourceUrl, "≡获取成功:${analyzeUrl.ruleUrl}")
+        val netDuration = System.currentTimeMillis() - netStart
+        // 记录网络请求详情到 FlowLogRecorder，用于调试日志展示
+        FlowLogRecorder.logNetwork(
+            source = rssSource,
+            message = "获取文章列表成功",
+            url = res.url,
+            method = "GET",
+            statusCode = res.code(),
+            duration = netDuration,
+            detail = "响应大小: ${res.body?.length ?: 0} 字节",
+            requestHeaders = analyzeUrl.headerMap,
+            cookies = analyzeUrl.headerMap["Cookie"]
+        )
+        Debug.log(rssSource.sourceUrl, "≡获取成功:${analyzeUrl.ruleUrl}", category = DebugCategory.RSS)
+        // 响应体检查
+        if (!res.body.isNullOrBlank()) {
+            recorder.success(RssExecutionStep.RESPONSE_BODY, detail = "内容长度: ${res.body!!.length}")
+        } else {
+            recorder.failed(RssExecutionStep.RESPONSE_BODY, "响应内容为空")
+        }
+        // 结束执行会话（在规则解析前）
+        recorder.endSession()
         val articles = RssParserByRule.parseXML(sortName, sortUrl, res.url, res.body, rssSource, ruleData)
         // M4 SourcePreconnectHelper 统一预连接（F-P1-F 机制：列表加载后预连接前3篇）
         SourcePreconnectHelper.preconnectTopN(articles.first.mapNotNull { it.link }, 3)
@@ -103,6 +172,7 @@ object Rss {
             return getRoutesContentAwait(rssArticle, rssSource.ruleRoutes!!, rssSource.ruleEpisodes!!, rssSource)
         }
         AppLog.putDebugWithTag(AppLog.TAG_RSS, "开始获取RSS内容 sourceHash=${rssSource.sourceUrl.hashCode()} articleHash=${rssArticle.link.hashCode()} linkLen=${rssArticle.link.length}", level = AppLog.Level.INFO)
+        val netStart = System.currentTimeMillis()
         val analyzeUrl = AnalyzeUrl(
             rssArticle.link,
             baseUrl = rssArticle.origin,
@@ -111,19 +181,49 @@ object Rss {
             coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
+        analyzeUrl.localDebug = Debug.isLocalDebug(rssSource.sourceUrl)
         // M6 SourceNetworkClient 统一网络请求 + 登录检测 + 重定向检测 + lastHost 回填
-        val res = SourceNetworkClient.requestWithLoginCheck(
-            analyzeUrl = analyzeUrl,
+        val res = try {
+            SourceNetworkClient.requestWithLoginCheck(
+                analyzeUrl = analyzeUrl,
+                source = rssSource,
+                checkJs = rssSource.loginCheckJs
+            )
+        } catch (throwable: Throwable) {
+            // 记录网络请求失败详情到 FlowLogRecorder
+            FlowLogRecorder.logNetwork(
+                source = rssSource,
+                message = "获取文章正文失败",
+                url = rssArticle.link,
+                method = "GET",
+                duration = System.currentTimeMillis() - netStart,
+                error = throwable,
+                requestHeaders = analyzeUrl.headerMap,
+                cookies = analyzeUrl.headerMap["Cookie"]
+            )
+            throw throwable
+        }
+        val netDuration = System.currentTimeMillis() - netStart
+        // 记录网络请求成功详情到 FlowLogRecorder
+        FlowLogRecorder.logNetwork(
             source = rssSource,
-            checkJs = rssSource.loginCheckJs
+            message = "获取文章正文成功",
+            url = res.url,
+            method = "GET",
+            statusCode = res.code(),
+            duration = netDuration,
+            detail = "响应大小: ${res.body?.length ?: 0} 字节",
+            requestHeaders = analyzeUrl.headerMap,
+            cookies = analyzeUrl.headerMap["Cookie"]
         )
-        Debug.log(rssSource.sourceUrl, "≡获取成功:${rssSource.sourceUrl}")
-        Debug.log(rssSource.sourceUrl, res.body ?: "", state = 20)
+        Debug.log(rssSource.sourceUrl, "≡获取成功:${rssSource.sourceUrl}", category = DebugCategory.RSS)
+        Debug.log(rssSource.sourceUrl, res.body ?: "", state = 20, category = DebugCategory.RSS)
         val analyzeRule = AnalyzeRule(rssArticle, rssSource)
         analyzeRule.setContent(res.body)
             .setBaseUrl(NetworkUtils.getAbsoluteURL(rssArticle.origin, rssArticle.link))
             .setCoroutineContext(currentCoroutineContext())
             .setRedirectUrl(res.url)
+        analyzeRule.setToastRuleType("RSS_CONTENT")
         val content = analyzeRule.getString(ruleContent)
         AppLog.putDebugWithTag(AppLog.TAG_CONTENT, "RSS内容解析完成 sourceHash=${rssSource.sourceUrl.hashCode()} articleHash=${rssArticle.link.hashCode()} contentLen=${content.length}", level = AppLog.Level.INFO)
         return content
@@ -135,9 +235,9 @@ object Rss {
     private fun checkRedirect(rssSource: RssSource, response: StrResponse) {
         response.raw.priorResponse?.let {
             if (it.isRedirect) {
-                Debug.log(rssSource.sourceUrl, "≡检测到重定向(${it.code})")
-                Debug.log(rssSource.sourceUrl, "┌重定向后地址")
-                Debug.log(rssSource.sourceUrl, "└${response.url}")
+                Debug.log(rssSource.sourceUrl, "≡检测到重定向(${it.code})", category = DebugCategory.RSS)
+                Debug.log(rssSource.sourceUrl, "┌重定向后地址", category = DebugCategory.RSS)
+                Debug.log(rssSource.sourceUrl, "└${response.url}", category = DebugCategory.RSS)
             }
         }
     }
