@@ -24,3 +24,6 @@ package-lock.json
 *.hprof
 # fork merge reference trees (workspace-local, 49MB)
 /_refs/
+
+# signing keystores (local only)
+/keystore/

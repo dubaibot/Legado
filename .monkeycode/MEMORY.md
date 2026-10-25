@@ -96,3 +96,14 @@ Entries discovered by the Agent during task execution should follow this format:
   - 被后续重做取代的旧分支链用 `git merge -s ours <tip>` 收编：历史统一（52 提交经第二父可达）、工作树零变化、删除安全；真合并会复活 209 个双线修改冲突与被取代的旧实现
   - 收编前先验拓扑（merge-base --is-ancestor 两两比对找链式超集末端），只需合并超集分支一个即可覆盖全链
   - 删除远程分支后跑 `git fetch --prune origin` 清理本地跟踪引用
+
+[Release APK 签名配置]
+- Date: 2026-10-25
+- Context: 用户安装 release APK 报「安装包无效」，根因为 RELEASE_STORE_FILE 属性缺失导致签名配置被跳过，产出未签名 APK
+- Category: Build Methods
+- Instructions:
+  - release 签名仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效（app/build.gradle signingConfigs 条件块），属性缺失时产出未签名 APK，安装必报「安装包无效」
+  - 签名属性写在 ~/.gradle/gradle.properties（不进仓库）：RELEASE_STORE_FILE/RELEASE_STORE_PASSWORD/RELEASE_KEY_ALIAS/RELEASE_KEY_PASSWORD
+  - 密钥库 /workspace/keystore/myreader-release.jks（alias myreader，密码在上述属性文件），已 gitignore /keystore/
+  - 签名验证命令：/opt/android-sdk/build-tools/36.0.0/apksigner verify --print-certs <apk>
+  - 换签名密钥后旧版本必须先卸载才能装新包（签名冲突）
