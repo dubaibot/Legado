@@ -89,6 +89,7 @@ https://www.yuque.com/legado/wiki/community
 
 【10-27】
 - 修复：发布包名恢复固定值 com.myreaderD.reader.release
+- 修复：google-services.json 补充新包名 debug 客户端，修复 debug 构建失败
 - 当前快照：3.26.102701
 
 【10-03】
