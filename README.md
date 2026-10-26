@@ -87,6 +87,10 @@ https://www.yuque.com/legado/wiki/community
 
 # 更新日志
 
+【10-27】
+- 修复：发布包名恢复固定值 com.myreaderD.reader.release
+- 当前快照：3.26.102701
+
 【10-03】
 - 安装包按CPU架构拆分，新增arm精简版，减小下载体积
 - 版本号随构建自动递增，便于覆盖升级

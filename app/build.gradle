@@ -13,7 +13,7 @@ static def releaseTime() {
 }
 
 def name = "myreader"
-def version = "3.26.100100"
+def version = "3.26.102701"
 def gitCommits = 0
 try {
     def result = 'git rev-list HEAD --count'.execute().text.trim()
@@ -47,7 +47,7 @@ android {
         }
     }
     defaultConfig {
-        applicationId "com.myreader.reader"
+        applicationId "com.myreaderD.reader"
         minSdk 21
         targetSdk 36
         versionCode Math.max(10001, 10000 + gitCommits)
