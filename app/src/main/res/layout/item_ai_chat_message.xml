@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingVertical="4dp">
+
+    <TextView
+        android:id="@+id/tv_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:background="?android:attr/selectableItemBackground"
+        android:maxLines="2"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="3dp"
+        android:textSize="12sp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/ll_bubble"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_content"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:autoLink="web"
+            android:maxWidth="300dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:textSize="14sp"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textIsSelectable="true" />
+
+    </LinearLayout>
+
+</FrameLayout>

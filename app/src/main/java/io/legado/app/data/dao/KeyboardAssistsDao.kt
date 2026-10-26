@@ -34,4 +34,6 @@ interface KeyboardAssistsDao {
     @Query("delete from keyboardAssists")
     suspend fun deleteAll()
 
+    @get:Query("select count(*) from keyboardAssists")
+    val count: Int
 }

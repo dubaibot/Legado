@@ -57,6 +57,10 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
         this.appFinishedListener = appFinishedListener
     }
 
+    fun getCurrentActivity(): Activity? = activities.lastOrNull()?.get()
+
+    fun getCurrentActivityName(): String? = getCurrentActivity()?.javaClass?.simpleName
+
     override fun onActivityPaused(activity: Activity) {
         LogUtils.d(TAG, "${activity::class.simpleName} onPause")
     }

@@ -30,7 +30,38 @@ import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import io.legado.app.data.dao.AutoTaskRuleDao
+import io.legado.app.data.dao.DownloadTaskDao
+import io.legado.app.data.dao.PlayHistoryDao
+import io.legado.app.data.dao.SceneBookmarkDao
+import io.legado.app.data.dao.UrlRecordDao
+import io.legado.app.data.dao.SourceRecycleBinDao
+import io.legado.app.data.dao.DirectLinkUploadRuleDao
+import io.legado.app.data.dao.UploadHistoryDao
+import io.legado.app.data.dao.AgentMemoryDao
+import io.legado.app.data.dao.AgentToolResultDao
+import io.legado.app.data.dao.AiChatDao
+import io.legado.app.data.dao.AiSkillDao
+import io.legado.app.data.dao.BookCharacterDao
+import io.legado.app.data.dao.CoverGalleryDao
+import io.legado.app.data.dao.HomepageModuleDao
+import io.legado.app.data.dao.HomepageCustomSetDao
+import io.legado.app.data.dao.TtsEngineRuntimeDao
+import io.legado.app.data.dao.TtsVoiceDao
+import io.legado.app.model.AutoTaskRule
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.AgentMemory
+import io.legado.app.data.entities.AgentToolExecutionIntent
+import io.legado.app.data.entities.AgentToolReceiptAcknowledgement
+import io.legado.app.data.entities.AgentToolResultArtifact
+import io.legado.app.data.entities.AiChatConversation
+import io.legado.app.data.entities.AiChatMessageNode
+import io.legado.app.data.entities.AiSkill
+import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.BookCharacterProfile
+import io.legado.app.data.entities.BookCharacterTtsBinding
+import io.legado.app.data.entities.BookTtsCastRole
+import io.legado.app.data.entities.BookTtsCastRoleContribution
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
@@ -52,6 +83,21 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.data.entities.TtsEngineRuntimeEntity
+import io.legado.app.data.entities.TtsVoiceEntity
+import io.legado.app.data.entities.PlayHistory
+import io.legado.app.data.entities.DownloadTaskEntity
+import io.legado.app.data.entities.SceneBookmark
+import io.legado.app.data.entities.UrlRecord
+import io.legado.app.data.entities.SourceRecycleBin
+import io.legado.app.data.entities.DirectLinkUploadRule
+import io.legado.app.data.entities.UploadHistory
+import io.legado.app.data.entities.CoverGalleryGroup
+import io.legado.app.data.entities.CoverGalleryImage
+import io.legado.app.data.entities.readRecord.ReadRecordDetail
+import io.legado.app.data.entities.readRecord.ReadRecordSession
+import io.legado.app.data.entities.HomepageModule
+import io.legado.app.data.entities.HomepageCustomSet
 import io.legado.app.help.DefaultData
 import org.intellij.lang.annotations.Language
 import splitties.init.appCtx
@@ -67,13 +113,26 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 90,
+    version = 97,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
         RssSource::class, Bookmark::class, RssArticle::class, RssReadRecord::class,
         RssStar::class, TxtTocRule::class, ReadRecord::class, HttpTTS::class, Cache::class,
-        RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class],
+        RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
+        AutoTaskRule::class,
+        PlayHistory::class, DownloadTaskEntity::class, SceneBookmark::class,
+        UrlRecord::class, SourceRecycleBin::class,
+        DirectLinkUploadRule::class, UploadHistory::class,
+        CoverGalleryGroup::class, CoverGalleryImage::class,
+        ReadRecordDetail::class, ReadRecordSession::class,
+        BookCharacterProfile::class, BookCharacter::class, BookCharacterTtsBinding::class,
+        BookTtsCastRole::class, BookTtsCastRoleContribution::class,
+        AiChatConversation::class, AiChatMessageNode::class, AiSkill::class,
+        AgentMemory::class, AgentToolResultArtifact::class,
+        AgentToolExecutionIntent::class, AgentToolReceiptAcknowledgement::class,
+        HomepageModule::class, HomepageCustomSet::class,
+        TtsVoiceEntity::class, TtsEngineRuntimeEntity::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -122,7 +181,8 @@ val appDb by lazy {
         AutoMigration(from = 86, to = 87),
         AutoMigration(from = 87, to = 88),
         AutoMigration(from = 88, to = 89),
-        AutoMigration(from = 89, to = 90)
+        AutoMigration(from = 89, to = 90),
+        AutoMigration(from = 90, to = 96)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -148,6 +208,24 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val dictRuleDao: DictRuleDao
     abstract val keyboardAssistsDao: KeyboardAssistsDao
     abstract val serverDao: ServerDao
+    abstract val autoTaskRuleDao: AutoTaskRuleDao
+    abstract val playHistoryDao: PlayHistoryDao
+    abstract val downloadTaskDao: DownloadTaskDao
+    abstract val sceneBookmarkDao: SceneBookmarkDao
+    abstract val urlRecordDao: UrlRecordDao
+    abstract val sourceRecycleBinDao: SourceRecycleBinDao
+    abstract val directLinkUploadRuleDao: DirectLinkUploadRuleDao
+    abstract val uploadHistoryDao: UploadHistoryDao
+    abstract val coverGalleryDao: CoverGalleryDao
+    abstract val bookCharacterDao: BookCharacterDao
+    abstract val ttsVoiceDao: TtsVoiceDao
+    abstract val ttsEngineRuntimeDao: TtsEngineRuntimeDao
+    abstract val aiChatDao: AiChatDao
+    abstract val aiSkillDao: AiSkillDao
+    abstract val agentMemoryDao: AgentMemoryDao
+    abstract val agentToolResultDao: AgentToolResultDao
+    abstract val homepageModuleDao: HomepageModuleDao
+    abstract val homepageCustomSetDao: HomepageCustomSetDao
 
     companion object {
 

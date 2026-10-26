@@ -17,6 +17,15 @@ interface DictRuleDao {
     @Query("select * from dictRules order by sortNumber")
     fun flowAll(): Flow<List<DictRule>>
 
+    @Query("select * from dictRules where name like :key order by sortNumber")
+    fun flowSearch(key: String): Flow<List<DictRule>>
+
+    @Query("select * from dictRules where enabled = 1 order by sortNumber")
+    fun flowEnabled(): Flow<List<DictRule>>
+
+    @Query("select * from dictRules where enabled != 1 order by sortNumber")
+    fun flowDisabled(): Flow<List<DictRule>>
+
     @Query("select * from dictRules where name = :name")
     fun getByName(name: String): DictRule?
 
@@ -29,4 +38,9 @@ interface DictRuleDao {
     @Delete
     fun delete(vararg dictRule: DictRule)
 
+    @Query("delete from dictRules")
+    fun deleteAll()
+
+    @get:Query("select count(*) from dictRules")
+    val count: Int
 }

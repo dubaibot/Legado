@@ -14,6 +14,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssArticle
+import io.legado.app.data.repository.debug.FlowLogRecorder
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensions
@@ -21,6 +22,7 @@ import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.Debug
+import io.legado.app.model.debug.toDebugString
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
@@ -86,6 +88,9 @@ class AnalyzeRule(
 
     private var loggedNonStandardJSON = false
     private var ruleName: String? = null
+    /** 当前规则类型标识（如 SEARCH/EXPLORE/TOC/CONTENT），由 setToastRuleType 设置，
+     *  在 evalJS 执行时写入 [currentRuleTypeThreadLocal]，供 JsExtensions.toast 提取使用 */
+    private var toastRuleType: String? = null
     fun setRuleName(name: String) {
         if (name.isNotBlank()) {
             ruleName = name
@@ -306,60 +311,114 @@ class AnalyzeRule(
         isUrl: Boolean = false,
         unescape: Boolean = true
     ): String {
-        var result: Any? = null
-        val content = mContent ?: this.content
-        if (content != null && ruleList.isNotEmpty()) {
-            result = content
-            if (result is NativeObject) {
-                val sourceRule = ruleList.first()
-                putRule(sourceRule.putMap)
-                sourceRule.makeUpRule(result)
-                result = if (sourceRule.getParamSize() > 1) {
-                    // get {{}}
-                    sourceRule.rule
-                } else {
-                    // 键值直接访问
-                    result[sourceRule.rule]?.toString()
-                }?.let {
-                    replaceRegex(it, sourceRule)
-                }
-            } else if (result is LinkedTreeMap<*, *>) {
-                // 键值直接访问
-                result = result[ruleList.first().rule]?.toString()
-            } else {
-                for (sourceRule in ruleList) {
+        val startTime = System.currentTimeMillis()
+        val ruleStr = ruleList.joinToString("&&") { it.rule }
+        
+        val tracker = io.legado.app.model.debug.RuleExecutionTracker(source, ruleStr)
+        
+        val str = try {
+            var result: Any? = null
+            val content = mContent ?: this.content
+            if (content != null && ruleList.isNotEmpty()) {
+                result = content
+                if (result is NativeObject) {
+                    val sourceRule = ruleList.first()
                     putRule(sourceRule.putMap)
                     sourceRule.makeUpRule(result)
-                    result ?: continue
-                    val rule = sourceRule.rule
-                    if (rule.isNotBlank() || sourceRule.replaceRegex.isEmpty()) {
-                        result = when (sourceRule.mode) {
-                            Mode.WebJs -> getWebJsResult(rule, result)
-                            Mode.Js -> evalJS(rule, result)
-                            Mode.Json -> getAnalyzeByJSonPath(result).getString(rule)
-                            Mode.XPath -> getAnalyzeByXPath(result).getString(rule)
-                            Mode.Default -> if (isUrl) {
-                                getAnalyzeByJSoup(result).getString0(rule)
-                            } else {
-                                getAnalyzeByJSoup(result).getString(rule)
-                            }
-
-                            else -> rule
-                        }
+                    result = if (sourceRule.getParamSize() > 1) {
+                        // get {{}}
+                        sourceRule.rule
+                    } else {
+                        // 键值直接访问
+                        result[sourceRule.rule]?.toString()
+                    }?.let {
+                        replaceRegex(it, sourceRule)
                     }
-                    if (result != null && sourceRule.replaceRegex.isNotEmpty()) {
-                        result = replaceRegex(result.toString(), sourceRule)
+                } else if (result is LinkedTreeMap<*, *>) {
+                    // 键值直接访问
+                    result = result[ruleList.first().rule]?.toString()
+                } else {
+                    var stepIndex = 0
+                    for (sourceRule in ruleList) {
+                        putRule(sourceRule.putMap)
+                        sourceRule.makeUpRule(result)
+                        result ?: continue
+                        val rule = sourceRule.rule
+                        if (rule.isNotBlank() || sourceRule.replaceRegex.isEmpty()) {
+                            val ruleType = when (sourceRule.mode) {
+                                Mode.WebJs -> io.legado.app.model.debug.RuleType.WEB_JS
+                                Mode.Js -> io.legado.app.model.debug.RuleType.JS
+                                Mode.Json -> io.legado.app.model.debug.RuleType.JSONPATH
+                                Mode.XPath -> io.legado.app.model.debug.RuleType.XPATH
+                                Mode.Default -> io.legado.app.model.debug.RuleType.CSS
+                                else -> io.legado.app.model.debug.RuleType.DEFAULT
+                            }
+                            
+                            tracker.startStep(ruleType, rule, result)
+                            
+                            result = when (sourceRule.mode) {
+                                Mode.WebJs -> getWebJsResult(rule, result)
+                                Mode.Js -> evalJS(rule, result)
+                                Mode.Json -> getAnalyzeByJSonPath(result).getString(rule)
+                                Mode.XPath -> getAnalyzeByXPath(result).getString(rule)
+                                Mode.Default -> if (isUrl) {
+                                    getAnalyzeByJSoup(result).getString0(rule)
+                                } else {
+                                    getAnalyzeByJSoup(result).getString(rule)
+                                }
+
+                                else -> rule
+                            }
+                            
+                            tracker.endStep(result)
+                            stepIndex++
+                        }
+                        if (result != null && sourceRule.replaceRegex.isNotEmpty()) {
+                            tracker.startStep(io.legado.app.model.debug.RuleType.REPLACE, "${sourceRule.replaceRegex} -> ${sourceRule.replacement}", result)
+                            result = replaceRegex(result.toString(), sourceRule)
+                            tracker.endStep(result)
+                        }
                     }
                 }
             }
+            if (result == null) result = ""
+            val resultStr = result.toString()
+            if (unescape && resultStr.indexOf('&') > -1) {
+                StringEscapeUtils.unescapeHtml4(resultStr)
+            } else {
+                resultStr
+            }
+        } catch (e: Exception) {
+            if (tracker.hasSteps()) {
+                tracker.failStep(e)
+                val duration = System.currentTimeMillis() - startTime
+                val tree = tracker.buildTree()
+                FlowLogRecorder.logRuleExecution(
+                    source = source,
+                    executionTree = tree,
+                    message = "规则解析失败: ${e.localizedMessage}",
+                    error = e,
+                    book = book as? Book,
+                    bookChapter = chapter,
+                    bookSource = source as? BookSource
+                )
+            }
+            throw e
         }
-        if (result == null) result = ""
-        val resultStr = result.toString()
-        val str = if (unescape && resultStr.indexOf('&') > -1) {
-            StringEscapeUtils.unescapeHtml4(resultStr)
-        } else {
-            resultStr
+        
+        val duration = System.currentTimeMillis() - startTime
+        if (tracker.hasSteps()) {
+            val tree = tracker.buildTree()
+            FlowLogRecorder.logRuleExecution(
+                source = source,
+                executionTree = tree,
+                message = "规则解析成功",
+                book = book as? Book,
+                bookChapter = chapter,
+                bookSource = source as? BookSource
+            )
         }
+        
         if (isUrl) {
             return if (str.isBlank()) {
                 baseUrl ?: ""
@@ -375,6 +434,9 @@ class AnalyzeRule(
      */
     fun getElement(ruleStr: String): Any? {
         if (TextUtils.isEmpty(ruleStr)) return null
+        val startTime = System.currentTimeMillis()
+        val tracker = io.legado.app.model.debug.RuleExecutionTracker(source, ruleStr)
+        
         var result: Any? = null
         val content = this.content
         val ruleList = splitSourceRule(ruleStr, true)
@@ -385,6 +447,17 @@ class AnalyzeRule(
                 sourceRule.makeUpRule(result)
                 result ?: continue
                 val rule = sourceRule.rule
+                val ruleType = when (sourceRule.mode) {
+                    Mode.Regex -> io.legado.app.model.debug.RuleType.REGEX
+                    Mode.WebJs -> io.legado.app.model.debug.RuleType.WEB_JS
+                    Mode.Js -> io.legado.app.model.debug.RuleType.JS
+                    Mode.Json -> io.legado.app.model.debug.RuleType.JSONPATH
+                    Mode.XPath -> io.legado.app.model.debug.RuleType.XPATH
+                    else -> io.legado.app.model.debug.RuleType.CSS
+                }
+                
+                tracker.startStep(ruleType, rule, result)
+                
                 result = when (sourceRule.mode) {
                     Mode.Regex -> AnalyzeByRegex.getElement(
                         result.toString(),
@@ -397,11 +470,33 @@ class AnalyzeRule(
                     Mode.XPath -> getAnalyzeByXPath(result).getElements(rule)
                     else -> getAnalyzeByJSoup(result).getElements(rule)
                 }
+
+                // 将正则捕获组传递给日志追踪器，用于调试时展示匹配的分组内容
+                tracker.endStep(
+                    result,
+                    regexGroups = (result as? List<*>)?.filterIsInstance<String>()
+                )
+                
                 if (sourceRule.replaceRegex.isNotEmpty()) {
+                    tracker.startStep(io.legado.app.model.debug.RuleType.REPLACE, "${sourceRule.replaceRegex} -> ${sourceRule.replacement}", result)
                     result = replaceRegex(result.toString(), sourceRule)
+                    tracker.endStep(result)
                 }
             }
         }
+        
+        if (tracker.hasSteps()) {
+            val tree = tracker.buildTree()
+            FlowLogRecorder.logRuleExecution(
+                source = source,
+                executionTree = tree,
+                message = "获取Element完成",
+                book = book as? Book,
+                bookChapter = chapter,
+                bookSource = source as? BookSource
+            )
+        }
+        
         return result
     }
 
@@ -410,6 +505,9 @@ class AnalyzeRule(
      */
     @Suppress("UNCHECKED_CAST")
     fun getElements(ruleStr: String): List<Any> {
+        val startTime = System.currentTimeMillis()
+        val tracker = io.legado.app.model.debug.RuleExecutionTracker(source, ruleStr)
+        
         var result: Any? = null
         val content = this.content
         val ruleList = splitSourceRule(ruleStr, true)
@@ -419,6 +517,17 @@ class AnalyzeRule(
                 putRule(sourceRule.putMap)
                 result ?: continue
                 val rule = sourceRule.rule
+                val ruleType = when (sourceRule.mode) {
+                    Mode.Regex -> io.legado.app.model.debug.RuleType.REGEX
+                    Mode.WebJs -> io.legado.app.model.debug.RuleType.WEB_JS
+                    Mode.Js -> io.legado.app.model.debug.RuleType.JS
+                    Mode.Json -> io.legado.app.model.debug.RuleType.JSONPATH
+                    Mode.XPath -> io.legado.app.model.debug.RuleType.XPATH
+                    else -> io.legado.app.model.debug.RuleType.CSS
+                }
+                
+                tracker.startStep(ruleType, rule, result)
+                
                 result = when (sourceRule.mode) {
                     Mode.Regex -> AnalyzeByRegex.getElements(
                         result.toString(),
@@ -431,12 +540,30 @@ class AnalyzeRule(
                     Mode.XPath -> getAnalyzeByXPath(result).getElements(rule)
                     else -> getAnalyzeByJSoup(result).getElements(rule)
                 }
+                
+                val matchCount = (result as? List<*>)?.size
+                // 提取第一条匹配的正则捕获组，供日志调试展示
+                val firstMatchGroups = (result as? List<*>)?.firstOrNull()
+                    ?.let { it as? List<*> }?.filterIsInstance<String>()
+                tracker.endStep(result, matchCount = matchCount, regexGroups = firstMatchGroups)
             }
         }
-        result?.let {
-            return it as List<Any>
+        
+        val resultList = result?.let { it as List<Any> } ?: ArrayList()
+        
+        if (tracker.hasSteps()) {
+            val tree = tracker.buildTree()
+            FlowLogRecorder.logRuleExecution(
+                source = source,
+                executionTree = tree,
+                message = "获取列表完成，共${resultList.size}个元素",
+                book = book as? Book,
+                bookChapter = chapter,
+                bookSource = source as? BookSource
+            )
         }
-        return ArrayList()
+        
+        return resultList
     }
 
     /**
@@ -481,28 +608,53 @@ class AnalyzeRule(
      */
     private fun replaceRegex(result: String, rule: SourceRule): String {
         if (rule.replaceRegex.isEmpty()) return result
+        
+        val startTime = System.currentTimeMillis()
         val replaceRegex = rule.replaceRegex
         val replacement = rule.replacement
+        
+        FlowLogRecorder.logReplace(
+            source = source,
+            message = "开始数据替换",
+            rule = "$replaceRegex -> $replacement",
+            book = book as? Book,
+            bookChapter = chapter,
+            bookSource = source as? BookSource
+        )
+        
         val regex = compileRegexCache(replaceRegex)
-        if (rule.replaceFirst) {
+        val replacedResult = if (rule.replaceFirst) {
             /* ##match##replace### 获取第一个匹配到的结果并进行替换 */
             if (regex != null) kotlin.runCatching {
                 val pattern = regex.toPattern()
                 val matcher = pattern.matcher(result)
-                return if (matcher.find()) {
+                if (matcher.find()) {
                     matcher.group(0)!!.replaceFirst(regex, replacement)
                 } else {
                     ""
                 }
-            }
-            return replacement
+            }.getOrDefault(replacement) else replacement
         } else {
             /* ##match##replace 替换*/
             if (regex != null) kotlin.runCatching {
-                return result.replace(regex, replacement)
-            }
-            return result.replace(replaceRegex, replacement)
+                result.replace(regex, replacement)
+            }.getOrDefault(result) else result.replace(replaceRegex, replacement)
         }
+        
+        val duration = System.currentTimeMillis() - startTime
+        FlowLogRecorder.logReplace(
+            source = source,
+            message = "数据替换完成",
+            rule = "$replaceRegex -> $replacement",
+            result = replacedResult.take(100),  // 只记录前100个字符
+            originalValue = result.take(100),  // 只记录前100个字符
+            duration = duration,
+            book = book as? Book,
+            bookChapter = chapter,
+            bookSource = source as? BookSource
+        )
+        
+        return replacedResult
     }
 
     private fun compileRegexCache(regex: String): Regex? {
@@ -795,10 +947,33 @@ class AnalyzeRule(
         if (key == "bookName" || key == "title") {
             Debug.log("≡变量 $key 在特定情况下会被覆盖，建议使用其他键名")
         }
+        
+        val storage = when {
+            chapter != null -> io.legado.app.model.debug.VariableStorage.CHAPTER
+            book != null -> io.legado.app.model.debug.VariableStorage.BOOK
+            ruleData != null -> io.legado.app.model.debug.VariableStorage.RULE_DATA
+            source != null -> io.legado.app.model.debug.VariableStorage.SOURCE
+            else -> io.legado.app.model.debug.VariableStorage.UNKNOWN
+        }
+        
+        val oldValue = chapter?.getVariable(key)
+            ?: book?.getVariable(key)
+            ?: ruleData?.getVariable(key)
+            ?: source?.get(key)
+        
         chapter?.putVariable(key, value)
             ?: book?.putVariable(key, value)
             ?: ruleData?.putVariable(key, value)
             ?: source?.put(key, value)
+        
+        FlowLogRecorder.logVariableWrite(
+            source = source,
+            key = key,
+            value = value,
+            oldValue = oldValue,
+            storage = storage
+        )
+        
         return value
     }
 
@@ -808,24 +983,70 @@ class AnalyzeRule(
     fun get(key: String): String {
         when (key) {
             "bookName" -> book?.let {
+                FlowLogRecorder.logVariableRead(
+                    source = source,
+                    key = key,
+                    value = it.name,
+                    storage = io.legado.app.model.debug.VariableStorage.BOOK
+                )
                 return it.name
             }
 
             "title" -> chapter?.let {
+                FlowLogRecorder.logVariableRead(
+                    source = source,
+                    key = key,
+                    value = it.title,
+                    storage = io.legado.app.model.debug.VariableStorage.CHAPTER
+                )
                 return it.title
             }
         }
-        return chapter?.getVariable(key)?.takeIf { it.isNotEmpty() }
-            ?: book?.getVariable(key)?.takeIf { it.isNotEmpty() }
-            ?: ruleData?.getVariable(key)?.takeIf { it.isNotEmpty() }
-            ?: source?.get(key)?.takeIf { it.isNotEmpty() }
-            ?: ""
+        
+        val (result, storage) = chapter?.getVariable(key)?.takeIf { it.isNotEmpty() }?.let {
+            it to io.legado.app.model.debug.VariableStorage.CHAPTER
+        } ?: book?.getVariable(key)?.takeIf { it.isNotEmpty() }?.let {
+            it to io.legado.app.model.debug.VariableStorage.BOOK
+        } ?: ruleData?.getVariable(key)?.takeIf { it.isNotEmpty() }?.let {
+            it to io.legado.app.model.debug.VariableStorage.RULE_DATA
+        } ?: source?.get(key)?.takeIf { it.isNotEmpty() }?.let {
+            it to io.legado.app.model.debug.VariableStorage.SOURCE
+        } ?: ("" to io.legado.app.model.debug.VariableStorage.UNKNOWN)
+        
+        if (result.isNotEmpty()) {
+            FlowLogRecorder.logVariableRead(
+                source = source,
+                key = key,
+                value = result,
+                storage = storage
+            )
+        }
+        
+        return result
     }
 
     /**
      * 执行JS
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
+        val startTime = System.currentTimeMillis()
+        val containsReplace = jsStr.contains("replace")
+        val isLoggingEnabled = FlowLogRecorder.isEnabled
+        
+        if (containsReplace && isLoggingEnabled) {
+            FlowLogRecorder.logReplace(
+                source = source,
+                message = "执行JS替换",
+                rule = jsStr.take(200),
+                book = book as? Book,
+                bookChapter = chapter,
+                bookSource = source as? BookSource
+            )
+        }
+        
+        // 只在需要记录日志时才构建 jsContext，避免不必要的内存开销
+        val jsContext = if (isLoggingEnabled) buildJsExecutionContext(result) else null
+        
         val bindings = buildScriptBindings { bindings ->
             bindings["java"] = this
             bindings["cookie"] = CookieStore
@@ -853,9 +1074,104 @@ class AnalyzeRule(
                 prototype = topScope
             }
         }
-        val script = compileScriptCache(jsStr)
-        val result = script.eval(scope, coroutineContext)
-        return result
+        
+        val jsResult = try {
+            val script = compileScriptCache(jsStr)
+            // 保存并设置 ThreadLocal 规则类型，供 JS 中的 toast/log 方法提取规则来源
+            // 使用 ThreadLocal 是因为 rhinoContextOrNull 在 Context.enter() 之前为 null
+            val previousRuleType = currentRuleTypeThreadLocal.get()
+            try {
+                currentRuleTypeThreadLocal.set(toastRuleType)
+                script.eval(scope, coroutineContext)
+            } finally {
+                // 恢复之前的规则类型，避免嵌套调用时信息串扰
+                currentRuleTypeThreadLocal.set(previousRuleType)
+            }
+        } catch (e: Exception) {
+            if (isLoggingEnabled) {
+                val duration = System.currentTimeMillis() - startTime
+                FlowLogRecorder.logJsContext(
+                    source = source,
+                    jsCode = jsStr,
+                    context = jsContext!!,
+                    result = null,
+                    duration = duration,
+                    error = e,
+                    book = book as? Book,
+                    bookChapter = chapter,
+                    bookSource = source as? BookSource
+                )
+            }
+            throw e
+        }
+        
+        if (isLoggingEnabled) {
+            val duration = System.currentTimeMillis() - startTime
+            FlowLogRecorder.logJsContext(
+                source = source,
+                jsCode = jsStr,
+                context = jsContext!!,
+                result = jsResult.toDebugString(200),
+                duration = duration,
+                book = book as? Book,
+                bookChapter = chapter,
+                bookSource = source as? BookSource
+            )
+            
+            if (containsReplace) {
+                FlowLogRecorder.logReplace(
+                    source = source,
+                    message = "JS替换完成",
+                    rule = jsStr.take(200),
+                    result = jsResult.toDebugString(100),
+                    originalValue = result.toDebugString(100),
+                    duration = duration,
+                    book = book as? Book,
+                    bookChapter = chapter,
+                    bookSource = source as? BookSource
+                )
+            }
+        }
+        
+        return jsResult
+    }
+
+    private fun buildJsExecutionContext(result: Any?): io.legado.app.model.debug.JsExecutionContext {
+        return io.legado.app.model.debug.JsExecutionContext(
+            result = result.toDebugString(200),
+            src = content.toDebugString(200),
+            baseUrl = baseUrl,
+            book = book?.let { baseBook ->
+                val bookEntity = baseBook as? io.legado.app.data.entities.Book
+                io.legado.app.model.debug.BookContext(
+                    name = baseBook.name,
+                    author = baseBook.author,
+                    bookUrl = baseBook.bookUrl,
+                    coverUrl = bookEntity?.coverUrl,
+                    intro = bookEntity?.intro?.take(100),
+                    tocUrl = bookEntity?.tocUrl,
+                    variableMap = baseBook.variableMap.takeIf { it.isNotEmpty() }?.mapValues { (_, v) -> v.take(50) } ?: emptyMap()
+                )
+            },
+            chapter = chapter?.let {
+                io.legado.app.model.debug.ChapterContext(
+                    title = it.title,
+                    url = it.url,
+                    index = it.index,
+                    variableMap = it.variableMap.takeIf { it.isNotEmpty() }?.mapValues { (_, v) -> v.take(50) } ?: emptyMap()
+                )
+            },
+            source = source?.let {
+                io.legado.app.model.debug.SourceContext(
+                    name = it.getTag(),
+                    url = it.getKey(),
+                    group = (it as? io.legado.app.data.entities.BookSource)?.bookSourceGroup
+                )
+            },
+            variables = emptyMap(),
+            nextChapterUrl = nextChapterUrl,
+            fromBookInfo = isFromBookInfo
+        )
     }
 
     private fun compileScriptCache(jsStr: String): CompiledScript {
@@ -947,6 +1263,9 @@ class AnalyzeRule(
         private val evalPattern =
             Pattern.compile("@get:\\{[^}]+?\\}|\\{\\{[\\w\\W]*?\\}\\}", Pattern.CASE_INSENSITIVE)
         private val regexPattern = Pattern.compile("\\$\\d{1,2}")
+        /** 跨线程传递当前规则类型标识，供 JsExtensions.toast 提取规则来源显示。
+         *  ThreadLocal 方案：rhinoContextOrNull 在 Context.enter() 前为 null，无法直接写入。 */
+        val currentRuleTypeThreadLocal = ThreadLocal<String?>()
 
         fun AnalyzeRule.setCoroutineContext(context: CoroutineContext): AnalyzeRule {
             coroutineContext = context.minusKey(ContinuationInterceptor)
@@ -965,6 +1284,13 @@ class AnalyzeRule(
 
         fun AnalyzeRule.setChapter(chapter: BookChapter?): AnalyzeRule {
             this.chapter = chapter
+            return this
+        }
+
+        /** 设置当前规则类型标识，用于 toast 显示和流程日志追踪。
+         *  在 WebBook 各阶段（搜索/发现/详情/目录/正文）调用。 */
+        fun AnalyzeRule.setToastRuleType(type: String): AnalyzeRule {
+            this.toastRuleType = type
             return this
         }
 

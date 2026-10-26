@@ -74,6 +74,8 @@ import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.read.ai.AiChatPanelDialog
+import io.legado.app.ui.book.read.ai.AiReadActions
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCENT_COLOR
@@ -244,6 +246,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override val pageDelegate get() = binding.readView.pageDelegate
     override val headerHeight: Int get() = binding.readView.curPage.headerHeight
     override val imgBgPaddingStart: Int get() = binding.readView.curPage.imgBgPaddingStart
+    override val pageAnimationSpeed: Int get() = binding.readView.defaultAnimationSpeed
     private val nextPageDebounce by lazy { Debounce { keyPage(PageDirection.NEXT) } }
     private val prevPageDebounce by lazy { Debounce { keyPage(PageDirection.PREV) } }
     private var bookChanged = false
@@ -251,6 +254,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     private val handler by lazy { buildMainHandler() }
     private val screenOffRunnable by lazy { Runnable { keepScreenOn(false) } }
     private val executor = ReadBook.executor
+    private var cursorLeftLineTop = 0f
+    private var cursorRightLineTop = 0f
     private val upSeekBarThrottle = throttle(200) {
         runOnUiThread {
             upSeekBarProgress()
@@ -573,6 +578,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadBook.loadContent(false)
             }
 
+            R.id.menu_ai_chat -> {
+                showDialogFragment(AiChatPanelDialog(ReadBook.book))
+                return true
+            }
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
             R.id.menu_toc_regex -> showDialogFragment(
                 TxtTocRuleDialog(ReadBook.book?.tocUrl)
@@ -802,17 +811,56 @@ class ReadBookActivity : BaseReadBookActivity(),
         cursorLeft.x = x - cursorLeft.width
         cursorLeft.y = y
         cursorLeft.visible(true)
+        cursorLeftLineTop = top
         textMenuPosition.x = x
-        textMenuPosition.y = top
+        textMenuPosition.y = top.coerceAtLeast(headerHeight.toFloat())
     }
 
     /**
      * 更新文字选择结束位置
      */
-    override fun upSelectedEnd(x: Float, y: Float) = binding.run {
+    override fun upSelectedEnd(x: Float, y: Float, top: Float) = binding.run {
         cursorRight.x = x
         cursorRight.y = y
         cursorRight.visible(true)
+        cursorRightLineTop = top
+    }
+
+    /**
+     * 页窗口位移（跨页选择翻页）后同步选择锚点
+     */
+    override fun onSelectPageShift(offset: Int) {
+        binding.readView.shiftSelectAnchor(offset)
+    }
+
+    /**
+     * 跨页选择自动翻页后端点落到新页，放大镜跟着移到新的端点行
+     */
+    override fun onSelectAutoPageTurned(dragStartPoint: Boolean) {
+        showCursorMagnifier(dragStartPoint)
+    }
+
+    /**
+     * 跨页选择开始翻页：翻页动画期间先收起放大镜，动画结束再按新端点显示
+     */
+    override fun onSelectPageTurnStart() {
+        binding.readView.dismissSelectionMagnifier()
+    }
+
+    /**
+     * 拖动手柄时显示放大镜，放大镜对准手指正在移动的那个端点所指的文字
+     */
+    private fun showCursorMagnifier(byStartCursor: Boolean) = binding.run {
+        val x: Float
+        val centerY: Float
+        if (byStartCursor) {
+            x = cursorLeft.x + cursorLeft.width
+            centerY = (cursorLeft.y + cursorLeftLineTop) / 2f
+        } else {
+            x = cursorRight.x
+            centerY = (cursorRight.y + cursorRightLineTop) / 2f
+        }
+        readView.showSelectionMagnifier(x, centerY)
     }
 
     /**
@@ -862,6 +910,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 }
 
                 else -> speak(binding.readView.getSelectText())
+            }
+
+            R.id.menu_ai_purify -> {
+                AiReadActions.purifySelectedText(this, selectedText)
+                return true
             }
 
             R.id.menu_bookmark -> binding.readView.curPage.let {

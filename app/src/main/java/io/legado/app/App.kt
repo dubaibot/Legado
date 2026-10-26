@@ -39,6 +39,7 @@ import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.ThemeRuntimeKeys
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
@@ -127,6 +128,7 @@ class App : Application() {
     }
 
     override fun attachBaseContext(base: Context) {
+        ThemeRuntimeKeys.migrateLegacyNightValues(base)
         super.attachBaseContext(AppContextWrapper.wrap(base))
     }
 

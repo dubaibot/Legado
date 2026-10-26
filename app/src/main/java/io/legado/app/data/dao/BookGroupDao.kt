@@ -103,4 +103,10 @@ interface BookGroupDao {
         }
         return id
     }
+    @Query("delete from book_groups")
+    fun deleteAll()
+
+    @get:Query("select count(*) from book_groups")
+    val count: Int
+
 }

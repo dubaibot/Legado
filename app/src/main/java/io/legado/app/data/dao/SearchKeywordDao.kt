@@ -35,4 +35,7 @@ interface SearchKeywordDao {
     @Query("DELETE FROM search_keywords")
     fun deleteAll()
 
+    @get:Query("SELECT count(*) FROM search_keywords")
+    val count: Int
+
 }

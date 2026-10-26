@@ -85,6 +85,13 @@
                 android:text="@string/review"
                 android:visibility="gone" />
 
+            <io.legado.app.lib.theme.view.ThemeCheckBox
+                android:id="@+id/cb_next_page_lazy_load"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="false"
+                android:text="@string/next_page_lazy_load" />
+
         </LinearLayout>
 
     </HorizontalScrollView>

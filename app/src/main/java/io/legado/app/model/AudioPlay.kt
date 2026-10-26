@@ -28,8 +28,10 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import kotlin.text.trim
 
@@ -68,6 +70,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     var durChapterPos = 0
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
+    var durAudioCacheKeys: List<String> = emptyList()
     var durLyric: String? = null
     var durAudioSize = 0
     var inBookshelf = false
@@ -106,6 +109,7 @@ object AudioPlay : CoroutineScope by MainScope() {
         stop()
         AudioPlay.book = book
         readRecord.bookName = book.name
+        readRecord.bookAuthor = book.author
         readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
         simulatedChapterSize = if (book.readSimulating()) {
@@ -139,7 +143,7 @@ object AudioPlay : CoroutineScope by MainScope() {
             readRecord.readTime = readRecord.readTime + System.currentTimeMillis() - readStartTime
             readStartTime = System.currentTimeMillis()
             readRecord.lastRead = System.currentTimeMillis()
-            appDb.readRecordDao.insert(readRecord)
+            runBlocking(IO) { appDb.readRecordDao.insert(readRecord) }
         }
     }
 
@@ -275,6 +279,13 @@ object AudioPlay : CoroutineScope by MainScope() {
                 action = IntentAction.resume
             }
         }
+    }
+
+    fun onBookCacheCleared(bookUrl: String) {
+        if (book?.bookUrl != bookUrl) return
+        durPlayUrl = ""
+        durAudioCacheKeys = emptyList()
+        if (AudioPlayService.isRun) stop()
     }
 
     fun stop() {

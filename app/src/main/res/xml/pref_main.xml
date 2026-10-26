@@ -32,6 +32,21 @@
         android:title="@string/dict_rule"
         app:iconSpaceReserved="false" />
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="false"
+        android:icon="@drawable/ic_timer_black_24dp"
+        android:key="autoTaskService"
+        android:summary="@string/auto_task_service_desc"
+        android:title="@string/auto_task_service"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:icon="@drawable/ic_timer_black_24dp"
+        android:key="autoTaskManage"
+        android:summary="@string/auto_task_manage_desc"
+        android:title="@string/auto_task_manage"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="0"
         android:entries="@array/theme_mode"

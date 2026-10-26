@@ -31,6 +31,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
@@ -71,6 +72,7 @@ object ReadManga : CoroutineScope by MainScope() {
     fun resetData(book: Book) {
         ReadManga.book = book
         readRecord.bookName = book.name
+        readRecord.bookAuthor = book.author
         readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
         simulatedChapterSize = if (book.readSimulating()) {
@@ -135,7 +137,7 @@ object ReadManga : CoroutineScope by MainScope() {
             readRecord.readTime = readRecord.readTime + System.currentTimeMillis() - readStartTime
             readStartTime = System.currentTimeMillis()
             readRecord.lastRead = System.currentTimeMillis()
-            appDb.readRecordDao.insert(readRecord)
+            runBlocking(IO) { appDb.readRecordDao.insert(readRecord) }
         }
     }
 

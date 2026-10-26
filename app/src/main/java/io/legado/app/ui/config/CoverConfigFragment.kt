@@ -4,34 +4,52 @@ import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
+import androidx.core.view.MenuProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.repository.CoverGalleryRepository
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
+import io.legado.app.constant.EventBus
+import io.legado.app.ui.config.covergallery.CoverGalleryActivity
+import io.legado.app.ui.config.coverhtml.CoverHtmlActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.inputStream
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.readUri
 import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.showHelp
+import io.legado.app.utils.applyTint
+import io.legado.app.utils.applyTopBarTint
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.FileOutputStream
 
 class CoverConfigFragment : PreferenceFragment(),
-    SharedPreferences.OnSharedPreferenceChangeListener {
+    SharedPreferences.OnSharedPreferenceChangeListener, MenuProvider {
 
+    private val coverGalleryRepository by lazy { CoverGalleryRepository() }
     private val requestCodeCover = 111
     private val requestCodeCoverDark = 112
     private val selectImage = registerForActivityResult(HandleFileContract()) {
@@ -47,16 +65,35 @@ class CoverConfigFragment : PreferenceFragment(),
         addPreferencesFromResource(R.xml.pref_config_cover)
         upPreferenceSummary(PreferKey.defaultCover, getPrefString(PreferKey.defaultCover))
         upPreferenceSummary(PreferKey.defaultCoverDark, getPrefString(PreferKey.defaultCoverDark))
+        upPreferenceSummary(PreferKey.coverCollectionDay, getPrefString(PreferKey.coverCollectionDay))
+        upPreferenceSummary(PreferKey.coverCollectionNight, getPrefString(PreferKey.coverCollectionNight))
         findPreference<SwitchPreference>(PreferKey.coverShowAuthor)
             ?.isEnabled = getPrefBoolean(PreferKey.coverShowName)
         findPreference<SwitchPreference>(PreferKey.coverShowAuthorN)
             ?.isEnabled = getPrefBoolean(PreferKey.coverShowNameN)
+        upCoverHtmlCodeVisibility()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         activity?.setTitle(R.string.cover_config)
         listView.setEdgeEffectColor(primaryColor)
+        activity?.addMenuProvider(this, viewLifecycleOwner)
+    }
+
+    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+        menuInflater.inflate(R.menu.cover_config, menu)
+        menu.applyTopBarTint(requireContext())
+    }
+
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
+        when (menuItem.itemId) {
+            R.id.menu_help -> {
+                showHelp("coverConfigHelp")
+                return true
+            }
+        }
+        return false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,8 +110,19 @@ class CoverConfigFragment : PreferenceFragment(),
         sharedPreferences ?: return
         when (key) {
             PreferKey.defaultCover,
-            PreferKey.defaultCoverDark -> {
+            PreferKey.defaultCoverDark,
+            PreferKey.coverCollectionDay,
+            PreferKey.coverCollectionNight -> {
                 upPreferenceSummary(key, getPrefString(key))
+            }
+
+            PreferKey.coverHtmlEnable -> {
+                upCoverHtmlCodeVisibility()
+                CoverImageView.clearHtmlCoverCache()
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                if (getPrefBoolean(PreferKey.coverHtmlEnable)) {
+                    CoverHtmlActivity.startEditTemplate(requireContext(), isNew = false)
+                }
             }
 
             PreferKey.coverShowName -> {
@@ -90,8 +138,11 @@ class CoverConfigFragment : PreferenceFragment(),
             }
 
             PreferKey.coverShowAuthor,
-            PreferKey.coverShowAuthorN -> {
-                BookCover.upDefaultCover()
+            PreferKey.coverShowAuthorN,
+            PreferKey.coverCollectionModeDay,
+            PreferKey.coverCollectionModeNight,
+            PreferKey.bookCoverShadow -> {
+                refreshCover()
             }
         }
     }
@@ -100,6 +151,10 @@ class CoverConfigFragment : PreferenceFragment(),
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             "coverRule" -> showDialogFragment(CoverRuleConfigDialog())
+            "coverHtmlCode" -> CoverHtmlActivity.startTemplateList(requireContext())
+            "coverGallery" -> CoverGalleryActivity.start(requireContext())
+            PreferKey.coverCollectionDay -> selectCoverCollection(false)
+            PreferKey.coverCollectionNight -> selectCoverCollection(true)
             PreferKey.defaultCover ->
                 if (getPrefString(preference.key).isNullOrEmpty()) {
                     selectImage.launch {
@@ -163,8 +218,52 @@ class CoverConfigFragment : PreferenceFragment(),
                 value
             }
 
+            PreferKey.coverCollectionDay,
+            PreferKey.coverCollectionNight -> {
+                lifecycleScope.launch {
+                    val groupName = withContext(IO) {
+                        coverGalleryRepository.getGroupName(value?.toLongOrNull())
+                    }
+                    preference.summary = groupName ?: getString(R.string.cover_collection_none)
+                }
+            }
+
             else -> preference.summary = value
         }
+    }
+
+    private fun selectCoverCollection(isNight: Boolean) {
+        lifecycleScope.launch {
+            val groups = withContext(IO) {
+                coverGalleryRepository.allGroupsWithImages()
+                    .filter { it.images.isNotEmpty() }
+            }
+            val items = arrayListOf(getString(R.string.cover_collection_none))
+            items.addAll(groups.map { "${it.group.name} (${it.images.size})" })
+            context?.selector(items = items) { _, index ->
+                val selected = if (index <= 0) null else groups.getOrNull(index - 1)?.group
+                coverGalleryRepository.setSelectedGroup(isNight, selected?.id)
+                upPreferenceSummary(
+                    if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay,
+                    selected?.id?.toString()
+                )
+                refreshCover()
+            }
+        }
+    }
+
+    private fun refreshCover() {
+        BookCover.upDefaultCover()
+        postEvent(EventBus.BOOKSHELF_REFRESH, System.currentTimeMillis().toString())
+        postEvent(EventBus.REFRESH_BOOK_INFO, false)
+    }
+
+    /**
+     * 根据HTML封面启用开关控制"自动生成封面代码"菜单项的可见性
+     */
+    private fun upCoverHtmlCodeVisibility() {
+        findPreference<Preference>("coverHtmlCode")?.isVisible =
+            getPrefBoolean(PreferKey.coverHtmlEnable)
     }
 
     private fun setCoverFromUri(preferenceKey: String, uri: Uri) {

@@ -28,8 +28,26 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.min
+
+data class SourceSearchRecord(
+    val sourceName: String,
+    val sourceUrl: String,
+    var startTime: Long,
+    var endTime: Long? = null,
+    var status: Status = Status.PENDING,
+    var resultCount: Int = 0,
+    var errorMsg: String? = null
+) {
+    enum class Status {
+        PENDING, RUNNING, SUCCESS, EMPTY, FAILED
+    }
+
+    val duration: Long
+        get() = (endTime ?: System.currentTimeMillis()) - startTime
+}
 
 class SearchModel(private val scope: CoroutineScope, private val callBack: CallBack) {
     val threadCount = AppConfig.threadCount
@@ -41,6 +59,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var searchBooks = arrayListOf<SearchBook>()
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
+    val sourceRecords = ConcurrentHashMap<String, SourceSearchRecord>()
 
 
     private fun initSearchPool() {
@@ -59,6 +78,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 close()
             }
             searchBooks.clear()
+            sourceRecords.clear()
             bookSourceParts = callBack.getSearchScope().getBookSourceParts()
             if (bookSourceParts.isEmpty()) {
                 callBack.onSearchCancel(NoStackTraceException("启用书源为空"))
@@ -79,32 +99,69 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         searchJob = scope.launch(searchPool!!) {
             flow {
                 for (bs in bookSourceParts) {
-                    bs.getBookSource()?.let {
-                        emit(it)
+                    bs.getBookSource()?.let { source ->
+                        sourceRecords[source.bookSourceUrl] = SourceSearchRecord(
+                            sourceName = source.bookSourceName,
+                            sourceUrl = source.bookSourceUrl,
+                            startTime = System.currentTimeMillis(),
+                            status = SourceSearchRecord.Status.PENDING
+                        )
+                        emit(source)
+                        callBack.onSourceStatesChanged(ArrayList(sourceRecords.values))
                     }
                     workingState.first { it }
                 }
             }.onStart {
                 callBack.onSearchStart()
-            }.mapParallelSafe(threadCount) {
-                withTimeout(30000L) {
-                    WebBook.searchBookAwait(
-                        it, searchKey, searchPage,
-                        filter = { name, author, kind ->
-                            !precision || name.contains(searchKey) ||
-                                    author.contains(searchKey) ||
-                                    kind?.contains(searchKey) == true
-                        })
+            }.mapParallelSafe(threadCount) { source ->
+                val record = sourceRecords[source.bookSourceUrl]!!
+                record.status = SourceSearchRecord.Status.RUNNING
+                callBack.onSourceStatesChanged(ArrayList(sourceRecords.values))
+
+                val result = try {
+                    withTimeout(30000L) {
+                        WebBook.searchBookAwait(
+                            source, searchKey, searchPage,
+                            filter = { name, author, kind ->
+                                !precision || name.contains(searchKey) ||
+                                        author.contains(searchKey) ||
+                                        kind?.contains(searchKey) == true
+                            })
+                    }
+                } catch (e: Throwable) {
+                    record.status = SourceSearchRecord.Status.FAILED
+                    record.errorMsg = e.localizedMessage
+                    record.endTime = System.currentTimeMillis()
+                    callBack.onSourceStatesChanged(ArrayList(sourceRecords.values))
+                    emptyList()
                 }
+
+                if (record.status != SourceSearchRecord.Status.FAILED) {
+                    record.status =
+                        if (result.isEmpty()) SourceSearchRecord.Status.EMPTY else SourceSearchRecord.Status.SUCCESS
+                    record.resultCount = result.size
+                    record.endTime = System.currentTimeMillis()
+                    callBack.onSourceStatesChanged(ArrayList(sourceRecords.values))
+                }
+
+                result
             }.onEach { items ->
                 for (book in items) {
                     book.releaseHtmlData()
                 }
                 hasMore = hasMore || items.isNotEmpty()
-                appDb.searchBookDao.insert(*items.toTypedArray())
-                mergeItems(items, precision)
+
+                if (items.isNotEmpty()) {
+                    appDb.searchBookDao.insert(*items.toTypedArray())
+                    mergeItems(items, precision)
+                }
+
                 currentCoroutineContext().ensureActive()
                 callBack.onSearchSuccess(searchBooks)
+                val completed = sourceRecords.count {
+                    it.value.status != SourceSearchRecord.Status.PENDING && it.value.status != SourceSearchRecord.Status.RUNNING
+                }
+                callBack.onSearchProgress(completed, bookSourceParts.size, searchBooks.size)
             }.onCompletion {
                 if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
             }.catch {
@@ -214,6 +271,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         searchPool?.close()
         searchPool = null
         mSearchId = 0L
+        sourceRecords.clear()
     }
 
     interface CallBack {
@@ -222,6 +280,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         fun onSearchSuccess(searchBooks: List<SearchBook>)
         fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean)
         fun onSearchCancel(exception: Throwable? = null)
+        fun onSearchProgress(completed: Int, total: Int, resultCount: Int) {}
+        fun onSourceStatesChanged(records: List<SourceSearchRecord>) {}
     }
 
 }

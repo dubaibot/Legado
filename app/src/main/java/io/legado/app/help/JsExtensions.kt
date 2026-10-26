@@ -12,14 +12,24 @@ import io.legado.app.constant.AppConst.dateFormat
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.RssSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.debug.ToastContext
+import io.legado.app.model.debug.ToastRuleType
+import io.legado.app.model.debug.ToastSourceType
+import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.source.BookSourceFileAccessPolicy
 import io.legado.app.help.source.SourceHelp
+import io.legado.app.help.source.SourceInteractionBlockedException
+import io.legado.app.help.source.SourceInteractionPolicy
+import io.legado.app.help.source.SourceSandboxExtensions
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.help.source.getSourceType
 import io.legado.app.model.Debug
@@ -95,6 +105,29 @@ interface JsExtensions : JsEncodeUtils {
         get() = rhinoContextOrNull?.coroutineContext ?: EmptyCoroutineContext
 
     /**
+     * P0-S3 弹窗拦截开关：由批量流程（搜索/换源）协程树上的 SourceInteractionPolicy 决定，
+     * 无 policy 挂载的调用面（单源调试等）恒为 false，弹窗全放行
+     */
+    private val blockSourceDialogs: Boolean
+        get() = context[SourceInteractionPolicy]?.blockDialogs == true
+
+    /**
+     * P0-S3 弹窗拦截判定：被拦截时记日志并抛 SourceInteractionBlockedException
+     */
+    private fun requireSourceDialogAllowed(action: String) {
+        if (!blockSourceDialogs) {
+            return
+        }
+        AppLog.putDebugWithTag(
+            AppLog.TAG_SOURCE_DIALOG,
+            "blockedDialog action=$action ns=${SourceSandboxExtensions.nsShortLabel(getSource())}",
+            null,
+            AppLog.Level.INFO
+        )
+        throw SourceInteractionBlockedException(action)
+    }
+
+    /**
      * 访问网络,返回String
      */
     fun ajax(url: Any): String? {
@@ -126,7 +159,7 @@ interface JsExtensions : JsEncodeUtils {
     }
     fun ajaxAll(urlList: Array<String>, skipRateLimit: Boolean): Array<StrResponse> {
         return runBlocking(context) {
-            urlList.asFlow().mapAsync(AppConfig.threadCount) { url ->
+            urlList.asFlow().mapAsync(AppConfig.searchThreadCount) { url ->
                 val analyzeUrl = AnalyzeUrl(
                     url,
                     source = getSource(),
@@ -145,7 +178,7 @@ interface JsExtensions : JsEncodeUtils {
     }
     fun ajaxTestAll(urlList: Array<String>, timeout: Int, skipRateLimit: Boolean): Array<StrResponse> {
         return runBlocking(context) {
-            urlList.asFlow().mapAsync(AppConfig.threadCount) { url ->
+            urlList.asFlow().mapAsync(AppConfig.searchThreadCount) { url ->
                 val analyzeUrl = AnalyzeUrl(
                     url,
                     source = getSource(),
@@ -341,6 +374,8 @@ interface JsExtensions : JsEncodeUtils {
 
     fun startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean, html: String?): StrResponse {
         rhinoContext.ensureActive()
+        // P0-S3 弹窗拦截：批量流程（搜索/换源）协程树挂载 policy 时拒绝验证网页（无法输入，中断为必要语义）
+        requireSourceDialogAllowed("验证网页")
         val pair = SourceVerificationHelp.getVerificationResult(
             getSource(), url, title, true, refetchAfterSuccess, html
         )
@@ -353,6 +388,8 @@ interface JsExtensions : JsEncodeUtils {
      */
     fun getVerificationCode(imageUrl: String): String {
         rhinoContext.ensureActive()
+        // P0-S3 弹窗拦截：批量流程协程树挂载 policy 时拒绝验证码
+        requireSourceDialogAllowed("验证码")
         return SourceVerificationHelp.getVerificationResult(getSource(), imageUrl, "", false).second
     }
 
@@ -427,11 +464,10 @@ interface JsExtensions : JsEncodeUtils {
         rhinoContextOrNull?.ensureActive()
         val analyzeUrl = AnalyzeUrl(url, source = getSource(), coroutineContext = context)
         val type = analyzeUrl.type ?: UrlUtil.getSuffix(url)
-        val path = FileUtils.getPath(
-            File(FileUtils.getCachePath()),
-            "${MD5Utils.md5Encode16(url)}.${type}"
-        )
-        val file = File(path)
+        val fileName = "${MD5Utils.md5Encode16(url)}.${type}"
+        // P0-S1 书源文件沙箱：命中沙箱则产物写 externalCache/source/{ns}/ 并返回相对沙箱根路径；否则走旧全局根，语义不变
+        val target = SourceSandboxExtensions.resolveBookSourceFile(getSource(), fileName)
+        val file = target?.file ?: File(FileUtils.getPath(File(FileUtils.getCachePath()), fileName))
         file.delete()
         analyzeUrl.getInputStream().use { iStream ->
             file.createFileReplace()
@@ -444,7 +480,7 @@ interface JsExtensions : JsEncodeUtils {
                 throw e
             }
         }
-        return path.substring(FileUtils.getCachePath().length)
+        return target?.relativePath ?: file.absolutePath.substring(FileUtils.getCachePath().length)
     }
 
 
@@ -463,18 +499,22 @@ interface JsExtensions : JsEncodeUtils {
         rhinoContextOrNull?.ensureActive()
         val type = AnalyzeUrl(url, source = getSource(), coroutineContext = context).type
             ?: return ""
-        val path = FileUtils.getPath(
-            FileUtils.createFolderIfNotExist(FileUtils.getCachePath()),
-            "${MD5Utils.md5Encode16(url)}.${type}"
+        // P0-S1 书源文件沙箱：与单参版统一文件定位原语（同 md5 文件名 + 同沙箱解析），保留 hex 写盘语义
+        val fileName = "${MD5Utils.md5Encode16(url)}.${type}"
+        val target = SourceSandboxExtensions.resolveBookSourceFile(getSource(), fileName)
+        val file = target?.file ?: File(
+            FileUtils.getPath(
+                FileUtils.createFolderIfNotExist(FileUtils.getCachePath()),
+                fileName
+            )
         )
-        val file = File(path)
         file.createFileReplace()
         HexUtil.decodeHex(content).let {
             if (it.isNotEmpty()) {
                 file.writeBytes(it)
             }
         }
-        return path.substring(FileUtils.getCachePath().length)
+        return target?.relativePath ?: file.absolutePath.substring(FileUtils.getCachePath().length)
     }
 
     /**
@@ -699,6 +739,8 @@ interface JsExtensions : JsEncodeUtils {
      * @return File
      */
     fun getFile(path: String): File {
+        // P0-S1 书源文件沙箱：BookSource 上下文且开关开启时收敛到 externalCache/source/{ns}/，越界抛 SecurityException
+        SourceSandboxExtensions.resolveBookSourceFile(getSource(), path)?.let { return it.file }
         val cachePath = appCtx.externalCache.absolutePath
         val aPath = if (path.startsWith(File.separator)) {
             cachePath + path
@@ -746,6 +788,8 @@ interface JsExtensions : JsEncodeUtils {
     @JavascriptInterface
     fun deleteFile(path: String): Boolean {
         val file = getFile(path)
+        // P0-S1 书源文件沙箱：删除前校验整个子树在沙箱内（防符号链接/嵌套逃逸）；无沙箱上下文时 no-op
+        SourceSandboxExtensions.requireContainedTree(getSource(), file)
         return FileUtils.delete(file, true)
     }
 
@@ -788,7 +832,17 @@ interface JsExtensions : JsEncodeUtils {
     fun unArchiveFile(zipPath: String): String {
         if (zipPath.isEmpty()) return ""
         val zipFile = getFile(zipPath)
-        return ArchiveUtils.deCompress(zipFile.absolutePath).let {
+        // P0-S1 书源文件沙箱：解压临时目录与产物收敛到沙箱内 ArchiveTemp/{md5}，解压后校验子树；无沙箱上下文走旧全局根
+        val sandboxRoot = SourceSandboxExtensions.bookSourceFileRoot(getSource())
+        return if (sandboxRoot != null) {
+            val tempFolder = BookSourceFileAccessPolicy.resolvePath(sandboxRoot, ArchiveUtils.TEMP_FOLDER_NAME)
+            ArchiveUtils.deCompress(zipFile.absolutePath, tempFolder.file.absolutePath)
+            val outputRelativePath = ArchiveUtils.TEMP_FOLDER_NAME + File.separator + MD5Utils.md5Encode16(zipFile.name)
+            val outputDir = BookSourceFileAccessPolicy.resolvePath(sandboxRoot, outputRelativePath)
+            SourceSandboxExtensions.requireContainedTree(getSource(), outputDir.file)
+            outputRelativePath
+        } else {
+            ArchiveUtils.deCompress(zipFile.absolutePath)
             ArchiveUtils.TEMP_FOLDER_NAME + File.separator + MD5Utils.md5Encode16(zipFile.name)
         }
     }
@@ -1087,7 +1141,29 @@ interface JsExtensions : JsEncodeUtils {
      */
     fun toast(msg: Any?) {
         rhinoContextOrNull?.ensureActive()
-        appCtx.toastOnUi("${getTag()}: ${msg.toString()}")
+        // P0-S3 弹窗拦截：批量流程静默+记日志（toast 中断会让"提示后继续"的正常源崩溃，D4 裁决不抛）
+        if (blockSourceDialogs) {
+            AppLog.putDebugWithTag(
+                AppLog.TAG_SOURCE_DIALOG,
+                "blockedDialog action=toast ns=${SourceSandboxExtensions.nsShortLabel(getSource())}",
+                null,
+                AppLog.Level.INFO
+            )
+            return
+        }
+        val source = getSource()
+        val (ruleType, ruleLine) = extractRuleInfo()
+        val toastContext = ToastContext(
+            sourceName = getTag(),
+            sourceType = when (source) {
+                is BookSource -> ToastSourceType.BOOK
+                is RssSource -> ToastSourceType.RSS
+                else -> null
+            },
+            ruleType = ruleType,
+            ruleLine = ruleLine
+        )
+        appCtx.toastOnUi("${getTag()}: ${msg.toString()}", toastContext)
     }
 
     /**
@@ -1095,7 +1171,65 @@ interface JsExtensions : JsEncodeUtils {
      */
     fun longToast(msg: Any?) {
         rhinoContextOrNull?.ensureActive()
-        appCtx.longToastOnUi("${getTag()}: ${msg.toString()}")
+        // P0-S3 弹窗拦截：同 toast 静默+记日志
+        if (blockSourceDialogs) {
+            AppLog.putDebugWithTag(
+                AppLog.TAG_SOURCE_DIALOG,
+                "blockedDialog action=longToast ns=${SourceSandboxExtensions.nsShortLabel(getSource())}",
+                null,
+                AppLog.Level.INFO
+            )
+            return
+        }
+        val source = getSource()
+        val (ruleType, ruleLine) = extractRuleInfo()
+        val toastContext = ToastContext(
+            sourceName = getTag(),
+            sourceType = when (source) {
+                is BookSource -> ToastSourceType.BOOK
+                is RssSource -> ToastSourceType.RSS
+                else -> null
+            },
+            ruleType = ruleType,
+            ruleLine = ruleLine
+        )
+        appCtx.longToastOnUi("${getTag()}: ${msg.toString()}", toastContext)
+    }
+
+    /**
+     * 从 ThreadLocal 和 Rhino 调试器中提取规则类型和行号。
+     * 规则类型来自 [AnalyzeRule.currentRuleTypeThreadLocal]（由 evalJS 设置），
+     * 行号来自 [extractJsLineNumber]（由 Rhino DebugFrame 追踪）。
+     */
+    private fun extractRuleInfo(): Pair<ToastRuleType?, Int?> {
+        // 从 ThreadLocal 获取规则类型字符串（SEARCH/EXPLORE/TOC/CONTENT 等）
+        val ruleTypeStr = AnalyzeRule.currentRuleTypeThreadLocal.get()
+        val ruleType = when (ruleTypeStr) {
+            "SEARCH" -> ToastRuleType.SEARCH
+            "EXPLORE" -> ToastRuleType.EXPLORE
+            "BOOK_INFO" -> ToastRuleType.BOOK_INFO
+            "TOC" -> ToastRuleType.TOC
+            "CONTENT" -> ToastRuleType.CONTENT
+            "RSS_INFO" -> ToastRuleType.RSS_INFO
+            "RSS_ARTICLE" -> ToastRuleType.RSS_ARTICLE
+            "RSS_CONTENT" -> ToastRuleType.RSS_CONTENT
+            else -> null
+        }
+
+        val ruleLine = extractJsLineNumber()
+
+        return Pair(ruleType, ruleLine)
+    }
+
+    /**
+     * 从 Rhino 调试器获取当前脚本执行行号。
+     * [RhinoDebugAdapter] 在每行执行时更新 [RhinoContext.currentScriptLine]，
+     * 替代了之前解析堆栈字符串的不可靠方案。
+     */
+    private fun extractJsLineNumber(): Int? {
+        // rhinoContextOrNull 在 Rhino 脚本执行期间非 null，currentScriptLine 由 DebugFrame.onLineChange 维护
+        val line = rhinoContextOrNull?.currentScriptLine ?: return null
+        return if (line > 0) line else null
     }
 
     /**

@@ -8,10 +8,54 @@
         android:title="@string/only_wifi"
         android:summary="@string/only_wifi_summary" />
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:key="loadCoverHighQuality"
+        android:defaultValue="false"
+        android:title="@string/load_cover_high_quality"
+        android:summary="@string/load_cover_high_quality_summary"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="bookCoverShadow"
+        android:title="@string/book_cover_shadow"
+        android:summary="@string/book_cover_shadow_summary"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.Preference
         android:key="coverRule"
         android:title="@string/cover_rule"
         android:summary="@string/cover_rule_summary"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="false"
+        android:key="coverHtmlEnable"
+        android:title="@string/cover_html_enable"
+        android:summary="@string/cover_html_enable_summary"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="coverHtmlCode"
+        android:title="@string/cover_html_code"
+        android:summary="@string/cover_html_code_summary"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:isPreferenceVisible="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="coverGallery"
+        android:title="@string/cover_gallery_manage"
+        android:summary="@string/cover_gallery_manage_summary"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false" />
@@ -32,6 +76,23 @@
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="coverCollectionDay"
+            android:title="@string/cover_collection_select"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="random"
+            android:key="coverCollectionModeDay"
+            android:title="@string/cover_collection_mode"
+            app:entries="@array/cover_collection_mode_entries"
+            app:entryValues="@array/cover_collection_mode_values"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
             android:key="defaultCover"
@@ -67,6 +128,23 @@
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="coverCollectionNight"
+            android:title="@string/cover_collection_select"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="random"
+            android:key="coverCollectionModeNight"
+            android:title="@string/cover_collection_mode"
+            app:entries="@array/cover_collection_mode_entries"
+            app:entryValues="@array/cover_collection_mode_values"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
             android:key="defaultCoverDark"

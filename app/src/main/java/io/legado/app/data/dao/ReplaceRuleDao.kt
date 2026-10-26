@@ -117,4 +117,10 @@ interface ReplaceRuleDao {
             dealGroups(list)
         }.flowOn(IO)
     }
+    @Query("delete from replace_rules")
+    fun deleteAll()
+
+    @get:Query("select count(*) from replace_rules")
+    val count: Int
+
 }

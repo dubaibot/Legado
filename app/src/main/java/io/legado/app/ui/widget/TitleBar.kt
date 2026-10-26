@@ -19,6 +19,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.children
 import com.google.android.material.appbar.AppBarLayout
 import io.legado.app.R
+import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
@@ -60,7 +61,10 @@ class TitleBar @JvmOverloads constructor(
     private val fitStatusBar: Boolean
     private val fitNavigationBar: Boolean
     private val attachToActivity: Boolean
-    private val opaque: Boolean
+    internal val opaque: Boolean
+    internal val ignoreTopBarOpacity: Boolean
+    internal val skipTopBarConfig: Boolean
+    internal val topBarTheme: Theme
 
     init {
         val a = context.obtainStyledAttributes(
@@ -74,6 +78,8 @@ class TitleBar @JvmOverloads constructor(
         fitStatusBar = a.getBoolean(R.styleable.TitleBar_fitStatusBar, true)
         fitNavigationBar = a.getBoolean(R.styleable.TitleBar_fitNavigationBar, false)
         opaque = a.getBoolean(R.styleable.TitleBar_opaque, false)
+        ignoreTopBarOpacity = a.getBoolean(R.styleable.TitleBar_ignoreTopBarOpacity, false)
+        skipTopBarConfig = a.getBoolean(R.styleable.TitleBar_skipTopBarConfig, false)
 
         val navigationIcon = a.getDrawable(R.styleable.TitleBar_navigationIcon)
         val navigationContentDescription =
@@ -81,7 +87,14 @@ class TitleBar @JvmOverloads constructor(
         val titleText = a.getString(R.styleable.TitleBar_title)
         val subtitleText = a.getString(R.styleable.TitleBar_subtitle)
 
-        when (a.getInt(R.styleable.TitleBar_themeMode, 0)) {
+        val themeMode = a.getInt(R.styleable.TitleBar_themeMode, 0)
+        topBarTheme = when (themeMode) {
+            1 -> Theme.Dark
+            2 -> Theme.Light
+            else -> Theme.Auto
+        }
+
+        when (themeMode) {
             1 -> inflate(context, R.layout.view_title_bar_dark, this)
             else -> inflate(context, R.layout.view_title_bar, this)
         }

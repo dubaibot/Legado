@@ -4,9 +4,11 @@ package io.legado.app.lib.theme
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import androidx.annotation.ColorInt
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.toColorInt
 import androidx.fragment.app.Fragment
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
@@ -148,4 +150,42 @@ val Context.filletBackground: GradientDrawable
         background.cornerRadius = 3f.dpToPx()
         background.setColor(backgroundColor)
         return background
+    }
+
+// 多源合并：arc 主题兼容符号（标题色暂跟随正文主色，Sigma 无独立标题色配置）
+@ColorInt
+fun String?.toThemeTextColorOrNull(): Int? {
+    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val withoutPrefix = raw
+        .removePrefix("#")
+        .removePrefix("0x")
+        .removePrefix("0X")
+    val candidate = if (
+        withoutPrefix.length in setOf(6, 8) &&
+        withoutPrefix.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+    ) {
+        "#$withoutPrefix"
+    } else {
+        raw
+    }
+    return kotlin.runCatching { candidate.toColorInt() }.getOrNull()
+}
+
+val Context.titleTextColor: Int
+    get() = primaryTextColor
+
+/**
+ * 书架"显示外边框"卡片背景：填充色取主题背景色（保留半透明以透出背景图），
+ * 描边色由背景色与其明暗反色混合推导，使边框随主题背景颜色自适应。
+ */
+val Context.bookBorderBackground: GradientDrawable
+    get() {
+        val bgColor = backgroundColor
+        val contrastColor = if (ColorUtils.isColorLight(bgColor)) Color.BLACK else Color.WHITE
+        val strokeColor = ColorUtils.blendColors(bgColor, contrastColor, 0.22f)
+        return GradientDrawable().apply {
+            cornerRadius = 12f.dpToPx()
+            setColor(ColorUtils.adjustAlpha(bgColor, 0.41f))
+            setStroke(0.8f.dpToPx().toInt().coerceAtLeast(1), strokeColor)
+        }
     }

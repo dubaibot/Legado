@@ -24,7 +24,12 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.BackupConfig
+import io.legado.app.help.storage.BackupSelectorConfig
+import io.legado.app.help.storage.BookCacheSelectorConfig
+import io.legado.app.help.storage.ImportOldData
 import io.legado.app.help.storage.Restore
+import io.legado.app.ui.widget.dialog.BackupInfoDialog
+import io.legado.app.ui.widget.dialog.BackupSelectorDialog
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.permission.Permissions
@@ -99,11 +104,11 @@ class BackupConfigFragment : PreferenceFragment(),
             }
         }
     }
-//    private val restoreOld = registerForActivityResult(HandleFileContract()) {
-//        it.uri?.let { uri ->
-//            ImportOldData.importUri(appCtx, uri)
-//        }
-//    }
+    private val restoreOld = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let { uri ->
+            ImportOldData.importUri(appCtx, uri)
+        }
+    }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_backup)
@@ -232,11 +237,49 @@ class BackupConfigFragment : PreferenceFragment(),
         when (preference.key) {
             PreferKey.backupPath -> selectBackupPath.launch()
             PreferKey.restoreIgnore -> backupIgnore()
+            "backup_selector" -> showBackupSelector()
+            "book_cache_selector" -> showBookCacheSelector()
             "web_dav_backup" -> backup()
             "web_dav_restore" -> restore()
-//            "import_old" -> restoreOld.launch()
+            "import_old" -> restoreOld.launch()
+            "viewBackupInfo" -> showBackupInfo()
+            "viewRestoreInfo" -> showRestoreInfo()
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    /**
+     * 显示备份选择器
+     */
+    private fun showBackupSelector() {
+        showDialogFragment(BackupSelectorDialog())
+    }
+
+    /**
+     * 显示书籍缓存选择器
+     */
+    private fun showBookCacheSelector() {
+        if (!BookCacheSelectorConfig.hasBooksWithCache()) {
+            appCtx.toastOnUi(R.string.no_book_cache)
+            return
+        }
+        io.legado.app.ui.book.cacheSelector.BookCacheSelectorActivity.start(requireContext())
+    }
+
+    /**
+     * 显示备份信息
+     */
+    private fun showBackupInfo() {
+        BackupInfoDialog.newInstance(BackupInfoDialog.Mode.Backup)
+            .show(childFragmentManager, "backupInfo")
+    }
+
+    /**
+     * 显示恢复信息
+     */
+    private fun showRestoreInfo() {
+        BackupInfoDialog.newInstance(BackupInfoDialog.Mode.Restore)
+            .show(childFragmentManager, "restoreInfo")
     }
 
     /**

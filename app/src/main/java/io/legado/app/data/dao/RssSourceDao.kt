@@ -27,6 +27,12 @@ interface RssSourceDao {
     @get:Query("SELECT * FROM rssSources order by customOrder")
     val all: List<RssSource>
 
+    /**
+     * 所有启用的订阅源（同步，用于 RssSearchScope.getRssSources()）
+     */
+    @get:Query("SELECT * FROM rssSources where enabled = 1 order by customOrder")
+    val allEnabled: List<RssSource>
+
     @get:Query("select count(sourceUrl) from rssSources")
     val size: Int
 
@@ -122,11 +128,17 @@ interface RssSourceDao {
     @Query("select * from rssSources where sourceGroup like '%' || :group || '%'")
     fun getByGroup(group: String): List<RssSource>
 
+    @Query("select * from rssSources where type = :type and enabled = 1")
+    fun getEnabledByType(type: Int): List<RssSource>
+
     @Query("select exists(select 1 from rssSources where sourceUrl = :key)")
     fun has(key: String): Boolean
 
     @Query("update rssSources set enabled = :enable where sourceUrl = :sourceUrl")
     fun enable(sourceUrl: String, enable: Boolean)
+
+    @Query("update rssSources set lastHost = :lastHost where sourceUrl = :sourceUrl")
+    fun updateLastHost(sourceUrl: String, lastHost: String?)
 
     private fun dealGroups(list: List<String>): List<String> {
         val groups = linkedSetOf<String>()
@@ -153,5 +165,8 @@ interface RssSourceDao {
             dealGroups(list)
         }.flowOn(IO)
     }
+
+    @Query("delete from rssSources")
+    fun deleteAll()
 
 }

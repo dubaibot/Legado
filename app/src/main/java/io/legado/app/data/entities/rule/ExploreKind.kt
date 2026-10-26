@@ -22,6 +22,7 @@ data class ExploreKind(
         const val button = "button"
         const val toggle = "toggle"
         const val select = "select"
+        const val html = "html"
 
     }
 

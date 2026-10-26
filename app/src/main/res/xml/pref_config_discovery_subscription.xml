@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/discovery_settings_title"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="modern"
+            android:key="modernDiscoveryMode"
+            android:title="@string/modern_discovery_page"
+            app:entries="@array/discovery_page_mode_entries"
+            app:entryValues="@array/discovery_page_mode_values"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="discoveryPageLayout"
+            android:title="@string/discovery_page_layout"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/subscription_settings_title"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="modern"
+            android:key="modernRssMode"
+            android:title="@string/modern_rss_page"
+            app:entries="@array/rss_page_mode_entries"
+            app:entryValues="@array/page_mode_values"
+            app:iconSpaceReserved="false" />
+
+        <!-- add-rss-article-refresh-to-top：本文件仅作「设置搜索索引」用（渲染走 DiscoverySubscriptionConfigFragment 的 Compose spec），
+             键名必须与 PreferKey.rssArticleRefreshToTop 一致 -->
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="rssArticleRefreshToTop"
+            android:title="@string/rss_article_refresh_to_top"
+            android:summary="@string/rss_article_refresh_to_top_summary"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

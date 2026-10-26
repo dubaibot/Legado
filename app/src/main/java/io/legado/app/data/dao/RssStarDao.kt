@@ -42,4 +42,7 @@ interface RssStarDao {
 
     @Query("delete from rssStars")
     fun deleteAll()
+
+    @get:Query("select count(*) from rssStars")
+    val count: Int
 }

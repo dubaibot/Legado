@@ -10,7 +10,10 @@ import io.legado.app.utils.splitNotBlank
 @DatabaseView(
     """select bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore, 
     (loginUrl is not null and trim(loginUrl) <> '') hasLoginUrl, lastUpdateTime, respondTime, weight, 
-    (exploreUrl is not null and trim(exploreUrl) <> '') hasExploreUrl, eventListener, bookSourceType
+    (searchUrl is not null and trim(searchUrl) <> ''
+     or mainJs is not null and trim(mainJs) <> '') hasSearchUrl,
+    (exploreUrl is not null and trim(exploreUrl) <> '') hasExploreUrl, eventListener, bookSourceType,
+    (mainJs is not null and trim(mainJs) <> '') hasJs, lastHost
     from book_sources""",
     viewName = "book_sources_part"
 )
@@ -35,12 +38,18 @@ data class BookSourcePart(
     var respondTime: Long = 180000L,
     // 智能排序的权重
     var weight: Int = 0,
+    // 是否有搜索url
+    var hasSearchUrl: Boolean = false,
     // 是否有发现url
     var hasExploreUrl: Boolean = false,
     // 是否启用事件监听
     var eventListener: Boolean = false,
     // 书源类型
-    var bookSourceType: Int = 0
+    var bookSourceType: Int = 0,
+    // 是否为纯 JavaScript 单文件书源
+    var hasJs: Boolean = false,
+    // AnalyzeUrl解析后的真实域名(host),校验时回填,UI分组用此字段优先于源URL截取
+    var lastHost: String? = null
 ) {
 
     override fun hashCode(): Int {

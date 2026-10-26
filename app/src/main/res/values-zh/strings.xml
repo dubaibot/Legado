@@ -1250,4 +1250,6028 @@
     <string name="auto_check_new_backup_t">自动检查新备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
+
+    <!-- autoTask (port from 阅读 Archive) -->
+    <string name="import_">导入</string>
+        <string name="auto_task_service">定时任务</string>
+        <string name="auto_task_service_desc">在后台按计划执行已启用的任务</string>
+        <string name="auto_task_group">定时任务</string>
+        <string name="auto_task_manage">定时任务管理</string>
+        <string name="auto_task_manage_desc">创建和管理定时脚本</string>
+        <string name="auto_task_last_run">上次执行：%1$s</string>
+        <string name="auto_task_script_empty">任务脚本不能为空</string>
+        <string name="auto_task_failed">任务执行失败：%1$s</string>
+        <string name="auto_task_no_enabled">没有已启用的任务</string>
+        <string name="auto_task_running_state">正在执行定时任务</string>
+        <string name="auto_task_no_task">没有定时任务</string>
+        <string name="auto_task_no_search_result">没有匹配的定时任务</string>
+        <string name="auto_task_running">正在执行：%1$s</string>
+        <string name="auto_task_interval">间隔</string>
+        <string name="auto_task_cron">Cron（分 时 日 月 周）</string>
+        <string name="auto_task_comment">备注</string>
+        <string name="auto_task_cron_invalid">Cron 表达式无效</string>
+        <string name="auto_task_script">脚本</string>
+        <string name="auto_task_header">请求头（JSON）</string>
+        <string name="auto_task_jslib">JavaScript 库</string>
+        <string name="auto_task_concurrent_rate">并发率</string>
+        <string name="auto_task_cookie_jar">启用 CookieJar</string>
+        <string name="auto_task_add">新增任务</string>
+        <string name="auto_task_delete">删除任务</string>
+        <string name="auto_task_edit">编辑任务</string>
+        <string name="auto_task_debug">运行任务</string>
+        <string name="auto_task_not_run">尚未执行</string>
+        <string name="auto_task_last_error">上次错误：%1$s</string>
+        <string name="auto_task_item_summary">%1$s · %2$s</string>
+        <string name="auto_task_name_required">名称不能为空</string>
+        <string name="auto_task_book_update_title">《%1$s》有更新</string>
+        <string name="auto_task_book_update_content">新增 %1$d 章 · 最新：%2$s</string>
+        <string name="auto_task_book_update_content_count">新增 %1$d 章</string>
+        <string name="auto_task_notify_title">定时任务通知</string>
+        <string name="auto_task_notify_content">%1$s</string>
+        <string name="auto_task_book_update">定时检测更新</string>
+        <string name="auto_task_book_update_name">更新检测：%1$s</string>
+        <string name="auto_task_enable">已启用</string>
+        <string name="auto_task_notify_switch">有新章节时通知</string>
+        <string name="auto_task_cache_switch">缓存新章节</string>
+        <string name="auto_task_book_update_saved">定时任务已保存</string>
+        <string name="auto_task_book_update_deleted">定时任务已禁用</string>
+        <string name="auto_task_batch_cron">更改执行计划</string>
+        <string name="batch_auto_task_update">批量设置定时更新</string>
+        <string name="batch_auto_task_update_dialog_title">批量定时更新（%1$d 本书）</string>
+        <string name="auto_task_help_title">定时任务帮助</string>
+        <string name="import_auto_task">导入定时任务</string>
+        <string name="auto_task_import_new">新增</string>
+        <string name="auto_task_import_update">更新</string>
+        <string name="auto_task_import_existing">无变化</string>
+        <string name="auto_task_import_duplicate_id">任务 ID 不能重复</string>
+        <string name="auto_task_import_done">定时任务已导入</string>
+        <string name="auto_task_import_select_none">至少选择一个任务</string>
+        <string name="auto_task_debug_title">任务调试</string>
+        <string name="auto_task_debug_started">开始执行</string>
+        <string name="auto_task_debug_finished">执行完成</string>
+        <string name="auto_task_debug_cancelled">已取消执行</string>
+        <string name="auto_task_debug_cancel">取消</string>
+        <string name="auto_task_debug_clear">清空日志</string>
+        <string name="auto_task_debug_no_logs">暂无实时日志</string>
+        <string name="auto_task_debug_idle">空闲</string>
+        <string name="auto_task_debug_loading">正在加载任务</string>
+        <string name="auto_task_debug_running">执行中</string>
+        <string name="auto_task_debug_success">执行成功</string>
+        <string name="auto_task_debug_no_action">未处理动作</string>
+        <string name="auto_task_debug_invalid">任务无效</string>
+        <string name="auto_task_debug_failed">执行失败</string>
+        <string name="auto_task_debug_timed_out">执行超时</string>
+        <string name="auto_task_debug_missing">未找到任务</string>
+        <string name="auto_task_debug_duration">耗时：%1$d 毫秒</string>
+        <string name="auto_task_debug_result">结果：%1$s</string>
+
+
+<string name="cache_manage_search_book">搜索缓存</string>
+
+<string name="book_info_manage_summary">管理详情页组件与显示顺序</string>
+
+    <string name="welcome_slogan">品读万千故事</string>
+
+    <string name="image_load_error_hint_source">请在编辑订阅源中检查规则</string>
+
+	<string name="load_with_web_log">&#36755;&#20986; WebLog</string>
+
+        <string name="discovery_settings_title">发现页管理</string>
+
+    <string name="download_error_code">错误：%1$s</string>
+
+    <string name="my_metric_rss_source">订阅源</string>
+
+    <string name="ai_manage_native_tools">管理原生工具</string>
+
+	<string name="day_nav_bar_immersion">&#30333;&#22825;&#25805;&#20316;&#26639;&#39068;&#33394;&#36879;&#26126;</string>
+
+<string name="bookshelf_tag_select_results">选择结果</string>
+
+<string name="replace_all">&#20840;&#37096;</string>
+
+	<string name="advanced_title_source_builtin">&#20869;&#32622;</string>
+
+        <string name="ai_image_new_group">新建分组</string>
+
+    <string name="read_record_component_read_rank">阅读时长排行</string>
+
+	<string name="advanced_title_exported">已导出</string>
+
+        <string name="ai_image_gallery">AI 图片库</string>
+
+<string name="play_mode">&#25773;&#25918;&#27169;&#24335;</string>
+
+    <string name="config_category_appearance">外观</string>
+
+    <string name="open_url_confirm_message">正在请求跳转链接/应用，是否跳转？</string>
+
+    <string name="scene_bookmark_unsupported">当前位置无法加入名场面</string>
+
+    <string name="import_check_strictness">过滤严格度</string>
+
+	<string name="domain">&#22495;&#21517;</string>
+
+<string name="bottom_bar_effect_solid">常规</string>
+
+    <string name="ai_purify_title">AI 净化</string>
+
+    <string name="download_started">开始下载</string>
+
+    <string name="ai_remove_skill_confirm">删除这个 Skill？</string>
+
+    <string name="read_record_goal_books">已读书籍 %1$d 本</string>
+
+<string name="bottom_bar_item_hidden">已隐藏</string>
+
+    <string name="download_clear_success">已清除记录</string>
+
+    <string name="scene_bookmark_image_missing">该名场面没有可打开的图片链接</string>
+
+    <string name="import_check_network_down">网络不可用，%1$d 条源未校验直接导入</string>
+
+	<string name="paragraph_rule_no_book_hint">&#26410;&#25214;&#21040;&#24403;&#21069;&#20070;&#31821;</string>
+
+<string name="paragraph_import_conflict_rename">两者都保留并自动编号</string>
+
+    <string name="source_sort_2">按启用状态</string>
+
+    <string name="clear_filter">清除筛选条件</string>
+
+    <string name="import_empty_source_ignored">已忽略 %1$d 个空书源</string>
+
+    <string name="password_hide">隐藏密码</string>
+
+    <string name="theme_color_tab_background">标签栏背景色</string>
+
+    <string name="download_error_remux">视频转码失败</string>
+
+<string name="s3_container_edit">编辑 S3 容器</string>
+
+        <string name="package_sync_task_type_cache_upload">缓存上传</string>
+
+<string name="expand">展开</string>
+
+        <string name="navigation_bar_custom_name">自定义底栏</string>
+
+	<string name="float_permission_rationale">&#38405;&#35835;&#38656;&#35201;&#24748;&#28014;&#31383;&#26435;&#38480;&#26469;&#26174;&#31034;&#25773;&#25918;&#31383;&#21475;</string>
+
+        <string name="discovery_page_layout_waterfall">瀑布流</string>
+
+    <string name="import_check_timeout">单源校验超时（秒）</string>
+
+    <string name="theme_applied">主题已应用</string>
+
+	<string name="rule_sub_content">&#21103;&#25991;&#35268;&#21017;&#65288;subContent&#65289;</string>
+
+    <string name="association_result_ok">导入完成</string>
+
+<string name="cache_manage_select_source">选择书源</string>
+
+    <string name="read_record_goal_avatar_hint">填写本地 URI 或图片链接</string>
+
+    <string name="read_record_component_hint_recent_covers">最多显示 5 本封面形式的最近在读</string>
+
+<string name="discovery_suite_refresh_batch">换一批</string>
+
+    <string name="error_view_detail">点击查看详情</string>
+
+        <string name="book_info_component_header_hint">封面、书名、作者、最新章节与标签。</string>
+
+<string name="top_bar_filter_toggle_show">&#26174;&#31034;</string>
+
+	<string name="read_menu_move_to_first">移到第一排</string>
+
+    <string name="rss_mark_read_confirm_message">将把所选范围内的全部文章标为已读，是否继续？</string>
+
+    <string name="bookshelf_empty_go_discovery">去发现看看</string>
+
+	<string name="press_speed">&#38271;&#25353;&#20493;&#36895;</string>
+
+<string name="whitespace_inner">&#34892;&#20013;</string>
+
+        <string name="ai_history_clear_all_confirm">清空全部 AI 对话历史？</string>
+
+<string name="s3_access_key">Access Key</string>
+
+    <string name="discovery_page_mode_suite">套件</string>
+
+    <string name="ai_query_balance">查询余额</string>
+
+    <string name="ai_chat_empty_pick_companion">选择角色卡开始</string>
+
+    <string name="ai_purify_failed">净化失败：%1$s</string>
+
+<string name="edit_theme_monokai_dimmed">&#33707;&#22856;&#26580;&#20809;</string>
+
+    <string name="highlight_rule_import_from_clipboard">从剪贴板 JSON 导入</string>
+
+        <string name="cover_collection_no_images_to_export">没有可导出的图片</string>
+
+    <string name="migrate_book_origin_msg">书源地址已变更，是否将书架中来自该书源的书籍迁移到新地址？</string>
+
+    <string name="update_accel_no_proxy">不使用代理</string>
+
+    <string name="type_video">视频</string>
+
+    <string name="search_result_count_done">共命中 %1$d 本</string>
+
+<string name="cover_collection_images_count">%d 张图片</string>
+
+    <string name="settings_search_sub_item_count">含 %1$d 项</string>
+
+<string name="discovery_suite_delete">删除套件</string>
+
+        <string name="package_sync_task_menu">同步任务</string>
+
+    <string name="search_history_empty">暂无搜索历史</string>
+
+    <string name="web_service_running">运行中</string>
+
+    <string name="ai_purify">AI 净化</string>
+
+    <string name="theme_panel_border_alpha">边框不透明度</string>
+
+    <string name="ai_chat_suggestion_context">解释一下这段内容的背景</string>
+
+<string name="online_import_error_route">无法建立导入连接</string>
+
+    <string name="search_book_empty_title">搜索结果为空</string>
+
+        <string name="cache_manage_webdav_task_duplicate">任务已在队列中</string>
+
+    <string name="highlight_rule_edit_title">编辑高亮规则</string>
+
+	<string name="ai_read_history_empty">本书暂无问 AI 历史。</string>
+
+    <string name="ai_chat_suggestion_book">概括我正在读的这本书</string>
+
+    <string name="ai_provider">提供商</string>
+
+<string name="sync_theme_packages_summary">开启后保存主题、顶栏、底栏时会后台同步到云端</string>
+
+    <string name="read_record_stats_waiting">继续阅读后会开始生成日统计和热力图</string>
+
+    <string name="welcome_title">阅读M</string>
+
+<string name="bottom_bar_effect_glass">玻璃</string>
+
+    <string name="bookshelf_empty_title">这里还没有书</string>
+
+<string name="paragraph_import_conflict_skip_description">只导入名称不冲突的规则</string>
+
+<string name="bookshelf_tag_delete_message">确定从“%2$s”分组的所有书籍中移除“%1$s”标签吗？不会删除书籍。</string>
+
+    <string name="rss_search_running">正在搜索 · 已得 %1$d 条</string>
+
+    <string name="read_menu_button_run_clear">清空结果</string>
+
+    <string name="rss_sort_group_record">记录</string>
+
+	<string name="advanced_title_applied">&#24050;&#24212;&#29992;</string>
+
+    <string name="password">密码</string>
+
+        <string name="title_font">标题字体</string>
+
+<string name="book_info_style_immersive">沉浸</string>
+
+
+<string name="rss_search_hint">搜索订阅内容</string>
+
+<string name="only_update_read">&#20165;&#26356;&#26032;&#24050;&#35835;&#23436;</string>
+
+    <string name="url_record_summary">查看与管理URL访问记录</string>
+
+<string name="layout_type">&#26679;&#24335;&#65306;</string>
+
+    <string name="book_source_no_match_title">没有匹配的书源</string>
+
+<string name="ps_only_update_read">&#33258;&#21160;&#21047;&#26032;&#26102;&#65292;&#21482;&#26356;&#26032;&#24050;&#35835;&#23436;&#30340;&#20070;&#31821;</string>
+
+<string name="discovery_suite_generate_limit">套件数量已达上限（%1$d），请先删除部分套件</string>
+
+    <string name="source_sort_3">按类型</string>
+
+<string name="update_interval">&#38388;&#38548;&#65306;</string>
+
+    <string name="ai_fetch_models_add_selected">添加已选（%1$d）</string>
+
+<string name="book_cover_shadow">显示封面阴影</string>
+
+    <string name="read_menu_button_run_running">运行中…</string>
+
+    <string name="ai_fetch_models_no_new">没有新的模型</string>
+
+<string name="discovery_suite_widget_loading">正在加载控件内容...</string>
+
+    <string name="clear_30_days_ago">清除30天前的记录</string>
+
+    <string name="read_menu_button_run_type">返回类型</string>
+
+    <string name="recycle_bin_is_empty">回收站为空</string>
+
+    <string name="scene_bookmark_clear_book_confirm">确定删除《%1$s》的全部名场面？</string>
+
+    <string name="web_relay_open_settings">中继设置</string>
+
+    <string name="quality_report_delete">删除</string>
+
+    <string name="theme_image_main_background">主界面背景</string>
+
+    <string name="scene_bookmark_added">已加入名场面</string>
+
+<string name="paragraph_import_conflict_overwrite">覆盖现有规则</string>
+
+    <string name="opml_error_too_large">OPML 文件过大（上限 2MB）</string>
+
+    <string name="highlight_rule_group_delete_confirm">删除后，该分组下的规则会移动到默认分组。</string>
+
+    <string name="theme_image_mode_crop">裁切填充</string>
+
+    <string name="video_play_info">播放信息</string>
+
+<string name="top_bar_filter_toggle_button">&#23637;&#24320;&#31661;&#22836;&#25353;&#38190;</string>
+
+    <string name="image_load_error_network">网络连接失败</string>
+
+    <string name="tip_template_help">点选下方变量插入占位符（插入到光标处）；预览按阅读页样本值渲染，未知占位符原样显示</string>
+
+    <string name="theme_group_color">颜色</string>
+
+	<string name="read_menu_night_icon_night">夜间图标</string>
+
+    <string name="read_record_today_label">今日</string>
+
+    <string name="type_audio">音频</string>
+
+<string name="discovery_suite_default_random_title">随机推荐</string>
+
+<string name="top_bar_style_regular">常规顶栏</string>
+
+    <string name="dialog_page_position">%1$d/%2$d</string>
+
+    <string name="download_tab_paused">已暂停</string>
+
+    <string name="read_record_empty">暂无阅读记录</string>
+
+        <string name="package_sync_task_type_theme">主题</string>
+
+    <string name="ai_import_default_skill_summary">从 DandanLLab/legadoSkill 下载真实 SKILL.md</string>
+
+<string name="bottom_bar_layout_mode">底栏样式</string>
+
+<string name="auto_update">&#33258;&#21160;&#26356;&#26032;</string>
+
+<string name="cache_manage_batch_empty">没有可操作的缓存</string>
+
+<string name="bookshelf_return_to_top_after_read_short">顶部</string>
+
+    <string name="ai_remove_mcp_server">删除 MCP 服务器</string>
+
+	<string name="advanced_title_rule_label">分隔规则</string>
+
+    <string name="theme_color_primary">主色调</string>
+
+<string name="top_bar_tag_selected_color">选中标签背景色</string>
+
+    <string name="import_fetching_progress">获取中 %1$d/%2$d…</string>
+
+<string name="epub_read_engine_core">EPUB引擎（实验性）</string>
+
+    <string name="download_dir_setting">下载目录</string>
+
+    <string name="highlight_rule_restore_overwritten_toast">已重置为默认规则</string>
+
+	<string name="read_scroll_follow_background_summary">上下滚动阅读时，背景图按相同速率随正文滚动，并沿纵向连续平铺。</string>
+
+    <string name="web_token_level_readonly">readonly · 只读</string>
+
+    <string name="migrated_thread_count_toast">已根据您之前的线程数配置自动迁移为搜索/更新+缓存两个独立配置</string>
+
+    <string name="theme_delete_both">同时删除</string>
+
+    <string name="quality_report_scope_all">全部源</string>
+
+        <string name="book_info_component_header">书籍主卡片</string>
+
+    <string name="theme_package_summary_default">主题包独立保存，可同步到 WebDAV themes 目录。</string>
+
+<string name="cache_manage_task_progress">%1$d/%2$d · %3$s / %4$s · %5$s</string>
+
+    <string name="qr_decode_failed_desc">所选图片中没有二维码，请更换更清晰的图片后重试</string>
+
+    <string name="theme_source_using">使用中</string>
+
+        <string name="package_sync_task_status_cancelled">已取消</string>
+
+    <string name="quality_report_deleted_title">已删除 %1$d 条源</string>
+
+    <string name="read_record_rank_number">第%1$d名</string>
+
+<string name="cache_manage_download_first">请先下载云端缓存到本地</string>
+
+    <string name="cache_stats_empty">暂无缓存</string>
+
+    <string name="web_service_settings_entry_summary">地址、令牌、端口与安全</string>
+
+        <string name="ai_image_rename">重命名</string>
+
+    <string name="theme_download_local">下载到本地</string>
+
+<string name="cache_manage_remote_cached_count">云端 %1$d 章</string>
+
+    <string name="rss_source_empty_subtitle">可手动添加，或从网络导入</string>
+
+        <string name="color_format_error">颜色格式不正确</string>
+
+    <string name="import_check_depth_l1">仅结构（秒级，不联网）</string>
+
+<string name="main_immersion_status_bar">隐藏主界面状态栏</string>
+
+    <string name="web_address_copied">地址已复制</string>
+
+    <string name="web_token_plain_only_once">令牌明文仅在生成时显示一次。</string>
+
+    <string name="cache_stats">缓存分项</string>
+
+<string name="cover_collection_add">创建图集</string>
+
+    <string name="rss_mark_read_all">全部标为已读</string>
+
+<string name="s3_container_delete_confirm">确定删除 %1$s 吗？</string>
+
+<string name="discovery_suite_widget_targets_min">至少 1 个标签</string>
+
+    <string name="backup_content_select">备份内容</string>
+
+    <string name="update_accel_summary_proxy">GitHub 通道，代理：%1$s</string>
+
+    <string name="read_record_component_hint_heatmap">展示最近 16 周阅读热力趋势</string>
+
+    <string name="rss_mark_read_no_group">暂无订阅分组</string>
+
+<string name="online_import_error_too_many_redirects">导入链接跳转次数过多</string>
+
+    <string name="download_configure_dir">配置目录</string>
+
+	<string name="text_font_weight">字体粗细</string>
+
+    <string name="book_info_new_chapters_badge">新 %1$d 章</string>
+
+    <string name="search_result_compact">紧凑</string>
+
+    <string name="source_folder_config">布局设置</string>
+
+<string name="s3_container_capacity_gb">容量（GB，0 或留空表示不限制）</string>
+
+    <string name="source_health_unchecked">未校验 %1$d</string>
+
+    <string name="domain_check_socket">Socket快速检测</string>
+
+    <string name="read_record_today_word">今天</string>
+
+<string name="online_import_field_size">大小</string>
+
+	<string name="ai_usage_chip_cached">缓存</string>
+
+    <string name="ai_tavily_api_key_summary_ready">已配置 API Key。</string>
+
+    <string name="replace_sample_run">试运行</string>
+
+<string name="cover_collection_none">无</string>
+
+    <string name="change_source">换源</string>
+
+    <string name="theme_manual_config">手动配置</string>
+
+    <string name="source_sort_ascending">升序排列</string>
+
+	<string name="content_select_menu_config">正文长按条编辑</string>
+
+    <string name="save_success">保存成功</string>
+
+	<string name="read_aloud_bgm_collapse_all">全部折叠</string>
+
+	<string name="rule_call_back">&#22238;&#35843;&#25805;&#20316;&#65288;callBackJs&#65289;</string>
+
+    <string name="recycle_bin_restore_conflict">目标规则已存在，是否覆盖？</string>
+
+        <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
+
+    <string name="bookshelf_card_progress_chapter">%1$d%% · 第%2$d章</string>
+
+    <string name="read_record_component_heatmap">阅读热力图</string>
+
+    <string name="read_record_goal_target_progress">今日目标 %1$s / %2$s</string>
+
+    <string name="highlight_rule_restore_default">恢复默认规则</string>
+
+	<string name="setting_show_line_number">&#35774;&#32622;&#36741;&#21161;&#25353;&#38190;&#23637;&#31034;&#30340;&#34892;&#25968;</string>
+
+    <string name="theme_sync_failed_retry">云端主题同步失败，可稍后重试。</string>
+
+        <string name="ai_tool_status_calling">调用中</string>
+
+<string name="discovery_suite_widget_type">控件样式</string>
+
+    <string name="web_token_generated_at">已生成于 %1$s</string>
+
+    <string name="tip_template_edit_hint">自定义模板（点按编辑）</string>
+
+    <string name="just_now">刚刚</string>
+
+    <string name="book_source_empty_subtitle">新建、导入或添加书源开始使用</string>
+
+<string name="discovery_suite_set_current">设为当前</string>
+
+<string name="paragraph_import_conflict_rename_description">依次命名为“名称 (2)”“名称 (3)”等</string>
+
+    <string name="del_login_header_confirm">将清除「%1$s」保存的登录信息（用户名、密码、Cookie），此操作不可撤销</string>
+
+    <string name="filter_failed">失败</string>
+
+    <string name="ai_add_skill_manual">手动导入 SKILL.md</string>
+
+<string name="discovery_suite_add_widget">添加控件</string>
+
+    <string name="theme_color_accent">强调色</string>
+
+<string name="manage_bar_immersion">管理页沉浸顶栏</string>
+
+    <string name="web_token_regenerate">重新生成</string>
+
+    <string name="rss_sort_group_source">订阅源</string>
+
+    <string name="open_url_confirm_title">跳转确认</string>
+
+    <string name="ai_provider_removed">已删除提供商</string>
+
+	<string name="read_menu_button_script">按键 JS</string>
+
+<string name="manage_bar_immersion_summary">开启后书源、订阅源、书签等管理页顶栏与背景融为一体，不再使用强调色</string>
+
+<string name="bookshelf_tag_new_hint">新增标签，多个用空格或逗号分隔</string>
+
+    <string name="rss_tag_all_count">全部 · %1$d 源</string>
+
+    <string name="read_record_component_hint_goal_card">展示头像、目标和完成度摘要</string>
+
+
+
+
+<string name="book_info_catalog_page">%1$d / %2$d</string>
+
+    <string name="book_source_menu_group_diag">诊断与帮助</string>
+
+    <string name="ai_provider_stat_current_none">未设置</string>
+
+<string name="discovery_suite_type_desc_rank_buttons">3×3 标签按钮方阵（需选 3-9 个标签）</string>
+
+<string name="top_bar_follow_theme">跟随主题</string>
+
+    <string name="recycle_bin_empty_msg">清空回收站？所有回收项将被永久删除。</string>
+
+<string name="book_info_style_immersive_desc">以封面背景、紧凑操作、简介、目录预览和图片库组成详情页。本样式组件顺序固定，需要自定义时可切到现代详情页。</string>
+
+    <string name="my_metric_read_time">累计阅读</string>
+
+    <string name="image_save_failed">保存图片失败：%1$s</string>
+
+    <string name="read_record_drag_sort">拖拽排序</string>
+
+	<string name="menu_page">&#31532; %d &#39029;</string>
+
+<string name="bookshelf_tag_filter_selected">已选择</string>
+
+<string name="cache_manage_delete_all">删除全部</string>
+
+    <string name="theme_panel_border_color">圆角卡片边框色</string>
+
+    <string name="highlight_rule_group_default_protected">默认分组不能删除</string>
+
+    <string name="highlight_rule_restore_merge">合并模式（推荐）</string>
+
+	<string name="show_web_log">&#36755;&#20986;&#26085;&#24535;</string>
+
+        <string name="ui_layout_alpha">界面不透明度</string>
+
+    <string name="theme_import_failed">导入主题失败：%s</string>
+
+        <string name="ai_image_gallery_empty">暂无图片</string>
+
+    <string name="ai_current_provider_summary_empty">请先添加提供商</string>
+
+    <string name="all_bookmark_empty_subtitle">阅读时添加书签后可在此查看</string>
+
+    <string name="theme_card_background_blur">卡片模糊</string>
+
+    <string name="r_episodes">多集规则（ruleEpisodes）</string>
+
+    <string name="scene_bookmark_clear_book">清空本书名场面</string>
+
+    <string name="ai_missing_config_action">去配置</string>
+
+    <string name="highlight_rule_export_to_pack">导出为规则包文件</string>
+
+<string name="cache_manage_download_strategy_title">下载策略</string>
+
+    <string name="cache_rate_hint">如 1500 或 20/60000</string>
+
+	<string name="content_select_actions">长按动作</string>
+
+
+    <string name="highlight_rule_export_done">已复制 %1$d 条规则到剪贴板</string>
+
+    <string name="source_sort_4">按分组</string>
+
+<string name="is_event_listener">&#20107;&#20214;&#30417;&#21548;</string>
+
+<string name="discovery_suite_widget_type_ranked_list">排行榜列表</string>
+
+        <string name="appearance_kit_summary">统一管理主题、顶栏、底栏和封面图集</string>
+
+    <string name="image_refresh_running">正在刷新图片…</string>
+
+<string name="paragraph_import_conflict_message">有 %1$d 条导入规则与现有规则或包内其他规则同名，请选择处理方式。</string>
+
+        <string name="dialog_alpha">弹窗不透明度</string>
+
+    <string name="scene_bookmark_library">名场面书签</string>
+
+    <string name="update_accel_add_title">添加代理</string>
+
+<string name="line_separator">&#25442;&#34892;</string>
+
+<string name="cache_manage_state_none">&#26080;&#32531;&#23384;</string>
+
+	<string name="paragraph_rule_script">&#27573;&#33853;&#22788;&#29702; JS</string>
+
+	<string name="paragraph_rule_edit">&#32534;&#36753;&#27573;&#33853;&#35268;&#21017;</string>
+
+    <string name="web_relay_state_paired">已配对，未连接</string>
+
+    <string name="scene_bookmark_book">本书名场面</string>
+
+    <string name="recycle_bin_delete_selection">彻底删除</string>
+
+        <string name="disable">禁用</string>
+
+    <string name="rss_read_menu_group_reading">阅读工具</string>
+
+        <string name="ai_tool_status_done">调用完成</string>
+
+	<string name="advanced_title_sample_default">第一章 接生</string>
+
+        <string name="duration_minute">%d分钟</string>
+
+<string name="book_info_style_immersive_hint">沉浸详情页使用固定布局，组件编辑只作用于现代详情页。</string>
+
+    <string name="root">根目录</string>
+
+    <string name="replace_sample_result_label">替换结果</string>
+
+        <string name="ai_tool_round_limit_system_prompt">工具调用轮次已达到上限。现在不要继续调用任何工具，请基于已经获得的工具结果，直接总结当前完成情况、剩余问题和下一步建议。</string>
+
+<string name="cache_manage_delete_both_confirm">同时删除当前 %1$d 项本地缓存和云端备份？这会删除所有对应备份。</string>
+
+        <string name="shibboleth">口令</string>
+
+	<string name="paragraph_rule_drag_handle">&#25302;&#21160;&#25490;&#24207;&#25163;&#26564;</string>
+
+        <string name="ai_tool_round_limit_summary">工具调用轮次已达到上限，且模型没有返回总结</string>
+
+
+    <string name="dedup_enabled">已启用</string>
+
+<string name="collapse">收起</string>
+
+
+    <string name="my_metric_shelf">书架书籍</string>
+
+    <string name="quality_report_progress">已体检 %1$d/%2$d，异常 %3$d</string>
+
+    <string name="edit_here_unsupported">该选区无定位信息，按当前进度打开</string>
+
+    <string name="read_record_goal_today">今日 %1$s</string>
+
+<string name="rss_auto_video_enable">开启「自动转视频播放器」</string>
+
+        <string name="ui_corner_reply_follow">回复栏跟随圆角</string>
+
+    <string name="minutes_ago">%1$d分钟前</string>
+
+    <string name="association_result_hint">弹窗已关闭的条目可在各管理页查看</string>
+
+<string name="discovery_suite_no_widgets_summary">添加书籍控件后，再绑定书源和发现标签。</string>
+
+	<string name="ai_usage_chip_total">总</string>
+
+    <string name="side_nav_assistant">助手</string>
+
+<string name="auto_refresh_media_toc_summary">音频或视频章节链接为空或失效时，自动刷新一次目录后重试</string>
+
+<string name="whitespace_trailing">&#34892;&#23614;</string>
+
+	<string name="read_menu_no_current_chapter">没有当前章节</string>
+
+    <string name="url_record_filter">筛选</string>
+
+    <string name="rss_sort_tabs_collapse">收起 ▴</string>
+
+<string name="discovery_suite_empty_summary">先创建套件，再从指定书源和发现标签添加书籍控件。</string>
+
+        <string name="ai_request_failed">请求失败：%s</string>
+
+<string name="library_container_manage_title">书库容器</string>
+
+<string name="silent_update">&#38745;&#40664;&#26356;&#26032;</string>
+
+<string name="closing_credits">片尾</string>
+
+    <string name="opml_error_parse">不是有效的 OPML 文件</string>
+
+<string name="cache_manage_cached">已缓存</string>
+
+    <string name="gamepad_preset_dpad">十字键（上/下）</string>
+
+<string name="online_import_error_redirect_downgrade">HTTPS 导入链接不能跳转到 HTTP</string>
+
+<string name="discovery_suite_empty_title">还没有发现套件</string>
+
+<string name="s3_full_webdav_fallback_upload">上传到 WebDAV</string>
+
+    <string name="ai_enable">启用 AI</string>
+
+    <string name="rss_search_stop">停止</string>
+
+	<string name="next">&#19979;&#19968;&#39318;</string>
+
+<string name="bookshelf_list_intro_lines">简介行数</string>
+
+    <string name="source_sort_6">按更新时间</string>
+
+        <string name="package_sync_task_status_completed">已完成</string>
+
+	<string name="r_preloadJs">&#39044;&#27880;&#20837; JS&#65288;preloadJs&#65289;</string>
+
+    <string name="ai_remove_provider_confirm_with_models">确定删除这个提供商吗？关联的 %1$d 个模型也会一起删除。</string>
+
+    <string name="import_check_restore_all">导入勾选的源</string>
+
+    <string name="web_auth_strict_title">严格模式（全端点强制鉴权）</string>
+
+<string name="bookshelf_tag_add_group">添加到“%1$s”</string>
+
+    <string name="highlight_rule_restore_title">恢复默认规则</string>
+
+    <string name="config_category_tools">工具</string>
+
+    <string name="ai_tavily_api_key">Tavily API Key</string>
+
+    <string name="read_record_goal_achieved">已达成</string>
+
+<string name="cache_manage_state_both">&#26412;&#22320;+&#20113;&#31471;</string>
+
+    <string name="video_resume_from_format">已从 %1$d:%2$02d 继续播放</string>
+
+    <string name="cache_concurrent_rate">缓存并发率</string>
+
+<string name="cache_manage_cache_selected">缓存</string>
+
+<string name="book_info_manage">详情页管理</string>
+
+    <string name="storage_items">分项</string>
+
+    <string name="settings_search_match_count">%1$d 项匹配</string>
+
+    <string name="update_accel_hint">https://proxy.example/${url}</string>
+
+<string name="cache_manage_add_bookshelf_success">已从缓存放入书架</string>
+
+	<string name="advanced_title_name">&#26631;&#39064;&#21517;&#31216;</string>
+
+	<string name="format_code">&#26684;&#24335;&#21270;</string>
+
+<string name="video_play">&#35270;&#39057;&#25773;&#25918;</string>
+
+    <string name="replace_sample_empty_input">请先粘贴样本正文</string>
+
+    <string name="replace_sample_input_hint">粘贴一段正文样本</string>
+
+    <string name="read_menu_button_run_empty">（无返回值）</string>
+
+    <string name="video_route_self_heal_toast">播放失败，已自动切换到线路：%1$s</string>
+
+    <string name="config_category_sync">同步与服务</string>
+
+    <string name="cover_rule_empty">搜索url和cover规则不能为空</string>
+
+    <string name="ai_mcp">MCP 服务器</string>
+
+	<string name="r_startStyle">&#21551;&#21160;&#39029; Style &#25991;&#26412;&#65288;startStyle&#65289;</string>
+
+    <string name="explore_show_preview_hint">长按书籍可预览简介与目录，不用先打开</string>
+
+<string name="config_category_content">内容与规则</string>
+
+    <string name="quality_report_copy_path">复制路径</string>
+
+    <string name="video_player_optimization">播放器优化</string>
+
+        <string name="move_up">上移</string>
+
+    <string name="layout_config">版面设置</string>
+
+        <string name="ai_history_delete_confirm">删除“%s”？</string>
+
+    <string name="theme_color_background">背景色</string>
+
+
+    <string name="ai_manage_models_summary">已添加 %1$d 个模型</string>
+
+	<string name="bubble_manage_summary">管理段评气泡 SVG、颜色、大小与同步</string>
+
+<string name="online_import_error_source_url">导入地址需以 http:// 或 https:// 开头</string>
+
+    <string name="image_load_error_hint_parse">规则可能已失效，可改用网页模式查看</string>
+
+    <string name="theme_section_theme_nav">主题与系统界面</string>
+
+        <string name="appearance_kit_imported">已导入 %d 个组件</string>
+
+    <string name="book_import_summary_size">大小：%1$s</string>
+
+    <string name="downloading_dots">下载中……</string>
+
+<string name="bookshelf_tag_new_label">新标签</string>
+
+    <string name="logging_in">正在登录…</string>
+
+    <string name="read_aloud_start_at_page_top">首次朗读从页首开始</string>
+
+    <string name="ai_tavily_enable_summary_missing">请先填写 Tavily API Key，再启用工具。</string>
+
+<string name="discovery_suite_default_name">我的发现</string>
+
+    <string name="source_required_hint">必填项，不能为空</string>
+
+    <string name="book_info_read_progress">第 %1$d 章 · %2$d%%</string>
+
+    <string name="web_token_revoke">撤销</string>
+
+	<string name="default_none">不默认打开</string>
+
+<string name="fast_scroller_touch_target">快速滚动条触摸区域</string>
+
+    <string name="ai_tavily_search_depth_basic">基础</string>
+
+    <string name="read_menu_button_run">▶ 测试运行</string>
+
+    <string name="ai_missing_config">请先完成提供商和模型配置</string>
+
+    <string name="rss_article_type_video">视频</string>
+
+    <string name="select_book_source">选择书源</string>
+
+    <string name="gamepad_preset_shoulder">肩键（L1/R1）</string>
+
+	<string name="selection_search_engine_url_error">搜索 URL 必须以 http:// 或 https:// 开头</string>
+
+    <string name="color_lightness">明度</string>
+
+	<string name="advanced_title_import_net_failed">网络导入失败：%1$s</string>
+
+    <string name="re_add_to_bookshelf">是否重新加入书架？</string>
+
+    <string name="source_folder_group_by_type">按类型</string>
+
+<string name="update_acceleration_manage">加速管理</string>
+
+    <string name="video_function">功能</string>
+
+    <string name="web_first_launch_copy">复制地址</string>
+
+
+
+    <string name="download_empty">暂无下载任务</string>
+
+    <string name="read_record_select_year">选择年份</string>
+
+        <string name="book_info_component_meta">分组与书源卡片</string>
+
+    <string name="paragraph_rule_debug_logs">日志</string>
+
+    <string name="bookshelf_menu_group_group">分组管理</string>
+
+    <string name="highlight_rule_export_pack_done">已导出 %1$d 条规则到：\n%2$s</string>
+
+        <string name="book_variable_hint">书籍变量可在 JS 中通过 book.getVariable(&quot;custom&quot;) 获取</string>
+
+    <string name="paragraph_rule_debug_status_fail">处理失败</string>
+
+<string name="discovery_suite_rename">重命名套件</string>
+
+    <string name="ai_purify_unchanged">AI 未修改任何内容</string>
+
+    <string name="theme_current_applied">当前应用</string>
+
+    <string name="bookshelf_menu_group_add">添加书籍</string>
+
+
+    <string name="ai_remove_model_confirm">确定删除这个模型吗？</string>
+
+<string name="edit_theme_monokai">&#33707;&#22856;&#20142;&#20809;</string>
+
+    <string name="cache_stats_delete_msg">删除%s？缓存文件将被永久清除。</string>
+
+    <string name="theme_import_zip">导入 ZIP</string>
+
+    <string name="cache_stats_video">视频缓存</string>
+
+    <string name="source_health_healthy">可用 %1$d</string>
+
+    <string name="update_cache_thread_count_summary">控制书籍目录更新、缓存下载、章节列表采集、正文内容采集、WebView 池容量等场景的并发数（当前 %s，默认 16，上限 64）</string>
+
+    <string name="import_check_large_hint">大集合导入建议使用「仅结构」或「快速」模式</string>
+
+<string name="online_import_stage_inspect_title">正在校验导入包</string>
+
+    <string name="books_dir_permission_denied">请重新设置书籍保存位置\nPermission Denial</string>
+
+<string name="s3_container_capacity_line">容量 %1$s，已用 %2$s，剩余 %3$s，已满：%4$s</string>
+
+    <string name="read_record_active_days_label">活跃日</string>
+
+    <string name="code_edit_readonly_bar">只读模式：查看源码内容，编辑不会保存</string>
+
+    <string name="qr_camera_blocked_desc">也可以不授权限，直接从相册选择包含二维码的图片进行识别</string>
+
+    <string name="config_category_about">关于</string>
+
+	<string name="change_page">&#36873;&#25321;&#39029;&#25968;</string>
+
+    <string name="log_select">多选</string>
+
+    <string name="book_info_intro_collapse">收起 ▴</string>
+
+	<string name="read_menu_icon_set_day">设置日间图标</string>
+
+	<string name="ai_read_prompt_template">你是阅读页里的问 AI 助手。请围绕当前书籍和选中文本回答，优先解释原文含义、上下文、人物关系、伏笔或用户提问，不要编造未给出的剧情。
+
+书名：%1$s
+作者：%2$s
+书源：%3$s
+当前章节：%4$s（第 %5$d 章）
+bookUrl：%7$s
+
+用户选中或追问：
+%6$s</string>
+
+<string name="bookshelf_tag_no_matching_existing">没有匹配的已有标签</string>
+
+<string name="bookshelf_tag_filter_all">全部</string>
+
+    <string name="quality_report_path_copied">路径已复制</string>
+
+        <string name="book_info_component_detail">简介与目录卡片</string>
+
+<string name="top_bar_tag_bar_alpha">标签栏不透明度</string>
+
+	<string name="advanced_title_apply">&#24212;&#29992;</string>
+
+    <string name="theme_card_shadow">卡片阴影</string>
+
+    <string name="read_record_empty_recent_books">暂无最近在读</string>
+
+    <string name="quality_report_apply_confirm">将把体检结果（失效分组与权重）写入所选 %1$d 条源？</string>
+
+<string name="bookshelf_tag_clear_results">清空结果</string>
+
+    <string name="theme_manual_add">手动添加主题</string>
+
+    <string name="theme_delete_remote">删除云端</string>
+
+    <string name="highlight_rule_group_rules_count">%1$d 条规则</string>
+
+    <string name="web_token_level_manage">manage · 读写</string>
+
+    <string name="source_verification_checking">正在通过站点安全检查…</string>
+
+	<string name="r_startHtml">&#21551;&#21160;&#39029; HTML &#25991;&#26412;&#65288;startHtml&#65289;</string>
+
+    <string name="layout_config_padding">边距</string>
+
+    <string name="log_filter_clear">清除筛选</string>
+
+	<string name="read_menu_builtin_button">内置</string>
+
+    <string name="about_positioning">全内容阅读器：文字、漫画、图片订阅与视频，一个应用读完</string>
+
+<string name="cache_manage_audio">音频</string>
+
+    <string name="drag_handle">⠿</string>
+
+    <string name="rss_source_empty_title">还没有订阅源</string>
+
+<string name="cover_collection_select">选用图集</string>
+
+<string name="bubble_package">气泡包</string>
+
+    <string name="web_port_range_hint">合法范围 1024–65530</string>
+
+    <string name="highlight_clear_chapter_empty">本章暂无划线</string>
+
+    <string name="parse_concurrency">解析并发</string>
+
+    <string name="scene_bookmark_regenerating">正在重新生成描述…</string>
+
+    <string name="recycle_bin_type_txt_toc_rule">TXT 目录规则</string>
+
+	<string name="float_window">&#24748;&#28014;&#31383;</string>
+
+    <string name="paragraph_rule_debug_chapter">章节</string>
+
+<string name="cache_manage_legacy_manifest_missing">&#26087;&#29256;&#32531;&#23384;&#21253;&#32570;&#23569;&#30446;&#24405;&#28165;&#21333;&#65292;&#35831;&#20808;&#25171;&#24320;&#20070;&#31821;&#29983;&#25104;&#30446;&#24405;&#65292;&#25110;&#22312;&#26377;&#30446;&#24405;&#30340;&#35774;&#22791;&#19978;&#37325;&#26032;&#19978;&#20256;&#12290;</string>
+
+	<string name="read_menu_button_manage">正文菜单按键</string>
+
+	<string name="read_menu_custom_button_save_invalid">名称和按键 JS 不能为空</string>
+
+        <string name="advanced_title_unnamed">&#26410;&#21629;&#21517;&#39640;&#32423;&#26631;&#39064;</string>
+
+    <string name="bookshelf_menu_group_update">更新管理</string>
+
+        <string name="ai_tool_book_source_search">书源搜索</string>
+
+    <string name="read_record_read_rank">阅读时长排行</string>
+
+    <string name="r_routes">多线路规则（ruleRoutes）</string>
+
+<string name="bookshelf_tag_save">保存</string>
+
+	<string name="advanced_title_mode_label">高级</string>
+
+    <string name="ai_fetch_models_click_toggle">点击切换勾选</string>
+
+    <string name="highlight_rule_manage_desc">管理高亮规则组与匹配模式</string>
+
+<string name="online_import_private_network_title">私有网络导入</string>
+
+    <string name="read_header_back_button_hint">开启后页眉左侧显示返回图标，点击退出阅读</string>
+
+        <string name="duration_day">%d天</string>
+
+<string name="opening_credits">片头</string>
+
+    <string name="bookshelf_menu_group_common">常用</string>
+
+    <string name="book_import_summary_title">导入到书架</string>
+
+    <string name="theme_day_short">日间</string>
+
+    <string name="explore_group_empty">当前没有发现源分组</string>
+
+    <string name="log_copy_done">已复制</string>
+
+    <string name="download_network_wifi_only">仅在无线网络</string>
+
+    <string name="web_first_launch_summary">先打开或复制访问地址，再为客户端生成一个只读令牌。</string>
+
+    <string name="rss_article_info_no_pubdate">暂无发布时间</string>
+
+    <string name="opml_error_empty">该 OPML 文件里没有订阅源</string>
+
+    <string name="color_saturation">饱和度</string>
+
+    <string name="image_load_error_source">订阅源配置异常</string>
+
+    <string name="bookshelf_continue_reading">继续阅读《%1$s》第%2$d章</string>
+
+<string name="bookshelf_tag_selected_count">已选择 %1$d / %2$d</string>
+
+<string name="book_info_component_keep_one">至少保留一个详情组件。</string>
+
+    <string name="source_recycle_bin_enabled_s">开启后，删除的书源和规则将进入回收站，保留 7 天</string>
+
+<string name="top_bar_filter_toggle_hide_when_expanded">&#23637;&#24320;&#26102;&#38544;&#34255;</string>
+
+    <string name="read_header_back_button">页眉返回按钮</string>
+
+    <string name="theme_config_file_missing">缺少 theme.json</string>
+
+    <string name="import_check_restore_all_confirm">确定导入全部 %1$d 条被过滤的源？这些源未通过质量校验</string>
+
+<string name="s3_full_webdav_fallback_never">永不提醒</string>
+
+    <string name="ai_tavily_topic_news">新闻</string>
+
+    <string name="read_menu_button_run_fail">运行失败</string>
+
+<string name="top_bar_name">顶栏名称</string>
+
+    <string name="paragraph_rule_debug_book">书籍</string>
+
+<string name="cache_manage_local_cached_count">本地 %1$d 章</string>
+
+    <string name="download_error_io">读写文件失败</string>
+
+    <string name="ai_tavily_api_key_summary">点按填写 Tavily API Key。</string>
+
+<string name="online_import_copy_error">复制错误详情</string>
+
+<string name="main_status_bar_immersion">开启后主界面进入全屏模式</string>
+
+<string name="cache_manage_not_cached">未缓存</string>
+
+    <string name="image_browse">图片浏览</string>
+
+<string name="fast_scroller_touch_target_original">原始 36dp</string>
+
+    <string name="disable_source_confirm">将停止「%1$s」的服务，已保存的验证结果会失效。之后可在源管理中重新启用。</string>
+
+    <string name="scene_bookmark_deleted">已删除</string>
+
+
+    <string name="check_rss_source_config_summary">订阅检查超时：%1$ss\n检查项：%2$s\n去重：%3$s</string>
+
+    <string name="read_record_rank_empty">暂无阅读时长排行</string>
+
+        <string name="advanced_title_preview_template">s1: %1$s\ns2: %2$s</string>
+
+<string name="continue_">继续</string>
+
+    <string name="search_content_coverage">命中 %1$d 处 · 分布于 %2$d 章</string>
+
+    <string name="web_token_plain_warning">这是唯一一次显示明文，请立即复制保存。关闭后无法再查看，只能重新生成。</string>
+
+    <string name="downloading_image">下载图片中...</string>
+
+	<string name="invalid_file_path">&#25991;&#20214;&#36335;&#24452;&#26080;&#25928;</string>
+
+    <string name="ai_skill_imported">Skill 已导入</string>
+
+    <string name="url_record_detail_message">请求方法：%1$s\n状态码：%2$s\n耗时：%3$dms\n时间：%4$s\n域名：%5$s\nURL：%6$s\n来源：%7$s</string>
+
+    <string name="scene_bookmark_summary">回看你收藏的精彩瞬间，AI 自动生成描述</string>
+
+        <string name="ai_chat_thinking">正在思考…</string>
+
+<string name="bottom_bar_opacity">不透明度</string>
+
+	<string name="read_menu_move_to_second">移到第二排</string>
+
+    <string name="quality_report_pause">暂停</string>
+
+    <string name="video_audio_track">音轨选择</string>
+
+    <string name="web_token_generate">生成</string>
+
+	<string name="text_shadow">文字阴影</string>
+
+	<string name="advanced_title_json_hint">在代码编辑器中修改当前规则的 Lottie JSON；导入新规则请返回管理页操作。</string>
+
+    <string name="web_section_service">服务</string>
+
+    <string name="recycle_bin_type_rss_source">订阅源</string>
+
+<string name="cache_manage_sort_last_read">最后阅读</string>
+
+        <string name="unknown">未知</string>
+
+    <string name="highlight_rule_preset">预设规则</string>
+
+    <string name="web_shutdown_confirm_title">确认断开全部访问？</string>
+
+	<string name="press_speed_summary">&#38271;&#25353;&#20493;&#36895; %.1f</string>
+
+    <string name="url_record_filter_status">按状态</string>
+
+    <string name="type_file">文件</string>
+
+    <string name="theme_image_delete">删除图片</string>
+
+        <string name="advanced_title_invalid_json">Lottie JSON 无效</string>
+
+<string name="paragraph_import_summary">规则总数：%1$d\n新增名称：%2$d\n同名冲突：%3$d</string>
+
+<string name="cache_manage_delete_local">删除本地</string>
+
+<string name="cache_manage_books">书籍</string>
+
+        <string name="package_sync_task_status_failed">失败</string>
+
+        <string name="book_info_component_meta_hint">分组、书源、换源和目录入口。</string>
+
+    <string name="theme_delete_applied_forbidden">当前正在应用，不能删除</string>
+
+        <string name="ai_image_delete_confirm">删除这张图片？</string>
+
+    <string name="source_group_style_list">列表</string>
+
+        <string name="delete_success">已删除</string>
+
+    <string name="audio_continue_play">继续播放</string>
+
+<string name="online_import_error_http_status">服务器返回 HTTP %1$d</string>
+
+    <string name="book_import_summary_hint">首次导入需要选择保存书籍的文件夹</string>
+
+<string name="load_cover_high_quality_summary">开启后使用封面原图，关闭时优先加载缩略图</string>
+
+    <string name="filter_warn">警告</string>
+
+<string name="s3_endpoint">Endpoint</string>
+
+    <string name="download_manage">下载管理</string>
+
+    <string name="rss_source_no_match_subtitle">没有匹配「%1$s」的订阅源</string>
+
+    <string name="rss_mark_read_done">已标记 %1$d 篇文章为已读</string>
+
+	<string name="ai_request_cancelled">请求已取消</string>
+
+        <string name="book_info_quick_action_edit">详情按键编辑</string>
+
+
+    <string name="video_download_no_url">视频地址不可用，无法下载</string>
+
+    <string name="replace_sample_hit">命中 %1$d 处</string>
+
+    <string name="rss_sort_clear_confirm">确认清除已缓存的文章？清除后将重新从订阅源加载。</string>
+
+        <string name="ai_current_model">当前模型</string>
+
+    <string name="theme_zip_exported">主题 ZIP 已导出</string>
+
+    <string name="check_rss_sort">分类地址</string>
+
+    <string name="ai_manage_providers">管理提供商</string>
+
+<string name="s3_full_webdav_fallback_ignore">本次忽略</string>
+
+    <string name="opml_import_flattened">已扁平化 %1$d 个嵌套分组</string>
+
+	<string name="read_menu_edit">菜单编辑</string>
+
+    <string name="download_error_unsupported">不支持的格式</string>
+
+        <string name="book_info_component_ai_images">本书图库</string>
+
+        <string name="shibboleth_https_only">仅 HTTPS 直链支持转换为口令</string>
+
+    <string name="theme_add">添加主题</string>
+
+    <string name="ai_provider_search_empty_hint">检查拼写，或点下方按钮新增</string>
+
+    <string name="opml_import_done">已导入 %1$d 个订阅源</string>
+
+    <string name="type_text">文本</string>
+
+        <string name="ai_image_group">分组</string>
+
+    <string name="ai_base_url">Base URL</string>
+
+<string name="fast_scroller_touch_target_large">加大 52dp</string>
+
+        <string name="ai_image_gallery_all">全部</string>
+
+    <string name="storage_manage_summary">查看与清理缓存存储</string>
+
+    <string name="web_section_address">访问地址</string>
+
+
+    <string name="ai_remove_provider_confirm">确定删除这个提供商吗？</string>
+
+    <string name="image_save_receipt">已保存到 %1$s%2$s</string>
+
+    <string name="log_search_hint">搜索日志</string>
+
+<string name="rss_auto_video_disable">关闭「自动转视频播放器」</string>
+
+    <string name="theme_red_invalid">RED 主题包格式不正确</string>
+
+    <string name="ai_current_provider">当前提供商</string>
+
+<string name="online_import_error_unsafe_address">该地址不允许用于导入：%1$s</string>
+
+    <string name="import_check_filtered_summary">导入 %1$d 条，过滤 %2$d 条；重新导入同一集合可更新旧源</string>
+
+    <string name="theme_manage_title">界面管理</string>
+
+<string name="cache_manage_delete_remote">删除云端</string>
+
+    <string name="image_refresh_done">已刷新</string>
+
+	<string name="paragraph_rule_enabled_for_book">&#24403;&#21069;&#20070;&#31821;&#24050;&#21551;&#29992;</string>
+
+	<string name="app_name_sigma">阅读M</string>
+
+<string name="cover_collection_name">图集名称</string>
+
+<string name="s3_container_set_default">设为默认</string>
+
+<string name="edit_theme_modern_light">&#29616;&#20195;&#27973;&#33394;</string>
+
+    <string name="ai_tavily_max_results">默认结果数</string>
+
+    <string name="ai_add_mcp_server_summary">添加 Streamable HTTP MCP 接口</string>
+
+    <string name="ai_mcp_server_removed">已删除 MCP 服务器</string>
+
+	<string name="auto_page_interval">翻页间隔</string>
+
+	<string name="night_nav_bar_immersion">&#22812;&#38388;&#25805;&#20316;&#26639;&#39068;&#33394;&#36879;&#26126;</string>
+
+    <string name="highlight_rule_restore_overwrite">覆盖模式（删除自定义）</string>
+
+    <string name="rss_source_never_updated">未更新过</string>
+
+    <string name="theme_upload_remote">上传到云端</string>
+
+    <string name="about_update_just_now">刚刚检查</string>
+
+    <string name="backup_content_select_summary">已选 %1$d / %2$d 项，未勾选的类别不进入备份</string>
+
+	<string name="content_select_speak_from_selection">已切换为从选择处开始连续朗读</string>
+
+<string name="s3_container_disable">停用</string>
+
+    <string name="theme_downloaded">下载完成</string>
+
+    <string name="theme_package_empty">暂无主题。添加会保存当前%s主题。</string>
+
+<string name="epub_read_engine_text">转换为纯文本</string>
+
+	<string name="video">&#35270;&#39057;</string>
+
+    <string name="rss_article_info_pub_date">发布时间</string>
+
+<string name="webdav_account_manage_summary">配置服务器地址、账号和密钥</string>
+
+        <string name="cache_manage_webdav_task_title">WebDAV 任务</string>
+
+    <string name="highlight_rule_import_failed">导入失败：%1$s</string>
+
+    <string name="qr_camera_blocked_title">需要相机权限才能扫码</string>
+
+	<string name="epub_media_not_supported">EPUB 内嵌媒体已识别，当前原生阅读页暂不直接播放</string>
+
+    <string name="ai_balance_result_title">余额</string>
+
+        <string name="appearance_kit_import">导入应用主题</string>
+
+    <string name="search_thread_count">搜索线程数</string>
+
+    <string name="download_network_any">不限网络</string>
+
+    <string name="video_play_url_copied">播放地址已复制</string>
+
+    <string name="download_pause_task">暂停</string>
+
+    <string name="log_clear_all">一键清除</string>
+
+    <string name="web_relay_state_off">中继未启用</string>
+
+	<string name="read_menu_icon_set_night">设置夜间图标</string>
+
+<string name="cache_manage_use_cache">用缓存</string>
+
+<string name="s3_container_refresh_capacity">刷新容量</string>
+
+        <string name="navigation_icon_search_ball">搜索/助手悬浮球图标</string>
+
+    <string name="ai_provider_name_required">请输入提供商名称</string>
+
+	<string name="ai_read_clear_history_confirm">清空本书全部问 AI 历史？</string>
+
+    <string name="selection_search_engine_hide_css_enabled">已启用 CSS 拦截器</string>
+
+<string name="s3_auto_switch_container">自动切换 S3 容器</string>
+
+    <string name="paragraph_rule_template_remove_ads">去广告行</string>
+
+<string name="cache_manage_delete_both">同时删除</string>
+
+    <string name="theme_red_private_encrypted_unsupported">该 RED 应用主题使用私有加密格式，暂时无法导入</string>
+
+<string name="btn_next">&#19979;&#20010;</string>
+
+    <string name="theme_save_failed">保存主题失败：%s</string>
+
+        <string name="navigation_bar_name_exists">已存在同名底栏主题。</string>
+
+<string name="cache_manage_empty">暂无%1$s缓存</string>
+
+
+    <string name="rss_search_type_all">全部类型</string>
+
+	<string name="read_aloud_from_here">从此朗读</string>
+
+    <string name="qr_scan_full_area">支持全屏识别，无需对齐边框</string>
+
+    <string name="replace_paste_diff_none">粘贴内容与当前表单一致，未做改动</string>
+
+    <string name="service">服务</string>
+
+    <string name="import_check_imported_batch">已校验 %1$d/%2$d，已导入 %3$d</string>
+
+    <string name="highlight_clear_chapter_confirm">确定删除本章全部 %d 条划线？</string>
+
+    <string name="gamepad_preset_conflict_message">预设键码与当前已设置的自定义键码冲突，继续将覆盖后者。是否继续？</string>
+
+    <string name="ai_model_saved">已保存模型</string>
+
+    <string name="highlight_not_supported_here">此处不支持划线（Epub 原生排版选区无章内位置）</string>
+
+    <string name="manage_bg_alpha">管理页背景透明度</string>
+
+    <string name="read_aloud_start_at_page_top_summary">首次朗读起点固定为页首/段首，而非当前可见行（默认关）</string>
+
+	<string name="paragraph_rule_empty">&#26242;&#26080;&#27573;&#33853;&#35268;&#21017;</string>
+
+<string name="paragraph_import_conflict_overwrite_description">保留原 ID、排序和书籍绑定</string>
+
+    <string name="verification_code_repeated_hint">已连续失败 %1$d 次，可在下方禁用或删除该源</string>
+
+	<string name="paragraph_rule_empty_guide">&#28857;&#19979;&#26041;&#12300;&#28155;&#21152;&#12301;&#21019;&#24314;&#31532;&#19968;&#26465;&#35268;&#21017;</string>
+
+        <string name="select_color">选择颜色</string>
+
+    <string name="highlight_rule_not_found">规则不存在</string>
+
+	<string name="previous">&#19978;&#19968;&#39318;</string>
+
+    <string name="ai_world_book_delete_entry_confirm">确定删除这条条目吗？</string>
+
+    <string name="import_check_low_score">低分</string>
+
+<string name="cover_collection_mode_mixed">混合</string>
+
+    <string name="image_load_concurrency_summary">图片加载线程数（当前 %s，默认5，需重启生效）</string>
+
+<string name="discovery_suite_move_down">下移</string>
+
+    <string name="debug_log_floating_ball_s">在屏幕上显示悬浮球，点击可快速查看日志</string>
+
+    <string name="all_bookmark_empty_title">暂无书签</string>
+
+    <string name="read_record_stats_ready">已持续累计每日阅读时长</string>
+
+	<string name="read_menu_second_row">第二排</string>
+
+<string name="bottom_bar_material_mode">材质样式</string>
+
+    <string name="toc_new_chapter">新</string>
+
+    <string name="read_record_view_all_rank">查看全部排行</string>
+
+	<string name="welcome_show_time">&#27426;&#36814;&#39029;&#26174;&#31034;&#26102;&#38388;</string>
+
+    <string name="book_info_save_fail_duplicate">书籍信息保存失败，存在相同书名作者书籍\n%1$s</string>
+
+<string name="discovery_suite_widget_single_target">仅可 1 个标签</string>
+
+        <string name="ai_tool_default_name">工具</string>
+
+    <string name="url_record_error">错误</string>
+
+        <string name="ai_chat_empty">开始新的对话。</string>
+
+<string name="cache_manage_upload">上传</string>
+
+    <string name="handle_file_hint_upload">上传后返回直链</string>
+
+    <string name="favorites_empty_title">这个分组还没有收藏</string>
+
+    <string name="read_record_date_pattern">yyyy年MM月dd日</string>
+
+    <string name="ai_enter_to_send">回车发送</string>
+
+    <string name="read_record_goal_minutes">目标分钟</string>
+
+<string name="bottom_bar_item_locked">始终显示</string>
+
+    <string name="import_check_config">导入校验设置</string>
+
+    <string name="filter_all">全部</string>
+
+	<string name="read_menu_custom_button">自定义</string>
+
+<string name="cache_manage_sort_name">名称</string>
+
+	<string name="read_menu_preview_title">阅读页实际效果</string>
+
+    <string name="ai_add_provider">添加提供商</string>
+
+    <string name="import_check_state_usable">可用</string>
+
+<string name="discovery_suite_widget_type_tag_bar">Tag 按键栏</string>
+
+    <string name="scene_bookmark_book_missing">未找到对应的书籍或订阅源</string>
+
+        <string name="advanced_title_builtin">&#20869;&#32622;&#39640;&#32423;&#26631;&#39064;</string>
+
+    <string name="settings_search">搜索设置</string>
+
+    <string name="theme_saved_local">主题已保存到本地</string>
+
+    <string name="web_token_never_generated">未生成</string>
+
+<string name="online_import_field_source">原始来源</string>
+
+<string name="discovery_suite_create">新建套件</string>
+
+	<string name="paragraph_rule_vars">&#35268;&#21017;&#21464;&#37327;</string>
+
+    <string name="about_update_hours_ago">%1$d 小时前检查</string>
+
+<string name="epub_read_engine">EPUB阅读引擎</string>
+
+    <string name="cover_collection_empty">还没有图片，点按导入按钮添加</string>
+
+    <string name="theme_color_bottom_background">底栏色</string>
+
+    <string name="qr_decode_failed_title">未识别到二维码</string>
+
+<string name="edit_theme_quiet_light">&#32032;&#24433;&#28165;&#26198;</string>
+
+<string name="s3_container_delete">删除 S3 容器</string>
+
+    <string name="image_no_article_link">无文章链接</string>
+
+    <string name="book_variable_comment">书籍变量可在 js 中通过 book.getVariable("custom") 获取</string>
+
+<string name="discovery_suite_generate_done">已生成套件，可继续微调</string>
+
+    <string name="replace_sample_group">样本试运行</string>
+
+    <string name="audio_stop_play_confirm">停止后将关闭后台播报服务，且不可撤销。</string>
+
+<string name="online_import_error_src_missing">导入链接缺少 src 参数</string>
+
+    <string name="highlight_match_budget_summary">整章高亮规则匹配总耗时上限（当前 %s 毫秒，默认300；超限自动降级为暂不高亮，防止翻页卡顿）</string>
+
+<string name="cache_manage_manga">漫画</string>
+
+    <string name="ai_provider_search_empty_title">没有匹配「%1$s」的提供商</string>
+
+<string name="bookshelf_tag_book_count">已标记 %1$d 本书</string>
+
+    <string name="copy_link">复制链接</string>
+
+        <string name="navigation_icon_decode_failed">图标解析失败，请使用 ico、svg、png、jpg 或 jpeg。</string>
+
+    <string name="scene_bookmark_add">加入名场面</string>
+
+    <string name="theme_applied_state">已应用</string>
+
+<string name="cache_manage_state_local">&#26412;&#22320;</string>
+
+    <string name="import_check_stop_or_cancel">停止校验？</string>
+
+    <string name="recycle_bin_delete_msg">永久删除该项？删除后无法恢复。</string>
+
+<string name="s3_container_manage_summary">添加、编辑、测试和设置备份用 S3 容器</string>
+
+<string name="video_setting_summary">&#33258;&#21160;&#25773;&#25918;&#12289;&#20840;&#23631;&#25773;&#25918;&#31561;&#37197;&#32622;</string>
+
+	<string name="content_select_speak_selected">已切换为朗读选择内容</string>
+
+        <string name="navigation_bar_config_missing">底栏配置不存在。</string>
+
+    <string name="recycle_bin_type_book_source">书源</string>
+
+    <string name="import_check_state_untested">未测</string>
+
+    <string name="code_edit_unsaved">未保存</string>
+
+    <string name="scene_bookmark_empty_subtitle">阅读时选中文字，或用阅读菜单「加入名场面」</string>
+
+    <string name="download_dir_saved">下载目录已保存</string>
+
+    <string name="download_error_http">请求失败</string>
+
+    <string name="highlight_rule_group_view_all">查看全部分组</string>
+
+    <string name="download_tab_running">下载中</string>
+
+<string name="discovery_suite_generate_skipped">%1$d 个书源无可用标签，已跳过</string>
+
+    <string name="highlight">高亮</string>
+
+    <string name="theme_group_interface">界面</string>
+
+    <string name="source_folder_group_by_group">按分组</string>
+
+    <string name="ai_provider_url_required">请输入接口地址</string>
+
+	<string name="paragraph_rule_manage_summary">&#21487;&#20026;&#24403;&#21069;&#20070;&#31821;&#21551;&#29992;&#22810;&#20010;&#35268;&#21017;&#65292;&#38271;&#25353;&#25110;&#25302;&#21160;&#21491;&#20391;&#25163;&#26564;&#35843;&#25972;&#25191;&#34892;&#39034;&#24207;&#12290;</string>
+
+    <string name="book_info_style_goto_modern">切到现代样式编辑组件</string>
+
+    <string name="ai_skill_importing">正在导入 Skill…</string>
+
+<string name="top_bar_manage">顶栏管理</string>
+
+    <string name="quality_report_first_hint">质量体检只读探测不写库（可放心使用）；「校验」功能负责标注分组与权重</string>
+
+	<string name="read_menu_icon_clear_night">清除夜间图标</string>
+
+    <string name="ai_world_book_search_empty_clear">清除搜索</string>
+
+<string name="whitespace_selection">&#36873;&#20013;</string>
+
+<string name="manga_header_footer_alignment">页脚对齐</string>
+
+	<string name="auto_read_mode_timed">定时翻页</string>
+
+<string name="online_import_step_confirm">导入确认</string>
+
+    <string name="ai_tavily_topic_finance">财经</string>
+
+    <string name="ai_manage_providers_summary">已添加 %1$d 个提供商</string>
+
+<string name="cache_manage_sync_merge">合并</string>
+
+    <string name="web_section_security">安全</string>
+
+    <string name="theme_resource_download_failed">主题资源下载失败：%d</string>
+
+	<string name="epub_footnote_load_failed">注解加载失败</string>
+
+<string name="fast_scroller_touch_target_compact">紧凑 32dp</string>
+
+    <string name="verification_code_case_sensitive">区分大小写</string>
+
+    <string name="cache_stats_audio">音频缓存</string>
+
+    <string name="about_description_sigma">\u3000\u3000阅读M继承自legado-E&amp;阅读 Archive，旨在原版基础上完善和增加功能。</string>
+
+    <string name="favorites_empty_browse_rss">去订阅源逛逛</string>
+
+    <string name="color_alpha">不透明度</string>
+
+	<string name="epub_core_schedule_mode">EPUB调度模式</string>
+
+	<string name="read_scroll_follow_background">背景滚动跟随</string>
+
+        <string name="top_bar_night_default_name">默认夜间顶栏</string>
+
+<string name="online_import_confirm_title">确认在线导入</string>
+
+	<string name="advanced_title_manage">&#39640;&#32423;&#26631;&#39064;&#31649;&#29702;</string>
+
+    <string name="book_source_menu_group_share">导入 · 导出 · 分享</string>
+
+    <string name="clear_completed_confirm">确定清除已完成和失败的下载任务？</string>
+
+    <string name="ai_balance_available">可用</string>
+
+    <string name="highlight_rule_import_invalid">剪贴板内容不是有效的高亮规则 JSON</string>
+
+    <string name="read_record_component_overview">概览卡片</string>
+
+	<string name="source_tab_start">&#21551;&#21160;&#39029;</string>
+
+    <string name="url_record_empty">暂无URL访问记录</string>
+
+    <string name="ai_tavily_base_url">Tavily 接口地址</string>
+
+<string name="bookshelf_list_intro_lines_3">3 行</string>
+
+    <string name="highlight_rule_restore_message">选择恢复模式：\n\n合并模式：保留你的自定义规则，补充缺失的内置规则\n覆盖模式：删除所有规则，重置为 12 条内置规则</string>
+
+    <string name="web_shutdown_confirm_message">将停止 Web 服务、吊销所有令牌并清除本机中继身份，操作不可撤销；之后需重新连接并重新生成令牌。</string>
+
+    <string name="read_aloud_align_sentence">段中朗读从本句开始</string>
+
+<string name="fast_scroller_touch_target_extra_large">超大 60dp</string>
+
+    <string name="import_check_state_suspect">存疑</string>
+
+    <string name="scene_bookmark_desc_ready">描述已更新：%1$s</string>
+
+    <string name="highlight_rule_preset_added_toast">已添加预设规则：%1$s</string>
+
+    <string name="read_record_goal_user_name">用户名</string>
+
+        <string name="book_info_tab_toc">目录</string>
+
+    <string name="source_menu_group_io">导入 · 导出</string>
+
+    <string name="rss_sort_tabs_all">全部 ▾</string>
+
+	<string name="start_full">&#30452;&#25509;&#20840;&#23631;&#25773;&#25918;</string>
+
+    <string name="theme_builtin_export_forbidden">内置主题不能导出</string>
+
+	<string name="read_menu_alpha">正文菜单不透明度</string>
+
+<string name="book_cover_shadow_summary">开启后为书籍封面绘制外部阴影</string>
+
+    <string name="theme_imported">主题已导入</string>
+
+<string name="find">&#26597;&#25214;</string>
+
+<string name="bottom_bar_border_color">底栏边框色</string>
+
+	<string name="read_menu_custom_button_edit">编辑自定义按键</string>
+
+	<string name="page_touch_click_summary">&#24038;&#21491;&#36793;&#32536;&#22810;&#23569;&#36317;&#31163;&#19981;&#20250;&#35302;&#21457;&#28857;&#20987;&#20107;&#20214;&#65292;&#40664;&#35748;&#20026;0px</string>
+
+    <string name="download_tab_empty">该分类下暂无任务</string>
+
+    <string name="log_tab_app">应用日志</string>
+
+<string name="cache_manage_add_bookshelf">入架</string>
+
+	<string name="read_menu_create_custom_button">新建自定义按键</string>
+
+    <string name="download_copy_path">复制路径</string>
+
+        <string name="rss_article_refresh_to_top_summary">文章列表刷新获取到新数据后，自动回到顶部第一条；关闭则保持刷新前的位置。</string>
+
+	<string name="default_ask_ai">问AI</string>
+
+	<string name="content_select_menu_config_summary">配置长按菜单动作与默认打开项</string>
+
+<string name="bookshelf_tag_add_title">添加标签</string>
+
+
+<string name="cache_manage_download_failed_simple">下载失败</string>
+
+    <string name="import_check_depth_l2">快速（默认：检测网址与搜索/列表可用性）</string>
+
+    <string name="bookshelf_unread_emphasis">未读用强调色</string>
+
+    <string name="highlight_rule_import_all_exist">导入完成，无新增规则（全部已存在）</string>
+
+<string name="cache_manage_sort_title">缓存排序</string>
+
+        <string name="package_sync_task_type_top_bar">顶栏</string>
+
+    <string name="ai_enable_mcp_server">启用服务器</string>
+
+<string name="online_import_stage_confirm_title">等待确认导入</string>
+
+<string name="bookshelf_return_to_top_after_read">阅读返回后回到顶部</string>
+
+<string name="online_import_retry">重试</string>
+
+    <string name="read_menu_advanced_group_hint">已配置</string>
+
+    <string name="web_token_copied">令牌已复制</string>
+
+	<string name="ai_assistant">AI 助手</string>
+
+    <string name="bookshelf_unread_emphasis_short">强调</string>
+
+    <string name="ai_provider_stat_models">模型总数</string>
+
+<string name="top_bar_filter_default_collapsed">默认折叠</string>
+
+    <string name="cache_total">共 %1$s（%2$d 项）</string>
+
+<string name="discovery_suite_widget_rank_targets_range">排行榜控件需要选择 %1$d-%2$d 个 Tag</string>
+
+<string name="navigation_bar_delete_local_confirm">删除本地底栏主题？</string>
+
+	<string name="read_menu_icon_select_file">选择菜单图标</string>
+
+    <string name="web_shutdown_confirm_positive">关闭并吊销</string>
+
+        <string name="source_variable_hint">源变量可在 JS 中通过 source.getVariable() 获取</string>
+
+    <string name="ai_web_tools">联网工具</string>
+
+    <string name="qr_decoding_note">识别成功后自动返回</string>
+
+<string name="cache_manage_sync_overwrite">覆盖</string>
+
+        <string name="ai_history_empty">暂无对话历史</string>
+
+<string name="discovery_suite_saved_hint">已保存，返回发现页即可查看效果</string>
+
+<string name="import_read_config_success">排版「%1$s」已导入</string>
+
+<string name="cache_manage_task_paused">缓存已暂停</string>
+
+<string name="cache_manage_sort_time">最近</string>
+
+    <string name="web_shutdown_done">已断开：服务已停止，令牌已吊销</string>
+
+<string name="top_bar_wallpaper">顶栏壁纸</string>
+
+<string name="navigation_bar_delete_both_confirm">同时删除本地和云端底栏主题？</string>
+
+    <string name="about_privacy_policy_summary">应用读取、保存与分享的数据范围</string>
+
+	<string name="read_menu_no_available_button">没有可添加的内置按键</string>
+
+    <string name="search_thread_count_title">搜索线程数</string>
+
+    <string name="manga_volume_key_page_summary">漫画页用音量键翻页；关闭后音量键交回系统调节音量</string>
+
+    <string name="highlight_rule_preset_subtitle">点右侧加号，只把这一条预置规则加入当前列表。</string>
+
+    <string name="book_source_rule_help_guide">查看书源规则帮助</string>
+
+    <string name="ai_add_model_from_list">从接口列表选择</string>
+
+<string name="discovery_suite_widget_type_random_books">随机推荐</string>
+
+    <string name="read_record_selected_day_label">所选日期</string>
+
+    <string name="about_promise_your_library">你的图书馆：数据与配置保存在本机，可导出与备份</string>
+
+        <string name="appearance_kit_manage">应用主题</string>
+
+    <string name="ai_skill_prompt_summary">已启用 %1$d 个，共 %2$d 个</string>
+
+    <string name="read_record_month_pattern">M月</string>
+
+    <string name="quality_report_apply_running">体检进行中，请等待完成后再应用</string>
+
+    <string name="download_tab_all">全部</string>
+
+<string name="cache_manage_cached_count">已缓存 %1$d 章</string>
+
+    <string name="selection_search_engine_hide_css_hint">CSS 拦截器（可选）。示例：header, form[role=&quot;search&quot;] { display:none!important; }</string>
+
+<string name="cache_manage_delete_book_title">删除“%1$s”的缓存</string>
+
+    <string name="update_cache_thread_count_title">更新和缓存线程数</string>
+
+    <string name="about_update_minutes_ago">%1$d 分钟前检查</string>
+
+<string name="book_info_style_immersive_title">沉浸封面详情页</string>
+
+    <string name="log_empty">暂无日志</string>
+
+        <string name="ai_no_models">暂无模型</string>
+
+    <string name="ai_balance_json_path">余额取值路径</string>
+
+    <string name="read_menu_advanced_group">登录与高级配置</string>
+
+    <string name="rss_parse_concurrency">RSS解析并发</string>
+
+    <string name="update_accel_summary_none">GitHub 通道，不使用代理</string>
+
+<string name="online_import_error_package_unsupported">导入包格式或版本不受支持</string>
+
+    <string name="paragraph_rule_debug_status_ok">处理成功</string>
+
+	<string name="full_bottom_progress">&#20840;&#23631;&#26102;&#26174;&#31034;&#24213;&#37096;&#36827;&#24230;&#26465;</string>
+
+    <string name="ai_system_prompt">系统提示词</string>
+
+    <string name="gamepad_preset_conflict_title">键码冲突</string>
+
+    <string name="ai_tavily_search_depth">默认深度</string>
+
+    <string name="cache_batch_running">正在缓存 %1$d 本 · 待下载 %2$d 章</string>
+
+    <string name="preview">预览</string>
+
+    <string name="highlight_rule_export_empty">暂无规则可导出</string>
+
+    <string name="all_groups">全部</string>
+
+<string name="cache_manage_download_queued">已加入 WebDAV 下载队列</string>
+
+    <string name="read_aloud_timer_chapters">正在朗读（还剩 %d 章）</string>
+
+    <string name="theme_source_builtin">&#20869;&#32622;</string>
+
+        <string name="ai_history_open">打开对话</string>
+
+    <string name="recycle_bin_type_http_tts">朗读引擎</string>
+
+    <string name="manage_bg_alpha_summary">0 为不透明（默认原状），100 为完全透明（透出背景底图）；对全部管理页与设置页生效</string>
+
+	<string name="selection_search_engine_name">引擎名称</string>
+
+    <string name="web_token_level_admin">admin · 完全访问</string>
+
+    <string name="qr_decode_succeeded">已识别</string>
+
+    <string name="clear_7_days_ago">清除7天前的记录</string>
+
+    <string name="check_rss_source">校验订阅源</string>
+
+    <string name="replace_paste_diff_confirm">覆盖粘贴</string>
+
+    <string name="web_address_hint_when_off">开启 Web 服务后这里会显示访问地址</string>
+
+    <string name="theme_day">日间主题</string>
+
+    <string name="download_tab_completed">已完成</string>
+
+        <string name="ai">AI</string>
+
+    <string name="ai_add_provider_summary">新增一个兼容 OpenAI 的接口提供商</string>
+
+    <string name="import_check_strict_strict">严格：目录正文有问题也滤</string>
+
+        <string name="book_info_uploading">上传中...</string>
+
+<string name="s3_container_enable">启用</string>
+
+    <string name="theme_background_downloading">正在下载背景图片...</string>
+
+<string name="edit_theme_abyss">&#28170;&#40664;&#22914;&#28023;</string>
+
+    <string name="search_thread_count_summary">控制书源/RSS 搜索、换源换封面、漫画搜索、阅读页搜索、书架搜索、发现页探索、书源校验等场景的并发数（当前 %s，默认 32，上限 128）</string>
+
+<string name="cover_collection_mode_random">随机</string>
+
+        <string name="ai_history_clear_all">清空全部对话</string>
+
+    <string name="theme_ui_font_color">界面字体颜色</string>
+
+<string name="write_source_comment">&#20889;&#20837;&#28304;&#27880;&#37322;</string>
+
+<string name="auto_update_summary">&#27599;&#22825;&#33258;&#21160;&#26816;&#26597;&#36719;&#20214;&#26159;&#21542;&#26356;&#26032;</string>
+
+    <string name="download_speed">%1$s/s</string>
+
+    <string name="bookshelf_menu_group_layout">布局与工具</string>
+
+    <string name="read_record_component_hint_daily_records">展示最近几天的阅读时长</string>
+
+    <string name="theme_resource_not_local">主题资源不是本地文件</string>
+
+    <string name="manga_config">配置</string>
+
+    <string name="ai_balance_url_required">请先填写余额接口地址</string>
+
+    <string name="discovery_page_mode_legacy">经典发现</string>
+
+	<string name="advanced_title_edit_title">编辑高级标题</string>
+
+        <string name="advanced_title_package_limit">&#26368;&#22810;&#21487;&#20445;&#23384; 64 &#20010;&#39640;&#32423;&#26631;&#39064;</string>
+
+    <string name="quality_report_scope_selected">选中源</string>
+
+    <string name="my_metric_book_source">使用书源</string>
+
+        <string name="ai_chat_wait_current">请先等待当前回复完成</string>
+
+<string name="import_json_format_unrecognized">无法识别的导入内容，请确认文件类型</string>
+
+    <string name="theme_image_blur">背景图片模糊</string>
+
+    <string name="handle_file_hint_sys_picker">系统选择器</string>
+
+    <string name="bookshelf_menu_group_clean">数据清理</string>
+
+    <string name="ai_mcp_server_enabled">启用这个 MCP 服务器</string>
+
+    <string name="theme_color_card">界面卡片色</string>
+
+    <string name="highlight_rule_empty_subtitle">点击右上角 + 添加规则</string>
+
+    <string name="ai_skill_import_empty">Skill 内容为空</string>
+
+    <string name="read_menu_button_run_error">错误信息</string>
+
+<string name="s3_container_manage">管理 S3 容器</string>
+
+        <string name="move_down">下移</string>
+
+<string name="whitespace_empty">&#31354;&#34892;</string>
+
+    <string name="book_cloud_library_chapter_mode">书库容器</string>
+
+<string name="discovery_suite_manage">编辑套件</string>
+
+    <string name="add_to_bookshelf_success">已放入书架：%1$s</string>
+
+    <string name="import_book_failed">导入书籍失败\n%1$s</string>
+
+    <string name="theme_group_font">字体</string>
+
+<string name="load_cover_high_quality">加载高清封面</string>
+
+    <string name="highlight_rule_restore_overwrite_confirm_message">覆盖模式将删除所有自定义规则！确定继续？</string>
+
+    <string name="settings_search_exact_group">精确匹配</string>
+
+    <string name="rss_source_clear_search">清空搜索</string>
+
+    <string name="about_disclaimer_summary">责任范围与使用风险说明</string>
+
+    <string name="association_result_fail">导入失败</string>
+
+    <string name="read_record_component_hint_overview">展示今日、本月、累计和活跃日</string>
+
+<string name="cache_manage_summary">统一管理书籍、音频和漫画缓存。</string>
+
+	<string name="change_theme">&#36873;&#25321;&#20027;&#39064;</string>
+
+    <string name="book_import_summary_format">格式：%1$s</string>
+
+    <string name="rss_search_empty_switch">%1$s分组搜索结果为空，是否切换到全部分组？</string>
+
+<string name="online_import_paragraph_script_warning">警告：段落规则可能包含 JavaScript 或登录脚本。请仅导入可信来源的规则。</string>
+
+	<string name="advanced_title_rule_error">规则错误：%1$s</string>
+
+    <string name="bookshelf_menu_group_io">导入·导出</string>
+
+<string name="cache_manage_delete_chapter_failed">删除失败：%1$s</string>
+
+    <string name="update_cache_thread_count">更新和缓存线程数</string>
+
+    <string name="theme_time_unknown">未记录时间</string>
+
+	<string name="read_aloud_floating_ball_permission_rationale">需要“显示在其他应用上层”权限来显示听书悬浮球；拒绝权限不会影响后台朗读和通知栏控制。</string>
+
+	<string name="history">&#21382;&#21490;&#35760;&#24405;</string>
+
+    <string name="ai_tavily_api_key_hint">tvly-...</string>
+
+    <string name="ai_enter_to_send_summary">开启后按回车直接发送；关闭后只能点击发送按钮发送。</string>
+
+    <string name="video_seconds_format">%1$d秒</string>
+
+    <string name="ai_fetch_models_existing">已添加</string>
+
+    <string name="image_no_current_article">无当前文章</string>
+
+    <string name="read_record_heatmap_range">最近 16 周</string>
+
+    <string name="read_record_open_book_info">进入书籍详情</string>
+
+<string name="beta_releaseS_version">&#27491;&#24335;&#29256;</string>
+
+    <string name="highlight_rule_restore_overwrite_confirm_title">警告</string>
+
+        <string name="ui_font">界面字体</string>
+
+    <string name="ai_balance_amount">余额：%1$s</string>
+
+    <string name="web_service_stopped">已停止</string>
+
+    <string name="web_token_copy">复制令牌</string>
+
+    <string name="source_variable_comment">源变量可在 js 中通过 source.getVariable() 获取</string>
+
+    <string name="delete_fail">删除失败</string>
+
+	<string name="advanced_title_name_required">标题名称不能为空</string>
+
+    <string name="ai_import_default_skill">安装默认 阅读Archive Skill</string>
+
+    <string name="theme_source_both">本地+云端</string>
+
+    <string name="update_accel_tip">代理为第三方服务，请自行甄别。模板支持 ${url} 占位符；未填写占位符时会把原始地址拼到代理地址后面。</string>
+
+<string name="online_import_error_package_limit">导入包超出导入限制</string>
+
+    <string name="tip_template_preview">预览</string>
+
+	<string name="paragraph_rule_no_book_guide">&#20808;&#25171;&#24320;&#19968;&#26412;&#20070;&#65292;&#20877;&#22238;&#26469;&#31649;&#29702;&#23427;&#30340;&#27573;&#33853;&#35268;&#21017;</string>
+
+	<string name="auto_play">&#33258;&#21160;&#25773;&#25918;</string>
+
+    <string name="book_import_summary_file">文件：%1$s</string>
+
+<string name="navigation_bar_upload">上传</string>
+
+    <string name="url_record_no_values">无可用值</string>
+
+        <string name="navigation_bar_default_readonly">内置底栏主题不可编辑或删除。</string>
+
+<string name="online_import_step_download">下载</string>
+
+    <string name="web_section_token">访问令牌</string>
+
+    <string name="discovery_suite_chip_arrow">▾</string>
+
+    <string name="source_health_check_all">校验</string>
+
+    <string name="import_check_stop_pass">导入已通过校验的源</string>
+
+        <string name="ai_chat_thinking_done">思考完成，点按展开</string>
+
+<string name="bookshelf_tag_manage_books">管理书籍</string>
+
+<string name="cache_manage_task_cancelled">缓存已停止</string>
+
+    <string name="uploading">上传中……</string>
+
+<string name="bookshelf_tag_empty_summary">当前分组还没有标签，可以点击“新增”创建。</string>
+
+	<string name="ai_usage_model_detail">按模型拆分</string>
+
+    <string name="search_result_aggregated">%1$d 本多源聚合</string>
+
+<string name="cache_manage_selected_count">已选择 %1$d 章</string>
+
+    <string name="theme_image_select">选择图片</string>
+
+    <string name="ai_skill_prompt_hint">粘贴 SKILL.md 内容</string>
+
+    <string name="about_license_summary">内置第三方库的开源许可条款</string>
+
+        <string name="top_bar_name_exists">顶栏名称已存在</string>
+
+<string name="s3_container_default_name">%1$s（默认）</string>
+
+<string name="overlay">&#21472;&#21152;</string>
+
+    <string name="about_promise_cross_content">跨内容：书源、订阅源与本地书籍统一在同一书架与搜索里</string>
+
+<string name="online_import_copy">复制</string>
+
+    <string name="replace_sample_miss">0 处命中，请检查匹配式</string>
+
+    <string name="ai_model_input_hint">模型 ID</string>
+
+    <string name="theme_package_grid_load_failed">主题包加载失败</string>
+
+	<string name="default_search">搜索</string>
+
+    <string name="theme_zip_read_failed">无法读取主题 ZIP</string>
+
+    <string name="bookshelf_up_toc_none">目录已更新，暂无新章节</string>
+
+    <string name="about_promise_no_account">零账号：所有功能本地可用，无需注册或登录</string>
+
+    <string name="ai_chat_suggestion_note">帮我写一段读书笔记</string>
+
+    <string name="backup_content_select_empty">请至少勾选一项备份内容</string>
+
+        <string name="ui_corner_scale">圆角倍率</string>
+
+	<string name="paragraph_rule_manage">&#27573;&#33853;&#35268;&#21017;&#31649;&#29702;</string>
+
+<string name="top_bar_corner_scale">顶栏圆角倍率</string>
+
+    <string name="ai_manage_skills">管理 Skill</string>
+
+    <string name="search_result_counting">搜索中 · 已命中 %1$d 本</string>
+
+<string name="bookshelf_tag_search_existing">搜索已有标签</string>
+
+        <string name="appearance_kit_delete_confirm">删除应用主题“%s”？</string>
+
+    <string name="ai_mcp_server_name">服务器名称</string>
+
+<string name="top_bar_saved_applied">已保存并应用到当前顶栏 · 全局生效</string>
+
+    <string name="ai_tavily_enable">启用 Tavily 搜索</string>
+
+	<string name="advanced_title_manage_summary">&#31649;&#29702;&#22810;&#20010; Lottie &#26631;&#39064;&#65292;&#21487;&#39044;&#35272;&#12289;&#24212;&#29992;&#12289;&#32534;&#36753;&#12289;&#23548;&#20986;&#12289;&#37325;&#21629;&#21517;&#25110;&#21024;&#38500;&#12290;</string>
+
+    <string name="log_selected_count">已选 %1$d 项</string>
+
+	<string name="read_aloud_floating_ball">听书系统悬浮球</string>
+
+    <string name="more">更多</string>
+
+<string name="s3_full_webdav_fallback_title">S3 容器已满</string>
+
+	<string name="is_system_tts_no_export">&#26080;&#27861;&#23548;&#20986;&#31995;&#32479;tts</string>
+
+    <string name="ai_provider_saved">已保存提供商</string>
+
+<string name="navigation_bar_name">底栏主题名称</string>
+
+    <string name="ai_provider_stat_usable">可用</string>
+
+    <string name="highlight_rule_empty_title">暂无高亮规则</string>
+
+	<string name="epub_core_schedule_mode_light">轻量</string>
+
+    <string name="theme_title_font_color">标题字体颜色</string>
+
+<string name="top_bar_edit">编辑顶栏</string>
+
+        <string name="modern_rss_page">新版订阅页</string>
+
+        <string name="package_sync_task_line">%1$s · %2$s</string>
+
+
+    <string name="check_rss_articles">文章列表</string>
+
+    <string name="source_group_style_by_type">按类型</string>
+
+        <string name="duration_second">%d秒</string>
+
+    <string name="login_error">登录出错</string>
+
+    <string name="cache_rate_desc">并发限制，单位ms，可填写两种格式\n不填写默认无限制，建议填写 1500以上（访问间隔1.5s以上）\n20/60000（60s内访问次数20）</string>
+
+        <string name="cover_collection_zip_no_images">ZIP 中没有可用图片</string>
+
+	<string name="paragraph_rule_disabled_for_book">&#24403;&#21069;&#20070;&#31821;&#26410;&#21551;&#29992;</string>
+
+    <string name="book_cloud_cache_package_mode">云端备份</string>
+
+    <string name="theme_delete_both_confirm">同时删除本地和云端主题？</string>
+
+    <string name="read_record_goal_avatar_pick">选择图片</string>
+
+    <string name="read_record_placeholder">--</string>
+
+    <string name="theme_package_load_failed">读取失败：%s</string>
+
+	<string name="selection_search_engine_url_hint">使用 {query} 代表选中文字</string>
+
+    <string name="rss_page_mode_legacy">经典订阅</string>
+
+    <string name="ai_api_key">API Key</string>
+
+<string name="top_bar_filter_default_expanded">默认展开</string>
+
+    <string name="tip_perm_request_storage_failed">请求存储权限失败</string>
+
+    <string name="about_build_info">版本 %1$s（%2$s）· %3$s 构建</string>
+
+    <string name="source_recycle_bin_enabled">规则回收站</string>
+
+<string name="s3_container_state_line">状态：%1$s</string>
+
+<string name="s3_container_disabled">停用</string>
+
+    <string name="download_confirm_delete_only">仅删除此任务记录？\n已下载的文件将保留。</string>
+
+    <string name="highlight_rule_export_to_clipboard">导出为剪贴板 JSON</string>
+
+	<string name="welcome_show_time_summary">&#35774;&#20026;0&#19981;&#26174;&#31034;&#27426;&#36814;&#39029;</string>
+
+	<string name="advanced_title_json_label">高级标题 JSON</string>
+
+    <string name="ai_purify_no_selection">请先选中要净化的文字</string>
+
+    <string name="read_record_recent_days">按日摘要</string>
+
+    <string name="ai_model_removed">已删除模型</string>
+
+    <string name="data_manage">数据管理</string>
+
+<string name="cache_manage_task_done">缓存完成：%1$d 章</string>
+
+    <string name="migrate_book_origin_yes">迁移</string>
+
+<string name="bookshelf_tag_no_matching_books">当前筛选条件下没有书籍</string>
+
+<string name="s3_container_test_failed">S3 连接测试失败：%1$s</string>
+
+        <string name="duration_hour">%d小时</string>
+
+<string name="online_import_error_host_unresolved">无法解析导入地址的域名：%1$s</string>
+
+    <string name="web_address_unavailable">Web 服务未开启</string>
+
+    <string name="ai_setting_summary">分开配置提供商和模型</string>
+
+        <string name="package_sync_task_title">云端同步任务</string>
+
+<string name="top_bar_tag_selected_alpha">选中标签不透明度</string>
+
+    <string name="quality_report_scope_group">当前分组</string>
+
+<string name="discover_group_other">其他</string>
+
+<string name="bottom_bar_items_manage">底栏按钮管理</string>
+
+    <string name="read_record_continue_reading">续读 ›</string>
+
+    <string name="ai_tavily_search_depth_ultra_fast">极速</string>
+
+<string name="bookshelf_tag_search_book">搜索书名或作者</string>
+
+    <string name="web_address_pending">正在获取地址…</string>
+
+    <string name="rss_parse_concurrency_summary">RSS文章解析并发数（当前 %s，默认3）</string>
+
+    <string name="highlight_clear_chapter">清除本章划线</string>
+
+    <string name="rss_read_tts_running">朗读中</string>
+
+    <string name="source_group_style_by_group">按分组</string>
+
+	<string name="cache_first">&#20248;&#20808;&#21152;&#36733;&#32531;&#23384;</string>
+
+    <string name="set_success">设定成功</string>
+
+<string name="speed_control">&#35821;&#36895;&#25511;&#21046;</string>
+
+    <string name="web_first_launch_dismiss">知道了</string>
+
+    <string name="web_token_revoke_title">撤销 %1$s 令牌？</string>
+
+    <string name="menu_recycle_bin">回收站</string>
+
+    <string name="read_record_components_hint">勾选启用，长按拖拽调整顺序</string>
+
+    <string name="url_record_filter_method">按方法</string>
+
+    <string name="quality_report_title">源质量体检</string>
+
+    <string name="recycle_bin_restore">恢复</string>
+
+	<string name="epub_selection_read_aloud_unsupported">当前 EPUB 排版暂不支持从选中位置连续朗读</string>
+
+    <string name="toc_locate_current">定位到当前章</string>
+
+<string name="btn_previous">&#19978;&#20010;</string>
+
+<string name="bookshelf_list_style_rounded_card">圆角卡片</string>
+
+<string name="margin">&#38388;&#36317;</string>
+
+<string name="book_info_style_classic">经典</string>
+
+<string name="cache_manage_long_press_hint">长按章节进入多选，可批量缓存或删除。</string>
+
+    <string name="ai_world_book_search_empty_title">没有匹配的世界书</string>
+
+    <string name="quality_report_disable">禁用</string>
+
+    <string name="search_book_empty_precision">%1$s分组搜索结果为空，是否关闭精准搜索？</string>
+
+	<string name="epub_button_pressed">按钮已触发</string>
+
+<string name="discovery_suite_no_widgets_title">当前套件还没有控件</string>
+
+    <string name="theme_delete_remote_confirm">删除云端主题？</string>
+
+    <string name="gamepad_preset_applied">已套用预设，可继续手动修改</string>
+
+    <string name="days_ago">%1$d天前</string>
+
+<string name="navigation_icon_normal">未选中</string>
+
+	<string name="custom_button">&#23450;&#21046;&#25353;&#38062;</string>
+
+    <string name="unexpected_web_file_data">Unexpected webFileData</string>
+
+    <string name="download_file_missing">文件不存在或已被删除，可删除该记录</string>
+
+    <string name="theme_color_shelf">书架背景色</string>
+
+	<string name="enter_img_src_path">&#35831;&#36755;&#20837;&#22270;&#29255;&#38142;&#25509;</string>
+
+    <string name="theme_source_remote">云端</string>
+
+    <string name="ai_fetch_models_failed">获取模型列表失败：%s</string>
+
+        <string name="ai_new_chat">新对话</string>
+
+	<string name="read_menu_icon_clear_day">清除日间图标</string>
+
+<string name="discovery_suite_type_desc_ranked_list">带子标签的翻页排行榜（需选 3-9 个标签）</string>
+
+<string name="cache_manage_all_chapters">全部章节</string>
+
+    <string name="source_parse_concurrency">源解析并发数</string>
+
+    <string name="url_record_filter_source">按来源</string>
+
+    <string name="tip_template_empty">（空模板，该槽位不显示内容）</string>
+
+    <string name="web_relay_state_connected">中继已连接</string>
+
+	<string name="read_aloud_bgm_import_progress">正在导入 %1$d 个…</string>
+
+    <string name="read_record_goal_user_name_hint">填写要显示的用户名</string>
+
+<string name="cache_manage_cache_failed">缓存失败：%1$s</string>
+
+    <string name="ai_purify_running">净化中…</string>
+
+    <string name="theme_source_local">本地</string>
+
+    <string name="highlight_rule_import_clipboard_empty">剪贴板为空</string>
+
+    <string name="webview_back_again_exit">再按一次返回键退出</string>
+
+	<string name="open_other_video_player">&#20854;&#23427;&#25773;&#25918;&#22120;&#25171;&#24320;</string>
+
+<string name="online_import_private_network_message">该地址指向私有网络。仅在你信任此链接及提供文件的设备时继续。</string>
+
+    <string name="book_source_empty_title">还没有书源</string>
+
+    <string name="search_history_delete_title">删除搜索记录</string>
+
+<string name="cache_manage_resolving_chapter">正在解析 %1$d/%2$d</string>
+
+    <string name="source_book_count">引用书籍 %d 本</string>
+
+    <string name="highlight_rule_invalid">规则无效: %1$s</string>
+
+	<string name="advanced_title_open_editor">编辑 JSON</string>
+
+	<string name="auto_read_mode_scroll">连续滚动</string>
+
+    <string name="log_filter_count">命中 %1$d / 共 %2$d 条</string>
+
+<string name="online_import_error_empty_download">下载内容为空</string>
+
+    <string name="log_tab_files">文件日志</string>
+
+	<string name="font_size">&#23383;&#20307;&#22823;&#23567; %d</string>
+
+    <string name="web_section_help">使用帮助</string>
+
+<string name="epub_read_engine_summary">默认转换为纯文本阅读；EPUB引擎为实验性功能，可能存在排版或性能问题。</string>
+
+	<string name="read_menu_existing_custom_button">已有自定义</string>
+
+<string name="cover_collection_manage">封面图集</string>
+
+	<string name="show_source_comment">&#26174;&#31034;&#28304;&#27880;&#37322;</string>
+
+<string name="discovery_suite_generate_save_failed">配置过大，保存未生效，请先删除部分控件</string>
+
+<string name="bookshelf_list_intro_lines_1">1 行</string>
+
+    <string name="log_manage">日志管理</string>
+
+        <string name="ai_history_delete">删除对话</string>
+
+    <string name="bookshelf_up_toc_cancelled">已取消（%1$d/%2$d 本已完成）</string>
+
+<string name="top_bar_wallpaper_alpha">壁纸不透明度</string>
+
+<string name="bookshelf_list_style_classic">经典列表</string>
+
+    <string name="scene_bookmark_go_read">去阅读</string>
+
+	<string name="ai_usage_chip_output">输出</string>
+
+    <string name="rss_source_no_match_title">没有匹配的订阅源</string>
+
+        <string name="top_bar_day_default_name">默认日间顶栏</string>
+
+    <string name="download_dir_reset_default">下载目录已重置为默认</string>
+
+<string name="book_info_intro_empty">本书暂无简介。</string>
+
+        <string name="ai_chat_stop">停止</string>
+
+    <string name="gamepad_preset_trigger">扳机（L2/R2）</string>
+
+<string name="cache_manage_summary_state">共 %1$d 本，已缓存 %2$d 章</string>
+
+    <string name="replace_timeout_invalid">请输入大于 0 的毫秒数</string>
+
+    <string name="paragraph_rule_debug_paragraphs">段落数</string>
+
+    <string name="copy_error_detail">复制错误详情</string>
+
+    <string name="recycle_bin_type_highlight_rule">高亮规则</string>
+
+    <string name="ai_world_book_search_empty_hint">搜索范围含书名、描述、条目内容与关键词，试试更短的关键词</string>
+
+        <string name="package_sync_task_type_navigation_bar">底栏</string>
+
+    <string name="search_history_delete_message">确定删除「%1$s」这条搜索记录吗？</string>
+
+    <string name="read_record_active_days_value">%1$d 天</string>
+
+    <string name="book_source_menu_group_ops">源操作</string>
+
+    <string name="opml_import">导入 OPML</string>
+
+    <string name="theme_color_search_field_background">搜索框背景色</string>
+
+    <string name="edit_continue">继续编辑</string>
+
+	<string name="content_select_default_open">默认打开</string>
+
+    <string name="rss_read_menu_group_source">源</string>
+
+    <string name="import_check_strict_lenient">宽松：只滤打不开的源（推荐）</string>
+
+    <string name="log_heap_hint">hprof 文件请使用外部工具（如 Android Studio / MAT）分析</string>
+
+<string name="navigation_bar_package_empty">当前只有内置底栏主题。</string>
+
+        <string name="ai_image_generated">图片已生成</string>
+
+    <string name="log_tab_heap">堆转储</string>
+
+    <string name="qr_scan_hint">将二维码对准取景框即可自动识别</string>
+
+<string name="auto_refresh_media_toc">自动刷新空媒体目录链接</string>
+
+        <string name="cache_manage_upload_queued">已加入 WebDAV 上传队列</string>
+
+<string name="discovery_suite_type_desc_horizontal_books">一行封面左右滑动（仅 1 个标签）</string>
+
+<string name="discovery_suite_type_desc_tag_bar">一排标签按钮，点击进入该标签的书籍列表</string>
+
+    <string name="download_file_not_found">本地文件不存在</string>
+
+    <string name="filter_debug">调试</string>
+
+    <string name="password_show">显示密码</string>
+
+    <string name="scene_bookmark_empty_title">还没有名场面</string>
+
+    <string name="tip_template_label">模板内容</string>
+
+    <string name="rss_source_count_format">共 %1$d 个来源</string>
+
+    <string name="web_shutdown_title">关闭服务并吊销全部令牌</string>
+
+    <string name="opml_export_library">导出 OPML（整库）</string>
+
+    <string name="search_content_coverage_uncached">；%1$d 章未缓存未参与搜索，缓存后重搜可提升覆盖</string>
+
+    <string name="rss_source_unread">有未读文章</string>
+
+    <string name="image_crop_saving">保存中，请稍候…</string>
+
+    <string name="import_check_enabled_summary">导入书源/订阅源时自动过滤低质量源（默认关闭）</string>
+
+    <string name="ai_add_mcp_server">添加 MCP 服务器</string>
+
+    <string name="image_back_to_top">返回顶部</string>
+
+    <string name="ai_fetch_models_click_add_long_select">点击添加，长按多选</string>
+
+        <string name="ai_chat_history">对话历史</string>
+
+    <string name="download_unfinished_tip">下载未完成，请到下载管理查看</string>
+
+    <string name="read_record_customize_components">排列统计组件</string>
+
+<string name="s3_full_webdav_fallback_message">主备份 S3 容器已无可用空间。检测到 WebDAV 已配置，是否本次上传到 WebDAV？</string>
+
+    <string name="log_truncated">仅显示尾部 %1$d 行，完整内容请导出日志</string>
+
+<string name="rss_auto_video_to_player">正文含视频时自动转播放器</string>
+
+	<string name="read_menu_first_row">第一排</string>
+
+<string name="top_bar_custom_name">自定义顶栏</string>
+
+<string name="paragraph_import_result">新增：%1$d\n覆盖：%2$d\n跳过：%3$d\n重命名：%4$d</string>
+
+    <string name="handle_file_hint_app_picker">应用内浏览</string>
+
+    <string name="layout_config_tip">页眉页脚</string>
+
+        <string name="ui_layout_alpha_value">%d%%</string>
+
+<string name="s3_container_name">容器名称</string>
+
+        <string name="shibboleth_invalid">口令格式无效</string>
+
+    <string name="gamepad_preset">手柄预设</string>
+
+    <string name="source_sort_label">排序</string>
+
+    <string name="handle_file_hint_sys_image">系统相册</string>
+
+    <string name="read_record_yesterday_word">昨天</string>
+
+<string name="cache_manage_manifest_missing">&#32531;&#23384;&#28165;&#21333;&#32570;&#22833;</string>
+
+    <string name="ai_remove_mcp_server_confirm">确定删除这个 MCP 服务器吗？</string>
+
+    <string name="read_record_goal_total">累计 %1$s</string>
+
+    <string name="read_record_empty_daily">暂无按日记录</string>
+
+        <string name="package_sync_task_status_pending">排队中</string>
+
+<string name="bottom_bar_wallpaper">底栏壁纸</string>
+
+<string name="s3_container_set_default_success">已设为默认容器</string>
+
+        <string name="advanced_title_migrated">&#24050;&#36801;&#31227;&#39640;&#32423;&#26631;&#39064;</string>
+
+    <string name="paragraph_rule_template_short_merge">短行合并</string>
+
+    <string name="ai_edit_model">编辑模型</string>
+
+    <string name="theme_background_downloaded">背景图片已下载</string>
+
+    <string name="rss_page_mode_modern">新版订阅</string>
+
+<string name="cache_manage_upload_strategy_title">上传策略</string>
+
+    <string name="open_url_risk_plain_http">http 明文链接，内容未加密</string>
+
+    <string name="import_status_filtered">已过滤</string>
+
+	<string name="ai_read_clear_history">清空本书历史</string>
+
+	<string name="read_aloud_bgm_expand_all">全部展开</string>
+
+    <string name="ai_mcp_server_endpoint_required">请输入 MCP 服务器地址</string>
+
+    <string name="log_cleared">已清除 %1$d 项，%2$d 项占用中被跳过</string>
+
+    <string name="ai_mcp_server_endpoint">服务器地址</string>
+
+<string name="s3_session_token">Session Token</string>
+
+    <string name="video_no_available_url">暂无可用地址</string>
+
+    <string name="ai_custom_headers">自定义请求头</string>
+
+<string name="cache_manage_audio_url_empty">未获取到音频链接</string>
+
+    <string name="read_record_month_label">本月</string>
+
+<string name="bookshelf_tag_none">未设置标签</string>
+
+    <string name="download_resume_task">继续</string>
+
+	<string name="advanced_title_current">&#24403;&#21069;</string>
+
+    <string name="ai_model">模型</string>
+
+<string name="bottom_bar_layout_sidebar">侧边栏</string>
+
+	<string name="read_aloud_bgm_preview_missing">音频文件不存在</string>
+
+<string name="cache_manage_batch_upload_queued">已加入 %1$d 个上传任务</string>
+
+        <string name="shibboleth_import_confirm">口令将从网络下载配置，请确认来源可信后继续。</string>
+
+<string name="cache_manage_no_cache">没有可上传的缓存</string>
+
+    <string name="ai_fetch_models">获取模型列表</string>
+
+    <string name="book_info_style_preview_note">结构示意，实际效果以详情页为准</string>
+
+<string name="discovery_suite_alias">设置别名</string>
+
+    <string name="ai_edit_provider">编辑提供商</string>
+
+    <string name="search_content_progress">已搜 %1$d/%2$d 章 · 命中 %3$d</string>
+
+    <string name="url_record_detail">URL记录详情</string>
+
+    <string name="contributors_summary_sigma">老登GTQ，详情请在 GitHub 中查看</string>
+
+<string name="layout_list_compact">&#32039;&#20945;&#21015;&#34920;</string>
+
+    <string name="web_token_generate_confirm_message">该令牌可读取并修改你的数据。请只为你信任的客户端生成，用完后及时撤销。</string>
+
+    <string name="web_token_plain_dialog_title">已生成 %1$s 令牌</string>
+
+    <string name="download_delete_only">仅删除记录（保留文件）</string>
+
+    <string name="theme_image_value_file_blur">%1$s · 模糊 %2$d</string>
+
+    <string name="paragraph_rule_debug_image_tags">图片标签</string>
+
+    <string name="cache_stats_delete_success">缓存已删除</string>
+
+<string name="top_bar_background_color">顶栏背景色</string>
+
+    <string name="log_diagnostics">日志与诊断</string>
+
+    <string name="ai_skill_import_failed">Skill 导入失败：%s</string>
+
+    <string name="theme_image_value_unselected_blur">未选择 · 模糊 %d</string>
+
+    <string name="source_sort_1">按名称</string>
+
+    <string name="cache_stats_total">总计</string>
+
+    <string name="rss_search_empty_title">搜索结果为空</string>
+
+    <string name="download_delete_task">删除</string>
+
+    <string name="record_url_switch">开启URL记录</string>
+
+	<string name="read_menu_custom_button_missing">自定义按键不存在</string>
+
+    <string name="video_unknown_route">未知</string>
+
+    <string name="unit_hour">小时</string>
+
+<string name="replace_to_js">js&#22788;&#29702;</string>
+
+<string name="book_info_style_classic_hint">经典详情页沿用原版固定布局，组件配置对它不生效。</string>
+
+    <string name="highlight_rule_restore_overwrite_confirm_ok">确定覆盖</string>
+
+    <string name="video_skip_time">快进/快退时间</string>
+
+    <string name="ai_balance_querying">正在查询余额…</string>
+
+    <string name="import_check_copy_filtered">复制被过滤源列表</string>
+
+<string name="navigation_icon_selected">已选中</string>
+
+<string name="online_import_stage_download_title">正在下载导入包</string>
+
+	<string name="read_aloud_floating_ball_summary">朗读时在本应用、桌面和其他应用上层显示播放控制；关闭后仍可使用系统通知控制</string>
+
+    <string name="theme_apply">应用</string>
+
+<string name="navigation_bar_preview">底栏预览</string>
+
+<string name="bookshelf_tag_visible">标签栏显示</string>
+
+	<string name="adapt_special_style">&#36866;&#37197;&#29305;&#27530;&#26679;&#24335;</string>
+
+<string name="online_import_error_package_rule_invalid">导入包内存在非法规则</string>
+
+    <string name="rss_read_menu_group_content">内容</string>
+
+    <string name="ai_purify_risk_added">结果包含新增内容，可能发生改写，请自行核对后再使用。</string>
+
+    <string name="import_check_depth">校验深度</string>
+
+    <string name="paragraph_rule_debug_copy">复制结果</string>
+
+<string name="online_import_error_redirect">导入链接跳转到了非法地址</string>
+
+    <string name="import_check_concurrency">并发探测数</string>
+
+	<string name="read_aloud_bgm_preview_failed">试听失败</string>
+
+    <string name="highlight_rule_restore_merged_toast">已恢复默认规则（合并模式）</string>
+
+<string name="s3_container_endpoint_bucket_required">Endpoint 和 Bucket 不能为空</string>
+
+    <string name="read_aloud_timer_chapter">正在朗读（读完本章停）</string>
+
+    <string name="quality_report_resume">继续体检</string>
+
+    <string name="import_check_strict_standard">标准：还会滤搜索/列表失败的源</string>
+
+        <string name="cache_manage_webdav_task_cancelled">WebDAV 任务已取消</string>
+
+<string name="discovery_suite_widget_targets_empty">请先选择要展示的 Tag 或书源目标</string>
+
+    <string name="ai_enable_summary_disabled">当前提供商下有模型时才能开启</string>
+
+<string name="navigation_bar_package_summary">点击底栏主题可应用、编辑、导出或同步。</string>
+
+<string name="online_import_error_localhost">不能使用 localhost 地址导入</string>
+
+<string name="cache_manage_sync_action">同步</string>
+
+<string name="bookshelf_list_intro_lines_0">不显示</string>
+
+	<string name="read_menu_add_button">添加按键</string>
+
+    <string name="download_need_storage_permission">下载到公共目录需要存储权限，请在下载设置中授权</string>
+
+        <string name="book_info_quick_action_alias">显示名称</string>
+
+    <string name="rss_source_count">来源数量</string>
+
+    <string name="ai_manage_native_tools_summary">启用或停用内置工具能力</string>
+
+    <string name="book_source_no_match_subtitle">没有匹配「%1$s」的书源</string>
+
+	<string name="read_aloud_bgm_import_done">已导入 %1$d 个%2$s</string>
+
+    <string name="ai_model_added">已添加模型</string>
+
+    <string name="theme_package_cloud_load_failed">云端读取失败：%s</string>
+
+    <string name="paragraph_rule_template_blank">空模板骨架</string>
+
+    <string name="rss_source_manage_summary">管理订阅源和源仓库。</string>
+
+    <string name="download_error_detail">失败详情</string>
+
+        <string name="cache_manage_webdav_task_content">%1$s · %2$s</string>
+
+<string name="cache_manage_chapters">缓存目录</string>
+
+<string name="edit_theme_solarized_light">&#26085;&#20809;&#27973;&#33394;</string>
+
+<string name="navigation_bar_manage_summary">管理底栏主题、图标、玻璃样式和不透明度。</string>
+
+    <string name="replace_advanced_group_hint">低频字段，默认收起</string>
+
+    <string name="settings_search_no_result">没有匹配的设置项</string>
+
+        <string name="navigation_bar_day_default_name">日间底栏</string>
+
+    <string name="paragraph_rule_template_indent">缩进清理</string>
+
+    <string name="scene_bookmark_regen">重新生成描述</string>
+
+    <string name="theme_sync_pending">有 %d 项云端变更正在后台同步。</string>
+
+        <string name="appearance_kit_export">导出当前应用主题</string>
+
+    <string name="ai_provider_stat_current">当前使用</string>
+
+        <string name="ai_chat_hint">问 AI</string>
+
+    <string name="scene_bookmark_untitled">未命名</string>
+
+	<string name="page_touch_click_title">&#36793;&#32536;&#28857;&#20987;&#38408;&#20540;</string>
+
+	<string name="config_settings">&#37197;&#32622;</string>
+
+<string name="top_bar_style_default">默认顶栏</string>
+
+	<string name="advanced_title_import_title">导入高级标题</string>
+
+    <string name="bookshelf_up_toc_result">已更新，%1$d 本有新章</string>
+
+        <string name="advanced_title_too_large">Lottie JSON &#36229;&#36807; 2 MB &#38480;&#21046;</string>
+
+	<string name="read_menu_night_icon_unset">未设置</string>
+
+    <string name="filter_error">错误</string>
+
+    <string name="clear_all_cache">一键清理</string>
+
+        <string name="package_sync_task_empty">暂无云端同步任务</string>
+
+    <string name="paragraph_rule_template_title">插入模板</string>
+
+    <string name="highlight_rule_group_name_exists">分组名称已存在</string>
+
+    <string name="finish_login">完成登录</string>
+
+<string name="s3_region">Region</string>
+
+    <string name="filter_info">信息</string>
+
+    <string name="ai_provider_name">提供商名称</string>
+
+<string name="cache_manage_upload_all">上传全部</string>
+
+    <string name="ai_skill_prompt_summary_empty">未安装 Skill</string>
+
+    <string name="discovery_page_mode_modern">新版发现</string>
+
+	<string name="epub_core_schedule_mode_performance">性能</string>
+
+    <string name="quality_report_paused_hint">已暂停于 %1$d/%2$d，点「继续体检」从断点续跑</string>
+
+    <string name="theme_sync_done">云端主题状态已同步</string>
+
+<string name="discovery_suite_type_trimmed">「%1$s」最多保留 %2$d 个标签，已移除 %3$d 个</string>
+
+    <string name="image_load_error_hint_network">请检查网络后重试</string>
+
+<string name="non_printable_set">&#19981;&#21487;&#35270;&#23383;&#31526;&#35774;&#23450;</string>
+
+	<string name="advanced_title_source_local">&#26412;&#22320;</string>
+
+<string name="online_import_error_proxy">不允许通过代理导入</string>
+
+        <string name="ai_restore_thinking">正在思考中</string>
+
+<string name="cover_collection_import_zip">导入 ZIP</string>
+
+    <string name="source_layout">视图</string>
+
+<string name="online_import_collapse">收起</string>
+
+<string name="cache_manage_upload_success">缓存包已上传到 WebDAV</string>
+
+    <string name="open_url_risk_file">本地文件或应用内链接</string>
+
+    <string name="cache_stats_video_playing">视频播放中，暂不能删除</string>
+
+	<string name="advanced_title_import_from_net">网络导入</string>
+
+    <string name="highlight_rule_group_export_count">已复制 %1$d 条规则</string>
+
+    <string name="download_manage_summary">管理下载任务</string>
+
+        <string name="book_cloud_entry_mode">云端入口</string>
+
+    <string name="paragraph_rule_debug_copied">已复制结果</string>
+
+    <string name="storage_total">总量</string>
+
+<string name="cover_collection_mode">封面模式</string>
+
+    <string name="bookshelf_badge_update_chapters">更新 %1$s 章</string>
+
+    <string name="ai_add_model_manual">手动填写模型 ID</string>
+
+	<string name="ai_usage_export_done">已导出到 %1$s</string>
+
+    <string name="dedup_disabled">已禁用</string>
+
+        <string name="appearance_kit_create">新建应用主题</string>
+
+    <string name="ai_no_providers">暂无提供商</string>
+
+    <string name="theme_apply_failed">应用主题失败：%s</string>
+
+    <string name="filter">过滤</string>
+
+    <string name="theme_group_image">图片</string>
+
+<string name="system_auto">&#36319;&#38543;&#31995;&#32479;</string>
+
+<string name="cover_collection_mode_sequence">顺序</string>
+
+    <string name="ai_no_mcp_servers">暂无 MCP 服务器</string>
+
+        <string name="discovery_page_layout">发现页布局</string>
+
+	<string name="read_menu_night_icons">夜间双图标</string>
+
+    <string name="image_refresh_failed">刷新失败</string>
+
+    <string name="import_check_depth_l3">深度（额外检测目录和正文）</string>
+
+    <string name="type_image">图片</string>
+
+    <string name="welcome_subtitle">享受美好时光</string>
+
+    <string name="open_url_failed_hint">未找到可打开该链接的应用</string>
+
+	<string name="read_menu_button_summary">配置正文菜单第一排和第二排按键，长按拖动可以排序。</string>
+
+    <string name="read_record_total_label">累计</string>
+
+	<string name="auto_wrap">&#33258;&#21160;&#25442;&#34892;</string>
+
+    <string name="ai_world_book_delete_confirm">确定删除这本世界书吗？关联的 %1$d 条条目也会一起删除。</string>
+
+    <string name="edit_here">编辑此处</string>
+
+<string name="bubble_manage">气泡管理</string>
+
+    <string name="import_bubble_failed">导入气泡失败\n%1$s</string>
+
+    <string name="highlight_rule_import_from_pack">从规则包文件导入</string>
+
+    <string name="migrate_book_origin_no">不迁移</string>
+
+	<string name="advanced_title_use_regex">使用正则</string>
+
+    <string name="book_info_intro_expand">展开全文 ▾</string>
+
+<string name="online_import_error_too_large">导入包超过 %1$s 上限</string>
+
+    <string name="import_check_stop_cancel">取消导入</string>
+
+<string name="video_setting">&#35270;&#39057;&#35774;&#32622;</string>
+
+<string name="search_result">&#25628;&#32034;&#32467;&#26524;:</string>
+
+<string name="online_import_field_type">类型</string>
+
+    <string name="load_failed">加载失败</string>
+
+    <string name="read_aloud_align_sentence_summary">从段中触发朗读时，从本句句首读起（默认关，保持原有行为）</string>
+
+	<string name="read_aloud_bgm_preview_play">试听</string>
+
+    <string name="network_policy">网络策略</string>
+
+    <string name="web_port_updated_restart">端口已更新，服务已重启</string>
+
+    <string name="ai_provider_search_hint">搜索提供商</string>
+
+    <string name="update_accel_delete">删除</string>
+
+    <string name="read_record_heatmap_summary">最长连续 %1$d 天 · 单日最高 %2$s</string>
+
+<string name="rss_auto_video_off">已关闭自动转视频播放器</string>
+
+<string name="online_import_go_view">去查看</string>
+
+    <string name="source_sort_0">手动排序</string>
+
+<string name="discovery_suite_widget_type_waterfall_books">瀑布流</string>
+
+<string name="sync_theme_packages">同步云端主题</string>
+
+    <string name="rss_mark_read_no_source">未找到当前订阅源</string>
+
+<string name="discovery_suite_widget_no_content">未能加载到内容，点刷新重试。</string>
+
+	<string name="paragraph_rule">段落规则</string>
+
+    <string name="ai_provider_search_empty_clear">清除搜索，查看全部 %1$d 个</string>
+
+    <string name="export_highlight_rule">导出规则</string>
+
+    <string name="import_highlight_rule">导入规则</string>
+
+    <string name="highlight_rule_group_manage_title">分组管理</string>
+
+    <string name="video_ratio">画面比例</string>
+
+    <string name="theme_image_panel_background">界面卡片壁纸</string>
+
+    <string name="theme_delete_local_confirm">删除本地主题？</string>
+
+    <string name="update_accel_edit_title">编辑代理</string>
+
+<string name="s3_container_test_success">S3 连接测试成功</string>
+
+<string name="discovery_suite_widget_type_horizontal_books">横排滑动</string>
+
+    <string name="replace_advanced_group">高级配置</string>
+
+    <string name="web_token_revoked">已撤销 %1$s 令牌</string>
+
+    <string name="search_book_empty_switch">%1$s分组搜索结果为空，是否切换到全部分组？</string>
+
+    <string name="download_confirm_delete_with_files">删除此任务及已下载的文件？</string>
+
+    <string name="video_favorite_no_context">无法收藏：未获取到文章信息</string>
+
+<string name="rss_auto_video_to_player_summary">订阅正文（按内容规则解析后）含视频时，自动打开内置播放器</string>
+
+        <string name="appearance_kit_manifest_missing">缺少 appearance_kit.json</string>
+
+<string name="top_bar_style">顶栏样式</string>
+
+	<string name="show_line_number">&#23637;&#31034;%d&#34892;</string>
+
+	
+
+    <string name="import_check_state_failed">失效</string>
+
+    <string name="ai_set_current">设为当前模型</string>
+
+    <string name="replace_paste_diff_title">粘贴将覆盖 %1$d 项字段</string>
+
+    <string name="cache_stats_books">书籍缓存</string>
+
+    <string name="image_save_receipt_folder_unknown">所选目录</string>
+
+    <string name="ai_balance_url">余额接口地址</string>
+
+<string name="discovery_subscription_settings_summary">管理发现页和订阅页入口与页面样式。</string>
+
+    <string name="source_menu_group_tools">工具</string>
+
+	<string name="advanced_title_height_factor_label">高级标题占位高度系数</string>
+
+    <string name="read_record_goal_open_missing">书籍已不存在</string>
+
+    <string name="read_menu_button_paste_preview">粘贴将覆盖 %1$d 项已修改字段</string>
+
+    <string name="edit_discard">放弃修改</string>
+
+    <string name="web_auth_strict_summary">开启后所有端点（含只读接口）都必须携带令牌；老版网页端需先填入令牌才能继续访问。</string>
+
+    <string name="update_accel_edit">编辑</string>
+
+	<string name="immersion_nav_bar">&#27785;&#28024;&#24335;&#25805;&#20316;&#26639;</string>
+
+    <string name="source_menu_group_account">账户与变量</string>
+
+<string name="bookshelf_list_style">列表卡片样式</string>
+
+    <string name="import_check_enabled">开启导入校验</string>
+
+<string name="book_info_components_hint">勾选启用组件，拖动调整顺序。重新打开详情页后生效。</string>
+
+    <string name="search_content_coverage_scanned">命中 %1$d 处 · 分布于 %2$d 章 · 已搜 %3$d 章</string>
+
+    <string name="ai_tavily_topic">默认主题</string>
+
+    <string name="image_share_failed">分享图片失败：%1$s</string>
+
+    <string name="rss_article_info_title">文章详情</string>
+
+    <string name="code_edit_readonly_badge">只读</string>
+
+        <string name="ai_enable_summary">启用后长按搜索键进入 AI 页面</string>
+
+<string name="discovery_suite_name">套件名称</string>
+
+    <string name="rss_article_type">文章类型</string>
+
+    <string name="theme_value_follow_default">跟随默认</string>
+
+<string name="online_import_error_host_not_import">这不是有效的导入链接（host 必须为 import）</string>
+
+    <string name="ai_balance_query_failed">余额查询失败：%1$s</string>
+
+        <string name="navigation_bar_import_suffix">导入</string>
+
+<string name="cache_manage_title">缓存管理</string>
+
+        <string name="ai_tool_web_search">联网搜索</string>
+
+    <string name="web_token_generate_confirm_title">确认生成 %1$s 令牌？</string>
+
+    <string name="ai_mcp_server_name_required">请输入 MCP 服务器名称</string>
+
+	<string name="please_focus_cursor_on_textbox">&#35831;&#23558;&#20809;&#26631;&#32858;&#28966;&#22312;&#25991;&#26412;&#26694;</string>
+
+    <string name="clear_all_cache_confirm">确认清理全部缓存？书籍和书源不会被删除。</string>
+
+    <string name="search_content_distribution_item">%1$s · %2$d 处</string>
+
+    <string name="highlight_rule_group_no_rule_export">该分组暂无规则可导出</string>
+
+    <string name="read_record_goal_avatar">头像图片</string>
+
+    <string name="recycle_bin_delete_selection_msg">永久删除选中项？删除后无法恢复。</string>
+
+        <string name="subscription_settings_title">订阅页管理</string>
+
+<string name="navigation_bar_manage">底栏管理</string>
+
+<string name="s3_prefix">Prefix</string>
+
+    <string name="update_accel_add">添加代理</string>
+
+        <string name="ai_tool_status_failed">调用失败</string>
+
+<string name="s3_full_no_webdav_fallback_message">主备份 S3 容器已无可用空间。WebDAV 未配置，本次只会保留本地备份。</string>
+
+<string name="cache_manage_cache_selected_done">已提交 %1$d 章缓存</string>
+
+    <string name="read_record_year_value">%1$d年</string>
+
+<string name="cache_manage_source_deleted_chip">已删 · %1$s</string>
+
+    <string name="read_record_delete_entry">删除这条记录</string>
+
+    <string name="ai_skill_prompt">管理 Skill</string>
+
+    <string name="web_first_launch_token">生成只读令牌</string>
+
+    <string name="rss_all_sources">全部来源</string>
+
+    <string name="clear_all_records">清除所有记录</string>
+
+    <string name="ai_fetch_models_empty">接口没有返回模型</string>
+
+    <string name="download_tab_failed">失败</string>
+
+    <string name="web_token_revoke_message">撤销后，使用该令牌的客户端将立即失去访问权限，且无法恢复。</string>
+
+        <string name="duration_zero">0秒</string>
+
+    <string name="download_error_incomplete">文件不完整</string>
+
+    <string name="read_menu_button_paste_same">粘贴内容与当前表单一致</string>
+
+        <string name="cover_collection_export_failed_simple">导出图集失败</string>
+
+	<string name="click_image_way">&#28857;&#20987;&#22270;&#29255;&#26041;&#24335;</string>
+
+    <string name="image_article_prefetch_summary">打开文章时提前把其中的图片下载到本地，之后离线也能查看</string>
+
+    <string name="ai_system_prompt_hint">输入系统提示词</string>
+
+    <string name="rss_sort_group_danger">危险操作</string>
+
+        <string name="rss_article_refresh_to_top">刷新后回到顶部</string>
+
+	<string name="paragraph_rule_vars_json">&#21464;&#37327; JSON</string>
+
+    <string name="recycle_bin_type_dict_rule">字典规则</string>
+
+    <string name="search_thread_count_toast">配置已保存，将在下次搜索时生效</string>
+
+<string name="bookshelf_tag_manage">管理标签</string>
+
+    <string name="hours_ago">%1$d小时前</string>
+
+<string name="discovery_suite_move_up">上移</string>
+
+        <string name="top_bar_config_missing">缺少顶栏配置</string>
+
+    <string name="theme_section_appearance">外观与沉浸</string>
+
+    <string name="read_record_last_open">上次打开 %1$s</string>
+
+    <string name="manga_volume_key_page">音量键翻页</string>
+
+    <string name="recycle_bin_empty">清空回收站</string>
+
+<string name="s3_container_key_required">Access Key 和 Secret Key 不能为空</string>
+
+    <string name="highlight_rule_import_done">已导入 %1$d 条规则</string>
+
+<string name="s3_container_enabled">启用</string>
+
+<string name="discovery_suite_type_desc_waterfall_books">2 列瀑布流，固定在所有控件最底部</string>
+
+	<string name="default_dict">字典</string>
+
+    <string name="download_error_encrypt">加密流，暂不支持下载</string>
+
+    <string name="image_load_concurrency">图片加载并发</string>
+
+<string name="cache_manage_downloading">正在下载云端缓存...</string>
+
+    <string name="download_retry">重试</string>
+
+	<string name="ai_usage_chip_input">输入</string>
+
+<string name="online_import_raw_link_label">原始链接（反馈时请一并提供）</string>
+
+    <string name="association_open_file_failed">无法打开文件\n%1$s</string>
+
+        <string name="ai_chat_cancelled">已停止生成</string>
+
+    <string name="download_eta_left">剩余 %1$s</string>
+
+    <string name="source_health_failed">失效 %1$d</string>
+
+    <string name="image_load_error_parse">图片解析失败</string>
+
+<string name="enable_preload">&#39044;&#21152;&#36733;</string>
+
+    <string name="read_record_component_recent_covers">最近在读</string>
+
+        <string name="discovery_page_layout_summary">当前：%1$s</string>
+
+    <string name="import_check_filtered_title">已过滤的源</string>
+
+<string name="s3_container_capacity_refreshed">已刷新容量状态</string>
+
+    <string name="ai_mcp_server_saved">已保存 MCP 服务器</string>
+
+    <string name="theme_s3_container_switch">切换 S3 容器</string>
+
+    <string name="theme_image_mode_fit">适应显示</string>
+
+<string name="cache_manage_source_deleted">书源已删除：%1$s</string>
+
+    <string name="theme_night_short">夜间</string>
+
+    <string name="log_export_logs">导出日志</string>
+
+    <string name="log_confirm_clear">确认清除全部日志？\n将删除应用日志、文件日志、崩溃日志与堆转储。</string>
+
+    <string name="video_route_format">线路：%1$s ▼</string>
+
+        <string name="ai_setting">AI 设置</string>
+
+	<string name="paragraph_rule_importing">&#27491;&#22312;&#23548;&#20837;&#35268;&#21017;&#8230;</string>
+
+<string name="discovery_suite_manage_title">发现套件</string>
+
+    <string name="recycle_bin_type_replace_rule">替换规则</string>
+
+    <string name="image_save_receipt_with_position">（第 %1$d/%2$d 张）</string>
+
+<string name="discovery_suite_default_tag_bar_title">分类导航</string>
+
+<string name="online_import_copy_link">复制链接</string>
+
+        <string name="book_info_component_detail_hint">简介、章节预览和展开目录入口。</string>
+
+    <string name="book_source_not_found">书源不存在</string>
+
+    <string name="ai_tavily_search_depth_advanced">高级</string>
+
+    <string name="manga_image_unavailable">当前页图片不可用</string>
+
+    <string name="theme_sync_failed">云端主题同步失败：%s</string>
+
+    <string name="web_address_tap_to_copy">点按地址即复制</string>
+
+    <string name="ai_purify_changed_summary">已修改：删除 %1$d 字符，新增 %2$d 字符</string>
+
+<string name="discovery_suite_type_desc_random_books">3 列封面网格，点「换一批」随机刷新</string>
+
+<string name="bottom_bar_layout_standard">常规底栏</string>
+
+    <string name="read_menu_button_run_result">返回值</string>
+
+	<string name="json_format">JSON &#26684;&#24335;</string>
+
+        <string name="appearance_kit_name">应用主题名称</string>
+
+    <string name="theme_night">夜间主题</string>
+
+    <string name="theme_package_read_failed">读取主题失败：%s</string>
+
+	<string name="ask_ai">问AI</string>
+
+        <string name="ai_image_cancel_favorite">取消收藏</string>
+
+    <string name="source_verification_guide">完成网页验证后，点右上角 ✓ 保存并返回</string>
+
+        <string name="discovery_subscription_settings_title">发现与订阅</string>
+
+<string name="edit_theme_modern_dark">&#29616;&#20195;&#28145;&#33394;</string>
+
+    <string name="web_shutdown_summary">一键断开：停止 Web 服务、吊销三级全部令牌，并清除本机中继身份。已连接的客户端会立即失去访问权限。</string>
+
+    <string name="storage_manage">存储管理</string>
+
+    <string name="ai_add_model">添加模型</string>
+
+<string name="book_info_style_modern">现代</string>
+
+    <string name="web_help_open">《网页服务 + MCP》使用帮助</string>
+
+        <string name="discovery_page_layout_list">列表</string>
+
+    <string name="read_record_component_hint_recent_books">展示最近阅读书籍和当前进度</string>
+
+<string name="online_import_error_package_malformed">导入包结构非法，无法识别</string>
+
+    <string name="rss_article_info_no_description">暂无简介</string>
+
+    <string name="download_error_network">网络异常</string>
+
+    <string name="rss_mark_read_current_source">本订阅标为已读</string>
+
+<string name="bookshelf_tag_filter_unselected">未选择</string>
+
+    <string name="share_image">分享图片</string>
+
+    <string name="ai_fetch_models_success">已添加 %1$d 个模型</string>
+
+    <string name="theme_image_value_unselected">未选择</string>
+
+<string name="fast_scroller_touch_target_standard">标准 44dp</string>
+
+<string name="bookshelf_tag_delete_title">删除标签</string>
+
+<string name="bookshelf_tag_group_summary">%1$d 本书 · %2$d 个标签</string>
+
+    <string name="toc_unread_chapters">%1$d 章未读</string>
+
+    <string name="theme_image_selected">已选择</string>
+
+    <string name="ai_tavily_enable_summary">将 Tavily 暴露给 AI 作为实时联网搜索工具。</string>
+
+    <string name="image_crop_hint">拖动或双指缩放图片后确认裁剪</string>
+
+        <string name="cache_manage_webdav_task_waiting">等待 WebDAV 任务</string>
+
+    <string name="read_record_component_daily_records">按日摘要</string>
+
+	<string name="epub_core_schedule_mode_normal">常规</string>
+
+    <string name="video_no_play_url">暂无播放地址</string>
+
+    <string name="handle_file_hint_manual_input">支持 http(s) 链接或本机路径</string>
+
+    <string name="rss_search_result_empty">暂无搜索结果</string>
+
+<string name="cache_manage_uploading">正在打包上传...</string>
+
+        <string name="book_info_component_ai_images_hint">暂无本书生成图片。</string>
+
+    <string name="cache_rate_invalid">格式不正确，请填写纯数字（如 1500）或次数/毫秒（如 20/60000）</string>
+
+    <string name="verification_code_paste_hint">长按粘贴</string>
+
+    <string name="ai_tavily_topic_general">通用</string>
+
+    <string name="qr_decoding">正在识别图片…</string>
+
+	<string name="read_menu_night_icon_day">日间图标</string>
+
+<string name="time_hour">&#23567;&#26102;</string>
+
+	<string name="ai_usage_export_selected">导出</string>
+
+    <string name="ai_manage_mcp_servers_summary">已启用 %1$d 个，共 %2$d 个</string>
+
+    <string name="rss_article_type_image">图片</string>
+
+    <string name="quality_report_delete_confirm">将先导出 %1$d 条源的 JSON 备份到备份目录，然后从书源中删除。确定继续？</string>
+
+    <string name="ai_fetch_models_selected_hint">已选择 %1$d 个模型，点击条目可调整勾选。</string>
+
+    <string name="theme_section_elements">模板与封面</string>
+
+<string name="discovery_suite_widget_pending">该控件尚未配置书源与标签。</string>
+
+    <string name="download_open_file">打开文件</string>
+
+        <string name="package_sync_task_type_cache_download">缓存下载</string>
+
+<string name="cache_manage_delete_selected_confirm">删除所选 %1$d 章缓存？</string>
+
+    <string name="qr_gallery_entry">从相册识别</string>
+
+<string name="online_import_expand">展开</string>
+
+    <string name="quality_report_disabled_toast">已禁用 %1$d 条源</string>
+
+    <string name="theme_name_exists">已存在同名主题</string>
+
+<string name="online_import_step_inspect">预检校验</string>
+
+    <string name="loading_dots">加载中……</string>
+
+    <string name="book_source_clear_search">清空搜索</string>
+
+<string name="bookshelf_list_intro_lines_2">2 行</string>
+
+    <string name="ai_fetch_models_long_press_hint">点击添加单个模型，长按模型可勾选多个。</string>
+
+    <string name="search_content_distribution_label">命中分布</string>
+
+    <string name="theme_delete_local">删除本地</string>
+
+    <string name="read_record_recent_covers">最近在读</string>
+
+    <string name="source_menu_group_edit">编辑辅助</string>
+
+    <string name="download_storage_permission_granted">存储权限已授予</string>
+
+    <string name="theme_export_failed">导出主题失败：%s</string>
+
+<string name="cache_manage_audio_cache_started">已加入缓存：%1$d 章</string>
+
+<string name="top_bar_downloading">下载中…</string>
+
+<string name="s3_container_add">添加 S3 容器</string>
+
+<string name="top_bar_tag_bar_color">标签栏背景色</string>
+
+	<string name="advanced_title_input_url">输入地址</string>
+
+    <string name="read_record_goal_card">阅读目标</string>
+
+    <string name="read_record_recent_books">最近在读</string>
+
+<string name="discovery_suite_generate_none">未找到可用的发现标签，请先在书源中启用发现规则</string>
+
+<string name="discovery_suite_generate_once">一键生成套件</string>
+
+    <string name="ai_model_exists">模型已存在</string>
+
+    <string name="folder_view">文件夹视图</string>
+
+    <string name="image_crop_failed">图片裁剪失败：%1$s</string>
+
+    <string name="paragraph_rule_debug_preview">正文预览</string>
+
+    <string name="delete_group">删除分组</string>
+
+    <string name="video_play_setting">播放设置</string>
+
+<string name="navigation_bar_delete_remote_confirm">删除云端底栏主题？</string>
+
+    <string name="ai_image_role_unavailable">未配置 · 生图将不可用</string>
+
+	<string name="read_aloud_bgm_import_audio">导入音频</string>
+
+    <string name="about_update_no_new_inline">✓ 暂无更新 · %1$s</string>
+
+    <string name="theme_resource_not_readable">主题资源不可读取：%s</string>
+
+<string name="navigation_icon_select_file">选择导航栏图标</string>
+
+    <string name="about_promise_no_ads">无广告：应用内不含广告位与推广内容</string>
+
+<string name="online_import_field_final">最终地址</string>
+
+    <string name="settings_target_not_found">未找到目标设置项</string>
+
+    <string name="book_info_save_fail">书籍信息保存失败\n%1$s</string>
+
+<string name="paragraph_import_conflict_skip">跳过冲突规则</string>
+
+    <string name="filter_success">成功</string>
+
+<string name="s3_path_style">Path style</string>
+
+    <string name="read_menu_button_run_ok">运行成功</string>
+
+    <string name="ai_edit_mcp_server">编辑 MCP 服务器</string>
+
+    <string name="opml_export_done">已导出 %1$d 个订阅源</string>
+
+        <string name="package_sync_task_status_running">上传中</string>
+
+    <string name="download_fail_tip">下载失败，请到下载管理查看</string>
+
+<string name="bookshelf_tag_reusable_summary">可复用 %1$d 个 · 已选择 %2$d 个</string>
+
+    <string name="video_play_control">播放控制</string>
+
+<string name="webdav_account_manage">WebDAV 账号配置</string>
+
+    <string name="url_record">URL访问记录</string>
+
+    <string name="favorites_empty_desc">在文章列表点条目上的星标，即可收藏到该分组</string>
+
+<string name="cache_manage_pack_failed">缓存打包失败</string>
+
+    <string name="theme_export_zip">导出 ZIP</string>
+
+    <string name="domain_check_analyze_url">解析规则真实请求</string>
+
+<string name="cache_manage_delete_local_confirm">删除当前 %1$d 项本地缓存？</string>
+
+    <string name="highlight_match_budget">高亮匹配预算</string>
+
+<string name="s3_container_capacity_unlimited_line">容量不限制，已用 %1$s</string>
+
+    <string name="quality_report_apply">应用结果</string>
+
+    <string name="clear_completed_tasks">清除已完成/失败</string>
+
+    <string name="rss_sort_group_sort">分类</string>
+
+<string name="top_bar_manage_summary">管理主页面顶栏的日间和夜间样式</string>
+
+    <string name="import_check_import_disabled">导入（导入后自动禁用）</string>
+
+<string name="online_import_error_credentials">导入地址不能包含账号密码</string>
+
+    <string name="read_record_goal_target">每日目标</string>
+
+    <string name="quality_report_applied_toast">已应用 %1$d 条源</string>
+
+        <string name="ai_image_gallery_temporary">未收藏</string>
+
+        <string name="ai_image_favorite_to">收藏到</string>
+
+    <string name="web_service_settings_title">Web 服务与 AI 接入</string>
+
+    <string name="rss_mark_read_by_group">按分组标为已读</string>
+
+    <string name="ai_add_all_models">添加全部新模型</string>
+
+    <string name="rss_source_manage">订阅源管理</string>
+
+<string name="cache_manage_search_chapter">搜索章节</string>
+
+<string name="cache_manage_delete_remote_confirm">删除当前 %1$d 项云端备份？</string>
+
+    <string name="precise_manage">精准管理</string>
+
+<string name="online_import_field_private">私有网络</string>
+
+    <string name="web_section_relay">公网中继</string>
+
+    <string name="qr_camera_blocked_grant">去授权</string>
+
+    <string name="read_menu_button_paste_confirm">覆盖</string>
+
+    <string name="update_cache_thread_count_toast">配置已立即生效</string>
+
+        <string name="ai_chat_send">发送</string>
+
+    <string name="image_article_prefetch">文章图片预下载</string>
+
+    <string name="read_record_component_goal_card">阅读目标卡</string>
+
+    <string name="ai_balance_exhausted">余额不足或不可用</string>
+
+    <string name="manga_image_actions">图片操作</string>
+
+	<string name="ai_usage_delete_selected">删除选中 %1$d</string>
+
+    <string name="read_record_component_recent_books">最近在读列表</string>
+
+        <string name="shibboleth_expired">口令已过期</string>
+
+    <string name="copy_link_done">链接已复制</string>
+
+	<string name="empty_img_src_input">&#22270;&#29255;&#38142;&#25509;&#19981;&#33021;&#20026;&#31354;</string>
+
+    <string name="bookshelf_menu_group_manage">书架管理</string>
+
+    <string name="ai_disable_mcp_server">停用服务器</string>
+
+    <string name="search_content_distribution">命中分布 · %1$d 章</string>
+
+    <string name="debug_log_floating_ball">调试日志悬浮球</string>
+
+    <string name="color_hue">色相</string>
+
+<string name="cache_manage_download_success">云端缓存已下载</string>
+
+    <string name="precise_manage_summary">网址记录、存储、下载、文件管理</string>
+
+    <string name="url_record_filter_domain">按域名</string>
+
+    <string name="webdav_not_configured">未配置 WebDav</string>
+
+    <string name="paragraph_rule_debug_logs_empty">（无日志）</string>
+
+    <string name="read_record_month_value">%1$d月</string>
+
+	<string name="page_touch_click_dialog_title">&#36793;&#32536;&#28857;&#20987;&#38408;&#20540;</string>
+
+<string name="navigation_bar_edit">底栏主题</string>
+
+    <string name="ai_skill_default_name">导入的 Skill</string>
+
+	<string name="text_accent_color">&#24378;&#35843;&#39068;&#33394;</string>
+
+    <string name="scene_bookmark_delete">删除名场面</string>
+
+    <string name="bookshelf_updating_toc">正在更新 %1$d 本书目录…</string>
+
+<string name="bottom_bar_effect_frosted">磨砂玻璃</string>
+
+        <string name="ai_image_generate">生图</string>
+
+    <string name="opml_error_depth">OPML 嵌套层级过深（上限 8 层）</string>
+
+    <string name="migrate_book_origin_title">迁移书架书籍</string>
+
+        <string name="package_sync_task_type_bubble">气泡</string>
+
+<string name="whitespace_leading">&#34892;&#39318;</string>
+
+<string name="bookshelf_tag_all">全部</string>
+
+	<string name="paragraph_rule_imported_count">&#24050;&#23548;&#20837; %1$d &#26465;</string>
+
+    <string name="source_sort_5">按URL</string>
+
+    <string name="source_layout_auto">自动列数</string>
+
+    <string name="theme_edit">编辑主题</string>
+
+	<string name="ai_not_enabled">AI助手未启用</string>
+
+	<string name="read_menu_preview_more">还有 %1$d 个（可翻页）</string>
+
+    <string name="replace_sample_group_hint">不保存，不影响阅读页</string>
+
+<string name="discovery_suite_generate_running">正在扫描书源 %1$d/%2$d…</string>
+
+	<string name="read_menu_drag_handle">拖动排序手柄</string>
+
+        <string name="s3_bucket">Bucket</string>
+
+	<string name="r_startJs">&#21551;&#21160;&#39029; JS&#65288;startJs&#65289;</string>
+
+	<string name="manual_input_img_src">&#25163;&#21160;&#36755;&#20837;&#22270;&#29255;&#38142;&#25509;</string>
+
+<string name="bottom_bar_border_alpha">底栏边框不透明度</string>
+
+    <string name="ai_manage_mcp_servers">管理 MCP 服务器</string>
+
+	<string name="app_share_description_sigma">
+        阅读Archive 下载地址：\nhttps://gitee.com/zziji/legado/releases\nGitHub 备用：\nhttps://github.com/Rimchars/legado/releases
+    </string>
+
+    <string name="web_first_launch_title">三步开始使用</string>
+
+<string name="s3_container_test">测试连接</string>
+
+	<string name="read_aloud_bgm_preview_stop">停止试听</string>
+
+        <string name="navigation_bar_night_default_name">夜间底栏</string>
+
+    <string name="read_record_component_hint_read_rank">按累计阅读时长展示排行</string>
+
+    <string name="read_record_heatmap">阅读热力图</string>
+
+    <string name="recycle_bin">回收站</string>
+
+	<string name="edit_code">&#32534;&#36753;&#20195;&#30721;</string>
+
+<string name="discovery_suite_delete_with_widgets">%1$s · 含 %2$d 个控件将一并删除</string>
+
+<string name="discovery_suite_widget_type_rank_buttons">排行榜按钮</string>
+
+<string name="cover_collection_delete_image_confirm">从图集中删除这张图片？</string>
+
+    
+    <string name="rss_search_key">搜索订阅源内容</string>
+
+        <string name="discovery_page_layout_grid">三列</string>
+
+    <string name="download_already_in_list">已在下载列表中</string>
+
+    <string name="theme_color_muted">弱背景色</string>
+
+<string name="cover_collection_import_images">导入图片</string>
+
+	<string name="page_anim_linked_cover">微读</string>
+
+    <string name="theme_image_panel_background_mode">卡片壁纸显示</string>
+
+    <string name="paragraph_rule_debug_length">总长度</string>
+
+    <string name="rss_article_type_web">网页</string>
+
+<string name="bookshelf_tag_no_reusable">没有可复用的已有标签，可直接输入新标签</string>
+
+<string name="cache_manage_state_remote">&#20113;&#31471;</string>
+
+    <string name="read_record_current_chapter">当前 %1$s</string>
+
+    <string name="theme_image_book_info_background">详情页背景</string>
+
+    <string name="log_empty_files">暂无文件</string>
+
+    <string name="type_web">网页</string>
+
+<string name="cache_manage_delete_none">没有可删除的缓存</string>
+
+	<string name="focus_lost_on_textbox">&#22312;&#25991;&#26412;&#26694;&#20002;&#22833;&#20809;&#26631;&#28966;&#28857;</string>
+
+<string name="cache_manage_use_cache_success">已同步缓存目录</string>
+
+<string name="s3_auto_switch_container_summary">当前容器空间不足时，允许备份使用下一个可用容器</string>
+
+    <string name="read_record_goal_achieved_hint">今日目标已达成 · %1$s / %2$s</string>
+
+<string name="bottom_bar_layout_floating">悬浮底栏</string>
+
+    <string name="import_check_retry">搜索失败后换关键词重试</string>
+
+        <string name="modern_discovery_page">发现页模式</string>
+
+    <string name="download_play_with_builtin">播放</string>
+
+    <string name="download_delete_with_files">删除记录和文件</string>
+
+    <string name="ai_fetch_models_add_selected_empty">添加已选</string>
+
+<string name="s3_secret_key">Secret Key</string>
+
+    <string name="audio_stop_play">停止播放</string>
+
+    <string name="bookshelf_drag_mode_hint">拖拽排序模式：长按可调整顺序</string>
+
+
+	
+	<string name="selection_search_engine_manage">搜索引擎</string>
+
+        <string name="book_info_quick_action_source_alias_hint">别名按当前书源单独保存</string>
+
+<string name="rss_auto_video_on">已开启自动转视频播放器</string>
+
+    <string name="video_play_url_format">播放地址：%1$s</string>
+
+<string name="top_bar_filter_default">筛选栏默认状态</string>
+
+    <string name="download_open_folder">打开文件夹</string>
+
+<string name="edit_theme_solarized_dark">&#26085;&#20809;&#28145;&#33394;</string>
+
+<string name="navigation_bar_sidebar_background">侧边栏壁纸</string>
+
+    <string name="homepage_edit">编辑</string>
+
+    <string name="debug_curl_parse_error">解析失败，未找到URL</string>
+
+    <string name="storage_cache_temp_name">临时文件缓存</string>
+
+    <string name="permission_manage">权限管理</string>
+
+    <string name="select_column_count">选择列数</string>
+
+    <string name="rr_month_read_time">本月时长</string>
+
+    <string name="storage_cache_webview_desc">WebView 页面数据、本地缓存、Cookie 等持久化内容</string>
+
+    <string name="text_bold_not_supported_title">不支持精细调整</string>
+
+    <string name="debug_tools">调试工具</string>
+
+    <string name="download_empty_all_title">暂无下载任务</string>
+
+    <string name="day_theme">日间主题</string>
+
+    <string name="share_note_exporting">正在生成图片...</string>
+
+    <string name="text_bold_fine_mode">精细调整</string>
+
+    <string name="share_note_action_copy">复制新建</string>
+
+    <string name="find_next_match">下一个匹配</string>
+
+    <string name="explore_block_rule_scope_rss_intro">简介</string>
+
+    <string name="app_theme_summary_format">日间：%1$s / %2$s / %3$s / %4$s
+夜间：%5$s / %6$s / %7$s / %8$s</string>
+
+    <string name="debug_ping_max_time">最大延迟</string>
+
+    <string name="cover_html_keep_one_template">至少保留一个模板</string>
+
+    <string name="storage_cache_db_desc">CacheDao 存储的临时数据记录</string>
+
+    <string name="cache_manage_delete_failed">删除缓存失败：%1$s</string>
+
+    <string name="homepage_new_custom_set">新建自定义集</string>
+
+    <string name="rr_merge_all_same_name">合并全部同名书籍</string>
+
+    <string name="homepage_help">帮助</string>
+
+    <string name="homepage_add_module">添加模块</string>
+
+    <string name="save_ing">正在保存，请稍候…</string>
+
+    <string name="app_theme_day_apply_failed">日间主题应用失败</string>
+
+    <string name="debug_log">调试日志</string>
+
+    <string name="explore_block_rule_export_success">屏蔽规则已复制到剪贴板</string>
+
+    <string name="explore_block_rule_target_scope">作用范围</string>
+
+    <string name="info">信息</string>
+
+    <string name="bcs_deselect_all">取消全选</string>
+
+    <string name="fvd_format_detect_error">格式检测出错: %s</string>
+
+    <string name="quick_jump_back_a">快退%d分钟</string>
+
+    <string name="debug_ping_results">测试结果</string>
+
+    <string name="rr_dont_show_again">不再提示</string>
+
+    <string name="book_author_other_works_idle">点击刷新搜索作者其他作品</string>
+
+    <string name="key_page_anim_speed_dialog_title">按键翻页速度(ms)</string>
+
+    <string name="storage_cache_all">所有缓存</string>
+
+    <string name="perm_java_io_desc">控制 java.io 类的访问权限</string>
+
+    <string name="debug_curl_warnings">警告</string>
+
+    <string name="share_note_source_local">本地</string>
+
+    <string name="explore_block_rule_regex_mode">正则</string>
+
+    <string name="app_theme_asset_too_large">应用主题资源过大</string>
+
+    <string name="smart_tag_rule_very_long_desc">章节数不少于 1000 章</string>
+
+    <string name="source_recycle_bin">规则回收站</string>
+
+    <string name="share_note_read_prefix">阅读 %1$s</string>
+
+    <string name="fvd_validating">验证中</string>
+
+    <string name="sure_clear_all_cache">确定清理全部缓存吗？</string>
+
+    <string name="effect_glass">玻璃</string>
+
+    <string name="debug_ping_lost">丢失</string>
+
+    <string name="fvd_jianguoyun_limit">由于坚果云限制列出文件数量，部分备份可能未显示，请及时清理旧备份</string>
+
+    <string name="perm_section_toast">Toast管理</string>
+
+    <string name="storage_clear_confirm_title">确认清理</string>
+
+    <string name="storage_manage_title">存储管理</string>
+
+    <string name="explore_block_rule_scope_rss_title">标题</string>
+
+    <string name="rr_book_unit">本书</string>
+
+    <string name="explore_block_rule_name">规则名称</string>
+
+    <string name="text_bold_thin">细</string>
+
+    <string name="show_intro">显示简介</string>
+
+    <string name="perm_cookie_write_desc">允许书源写入Cookie</string>
+
+    <string name="search_help_desc">输入关键词在所有帮助文档中搜索，快速找到所需的规则说明</string>
+
+    <string name="rr_heatmap_duration">时长</string>
+
+    <string name="debug_curl_preview">预览</string>
+
+    <string name="homepage_group_filter">分组筛选</string>
+
+    <string name="total_read_time_s">总阅读时间 %1$s</string>
+
+    <string name="text_bold_fine_tip_title">提示</string>
+
+    <string name="smart_tag_rule_cannot_update">不可更新</string>
+
+    <string name="rr_merge_all_done">已合并 %d 本同名书籍</string>
+
+    <string name="effect_frosted">磨砂</string>
+
+    <string name="app_theme_invalid_color">主题颜色格式无效: %1$s</string>
+
+    <string name="app_theme_day_nav_bar_missing">日间底栏不存在</string>
+
+    <string name="intro_lines">简介行数</string>
+
+    <string name="delete_forever">彻底删除</string>
+
+    <string name="bubble_night_emphasis">夜间强调颜色</string>
+
+    <string name="highlight_rule_theme_scope_all">亮色和暗色</string>
+
+    <string name="homepage_search_or_select_category">搜索或选择分类</string>
+
+    <string name="cache_manage_size_calculating">计算中…</string>
+
+    <string name="application_theme_import_with_options">导入应用主题设置</string>
+
+    <string name="builtin">内置</string>
+
+    <string name="no_more_chapter">没有更多章节</string>
+
+    <string name="debug_ping_count_invalid">次数需在1-100之间</string>
+
+    <string name="menu_config">菜单配置</string>
+
+    <string name="applied_top_bar_config">已应用顶栏包: %s</string>
+
+    <string name="perm_java_net_desc">控制 java.net 类的访问权限</string>
+
+    <string name="add_to_favorites">加入收藏</string>
+
+    <string name="homepage_select_category">选择分类</string>
+
+    <string name="debug_response_info">响应信息</string>
+
+    <string name="right_slide_volume_enabled">右侧滑动调节音量</string>
+
+    <string name="search_result_count">找到 %d 条匹配结果</string>
+
+    <string name="download_empty_downloading_title">暂无正在下载的任务</string>
+
+    <string name="explore_block_rule_source_scope_hint">书源URL，分号分隔，空=所有书源</string>
+
+    <string name="debug_error">错误</string>
+    
+
+    <string name="export_format_red">Reeden (.red) 格式</string>
+
+    <string name="touch_page_anim_speed_dialog_title">触摸翻页速度(ms)</string>
+
+    <string name="debug_regex_dot_all">.匹配换行</string>
+
+    <string name="application_theme_rename">重命名</string>
+
+    <string name="debug_status_code">状态码</string>
+
+    <string name="highlight_rule_enabled_count">%1$d 条规则 · 已启用 %2$d 条</string>
+
+    <string name="homepage_preload">预加载</string>
+
+    <string name="text_menu_visible_count">直接显示数量</string>
+
+    <string name="bubble_select_at_least_one">请至少选择一个气泡包</string>
+
+    <string name="homepage_module_manage">模块管理</string>
+
+    <string name="perm_java_lang">java.lang 访问</string>
+
+    <string name="share_rules">分享规则</string>
+
+    <string name="manga_check_battery">隐藏电量图标</string>
+
+    <string name="rr_heatmap_title">阅读日历</string>
+
+    <string name="query">查询</string>
+
+    <string name="match_position">位置 %1$d: 索引 %2$d-%3$d</string>
+
+    <string name="application_theme_edit">编辑应用主题</string>
+
+    <string name="overwrite_irrecoverable_hint">回收站已关闭，被覆盖的源将被彻底删除、无法恢复。</string>
+
+    <string name="clipboard_import_mode">剪贴板导入口令</string>
+
+    <string name="homepage_loading">加载中...</string>
+
+    <string name="storage_clearing">正在清理 %1$s…</string>
+
+    <string name="pattern_empty">正则表达式不能为空</string>
+
+    <string name="explore_block_rule_show_progress">显示屏蔽进度</string>
+
+    <string name="highlight_rule_preset_hint">点击右侧 + 号，将预置规则加入当前规则列表</string>
+
+    <string name="cache_manage_video">视频</string>
+
+    <string name="rr_current_streak">连读</string>
+
+    <string name="source_recycle_bin_deleted">已彻底删除</string>
+
+    <string name="check_source_compose">校验书源(新界面)</string>
+
+    <string name="highlight_rule_import_success">高亮规则已导入</string>
+
+    <string name="highlight_rule_unnamed">未命名规则</string>
+
+    <string name="homepage_infinite_module">无限流模块</string>
+
+    <string name="effect_solid">实色</string>
+
+    <string name="import_success">导入成功</string>
+
+    <string name="show_category_info">显示分类信息等</string>
+
+    <string name="export_log">导出日志</string>
+
+    <string name="text_menu_config_desc">选择您想要显示的菜单项，折叠模式下超出直接显示数量后会显示在溢出菜单</string>
+
+    <string name="footer_font_size">字体大小</string>
+
+    <string name="nav_bar_summary">点击应用按钮应用底栏包，点击编辑按钮编辑底栏包</string>
+
+    <string name="md_link_inner_browser">使用内置浏览器打开</string>
+
+    <string name="application_theme_component_top_bar">顶栏</string>
+
+    <string name="no_read_record">暂无阅读记录</string>
+
+    <string name="bubble_builtin_name">内置段评气泡</string>
+
+    <string name="source_info_never">未更新</string>
+
+    <string name="show_read_record_in_book_info">显示阅读记录</string>
+
+    <string name="smart_tag_rule_finished_desc">已阅读到最后一章</string>
+
+    <string name="preview_description">预览描述规则</string>
+
+    <string name="smart_tag_rule_very_long">超长篇</string>
+
+    <string name="nav_bar_default_night_name">夜间底栏</string>
+
+    <string name="smart_tag_rule_online_desc">来自网络书源</string>
+
+    <string name="double_tap_seek_enabled">双击快退/快进</string>
+
+    <string name="multi_select_selected_count">已选 %1$d/%2$d</string>
+
+    <string name="homepage_delete">删除</string>
+
+    <string name="pt_toc_partial_load">目录不完全加载</string>
+
+    <string name="rr_heatmap_times">次</string>
+
+    <string name="smart_tag_rule_image">漫画</string>
+
+    <string name="reader_info_template_hint">可输入文字并插入下方占位符</string>
+
+    <string name="cover_html_template_name">模板名称</string>
+
+    <string name="add_nav_bar_config">添加底栏包</string>
+
+    <string name="show_homepage">显示首页</string>
+
+    <string name="explore_block_rule_progress_text">已屏蔽 %1$d 本</string>
+
+    <string name="share_note_add_copy_builtin">复制内置模板新建</string>
+
+    <string name="debug_swap">交换</string>
+
+    <string name="cover_html_book_name">书名</string>
+
+    <string name="smart_tag_rule_long_desc">章节数 500 到 999 章</string>
+
+    <string name="share_note_export_html">导出 HTML</string>
+
+    <string name="switch_rule">切换规则</string>
+
+    <string name="share_note_loading_preview">正在加载预览...</string>
+
+    <string name="bubble_svg_edit_hint">点击编辑，支持 ${color} 和 ${num}</string>
+
+    <string name="text_menu_visible_count_desc">折叠模式下直接显示 %1$d 个菜单项，超出后放入更多菜单</string>
+
+    <string name="file_not_exist">文件不存在</string>
+
+    <string name="explore_block_rule_scope_rss_time">时间</string>
+
+    <string name="application_theme_import_options_hint">勾选需要在导入时创建的组件，未勾选的组件将被跳过（不创建）</string>
+
+    <string name="download_empty_failed_subtitle">所有下载任务均正常</string>
+
+    <string name="cover_html_code_summary">自定义HTML代码来生成封面图片</string>
+
+    <string name="homepage_source_modules">书源模块</string>
+
+    <string name="source_recycle_bin_restored">已恢复</string>
+
+    <string name="homepage_selected_categories_count">已选 %d 个分类</string>
+    
+
+    <string name="debug_ping_test">Ping测试</string>
+
+    <string name="storage_cache_tts_name">TTS 语音缓存</string>
+
+    <string name="highlight_rule_dialog_desc">高亮中文、日文和英文双引号中的对话内容</string>
+
+    <string name="storage_clear_all_msg">确定要清理所有缓存吗？\n\n注意：这不会清理数据库中的书籍、书源等重要数据，仅清理临时缓存文件。</string>
+
+    <string name="page_anim_speed_summary">数值越小翻页越快，默认触摸300ms/按键100ms</string>
+
+    <string name="download_open_file_failed">无法打开文件</string>
+
+    <string name="unsafe_ssl_title">跳过SSL验证</string>
+
+    <string name="underline_offset_near">近</string>
+
+    <string name="rr_streak_value_single">1天</string>
+
+    <string name="debug_ping_reply_from">来自</string>
+
+    <string name="smart_tag_rule_video_desc">视频书籍</string>
+
+    <string name="share_note_style_summary">快速切换摘录分享图片的配色和字体，预览与分享图片会同步更新。</string>
+
+    <string name="homepage_title_label">标题</string>
+
+    <string name="md_link_inner_browser_summary">Markdown文件中的链接默认使用内置浏览器打开</string>
+
+    <string name="explore_block_rule_name_hint">例如：屏蔽广告</string>
+
+    <string name="web_service_auth_summary">要求API请求携带Token认证，在公共网络下建议开启</string>
+
+    <string name="rr_merge_all_confirm">将把阅读记录中所有同名书籍合并为一本：进度取较新者，阅读时长累加。此操作不可撤销。</string>
+
+    <string name="api_copied">已复制「%1$s」</string>
+
+    <string name="highlight_rule_underline_mode">下划线样式</string>
+
+    <string name="quick_jump_buttons_enabled">快捷跳转按钮</string>
+
+    <string name="all_books_in_shelf">列表书籍已全部在书架</string>
+
+    <string name="reader_info_template">信息模板</string>
+
+    <string name="source_info_file_size">文件大小</string>
+
+    <string name="rr_heatmap_mon">一</string>
+
+    <string name="smart_tag_sub_title">子标签</string>
+
+    <string name="book_cache_selector_summary">选择要备份缓存的书籍</string>
+
+    <string name="fvd_select_all">全选</string>
+
+    <string name="debug_encode_tools_desc">Base64/MD5/URL/Hex/Unicode 编解码</string>
+
+    <string name="select_files_to_restore">选择恢复文件</string>
+
+    <string name="source_info_order">排序编号</string>
+
+    <string name="debug_ping_stop">停止</string>
+
+    <string name="debug_test">测试</string>
+
+    <string name="match_result">匹配结果</string>
+
+    <string name="homepage_load_more">加载更多</string>
+
+    <string name="set_book_tag">设置标签</string>
+
+    <string name="set_timer_by_time">按时间定时</string>
+
+    <string name="no_restore_data">暂无恢复数据</string>
+
+    <string name="debug_ping_hide">收起</string>
+
+    <string name="download_path_copied">已复制路径</string>
+
+    <string name="homepage_loading_categories">正在加载发现分类...</string>
+
+    <string name="detected_as">识别为: %1$s (%2$d条)</string>
+
+    <string name="app_theme_missing_asset">应用主题包缺少资源: %1$s</string>
+
+    <string name="export_format_md3">MD3 版</string>
+
+    <string name="debug_tools_desc">编码转换、HTTP请求、正则测试等调试工具</string>
+
+    <string name="preview_title_source_url">源URL</string>
+
+    <string name="toc_load_failed_using_cache">目录加载失败，已使用本地缓存目录</string>
+
+    <string name="homepage_drag_sort">拖拽排序</string>
+
+    <string name="import_from_file">从文件导入</string>
+
+    <string name="source_recycle_bin_batch_delete_msg">彻底删除选中的 %1$d 项？此操作不可恢复。</string>
+
+    <string name="overwrite">覆盖</string>
+
+    <string name="search_progress_font_size">调节搜索进度字号</string>
+
+    <string name="rss_source_url_duplicate_title">订阅源地址重复</string>
+
+    <string name="share_note_done">完成</string>
+
+    <string name="highlight_rule_exclude_scope">排除范围，书名或书源URL</string>
+
+    <string name="debug_ping_host_hint">域名或IP地址</string>
+
+    <string name="theme_summary_empty">暂无%s主题，点击下方添加</string>
+
+    <string name="cache_manage_chapter_load_failed">读取章节失败：%1$s</string>
+
+    <string name="group_drop_down">分组下拉选择</string>
+
+    <string name="other_settings">其他设置</string>
+
+    <string name="result_source_code">结果源码</string>
+
+    <string name="smart_tag_rule_update_error">更新异常</string>
+
+    <string name="bookmark_search_content">笔记/摘要</string>
+
+    <string name="cover_html_preview">预览</string>
+
+    <string name="url_source_code">URL源码</string>
+
+    <string name="top_bar_primary_color">主色调</string>
+
+    <string name="app_theme_too_many_cover_images">封面图集图片数量过多</string>
+
+    <string name="homepage_empty_desc">请点击右上角设置按钮配置首页模块</string>
+
+    <string name="app_theme_manifest_too_large">应用主题清单过大</string>
+
+    <string name="rss_source_url_duplicate_cover_msg">已存在相同地址的订阅源“%1$s”，保存将覆盖它，是否继续？</string>
+
+    <string name="nav_item_sort_dialog_title">排序导航栏</string>
+
+    <string name="cover_gallery">封面图集</string>
+
+    <string name="module_type_grid_ranking">网格排行榜</string>
+
+    <string name="bottom_bar_effect_mode">底栏材质模式</string>
+
+    <string name="perm_android_net_desc">控制 android.net API 的访问权限</string>
+
+    <string name="fvd_view_details">查看详情</string>
+
+    <string name="test_input">测试输入</string>
+
+    <string name="perm_cookie_delete">Cookie删除</string>
+
+    <string name="fvd_reading_backup">读取备份文件...</string>
+
+    <string name="top_bar_import_clipboard">从剪贴板导入</string>
+
+    <string name="smart_tag_rule_finished">已读完</string>
+
+    <string name="top_bar_wallpaper_unselected">未选择</string>
+
+    <string name="highlight_rule_name_required">规则名称不能为空</string>
+
+    <string name="clipboard_import_confirm_summary">剪贴板中存在导入口令，是否立即导入？</string>
+
+    <string name="open_editor">打开编辑器</string>
+
+    <string name="file_delete_confirm">确定要删除 \"%1$s\" 吗？</string>
+
+    <string name="clipboard_import_auto_toast">已自动读取剪贴板中的导入口令</string>
+
+    <string name="book_cache_selector">书籍缓存选择</string>
+
+    <string name="download_manage_stats">下载中: %1$d  已完成: %2$d  失败: %3$d</string>
+
+    <string name="application_theme_export_format_select">选择导出格式</string>
+
+    <string name="debug_response_headers">响应头</string>
+
+    <string name="debug_timestamp_desc">时间戳与日期互相转换</string>
+
+    <string name="backup_selector_summary">分别选择本地与 WebDAV 云备份的内容</string>
+
+    <string name="select_image_failed">选择图片失败</string>
+
+    <string name="show_source_recycle_bin">显示规则回收站</string>
+
+    <string name="rr_no_merge_candidates">没有找到可以合并的记录</string>
+
+    <string name="migrate_book_origin_done">书源地址变更，已自动迁移书架上该书源的关联书籍</string>
+
+    <string name="explore_block_rule_active_rules_empty">开启屏蔽规则后当前书源无起效的规则</string>
+
+    <string name="rr_today_read_time">今日时长</string>
+
+    <string name="rr_total_read_time_label">累计时长</string>
+
+    <string name="api_usage_locations">「%1$s」的使用位置</string>
+
+    <string name="no_book_cache">没有已缓存的书籍</string>
+
+    <string name="rr_heatmap_tue">二</string>
+
+    <string name="source_recycle_bin_conflict_msg">“%1$s”与现有规则 key 相同，是否覆盖？</string>
+
+    <string name="smart_tag_book_count">%1$d 本</string>
+
+    <string name="selected">已选择 %1$d</string>
+
+    <string name="clear_records">清除记录</string>
+
+    <string name="homepage_module_type">模块类型</string>
+
+    <string name="homepage_rename_set">重命名集</string>
+
+    <string name="storage_cache_book_name">书籍内容缓存</string>
+
+    <string name="application_theme_create">新建应用主题</string>
+
+    <string name="debug_timestamp_hint">请输入时间戳</string>
+
+    <string name="application_theme_component_theme">主题</string>
+
+    <string name="search_help_hint">输入关键词搜索...</string>
+
+    <string name="cover_html_author">作者</string>
+
+    <string name="perm_toast_enabled_desc">控制脚本能否弹出Toast</string>
+
+    <string name="rr_read_suffix">阅读</string>
+
+    <string name="add_top_bar_config">添加顶栏包</string>
+
+    <string name="switch_to_old_explore">切换到经典发现</string>
+
+    <string name="text_menu_edit_name">菜单名称</string>
+
+    <string name="query_result">找到 %1$d 个匹配项</string>
+
+    <string name="view_js_lib">查看JS库</string>
+
+    <string name="input_path_or_url">输入路径或链接</string>
+
+    <string name="nav_item_sort_summary">拖动排序，点击单选按钮设置默认主页</string>
+
+    <string name="debug_ping_output">输出日志</string>
+
+    <string name="rr_no_records">暂无阅读记录</string>
+
+    <string name="transparent">透明</string>
+
+    <string name="application_theme_update_current">更新为当前组合</string>
+
+    <string name="share_note_import_html">导入 HTML</string>
+
+    <string name="rr_heatmap_year_month">%1$d年%2$d月</string>
+
+    <string name="highlight_rule_underline_color">下划线颜色</string>
+
+    <string name="intro">简介</string>
+
+    <string name="smart_tag_rule_unread">未开始</string>
+
+    <string name="applied_theme_config">已应用主题: %s</string>
+
+    <string name="share_note_preview_label">预览</string>
+
+    <string name="explore_block_rule_keyword_mode">关键词</string>
+
+    <string name="explore_block_rule_exclude_scope">排除的书源</string>
+
+    <string name="debug_mode_summary">启用后显示调试工具入口</string>
+
+    <string name="dropdown_select_group">下拉选择分组</string>
+
+    <string name="bubble_source_builtin">内置</string>
+
+    <string name="explore_block_rule_book_target_scope">书源作用范围</string>
+
+    <string name="share_note_action_preview">预览头部</string>
+
+    <string name="top_bar_transparent_hint">关闭后会显示顶栏阴影，打开则消失</string>
+
+    <string name="backup_local_only">仅备份本地</string>
+
+    <string name="query_rule">查询规则</string>
+
+    <string name="debug_copy">复制</string>
+
+    <string name="view_backup_info_s">查看备份文件内容与大小</string>
+
+    <string name="export_to_clipboard">导出JSON到剪贴板</string>
+
+    <string name="app_theme_config_too_large">应用主题配置文件过大</string>
+
+    <string name="no_explore_kind">暂无发现分类</string>
+
+    <string name="explore_block_rule_enabled">是否启用</string>
+
+    <string name="application_theme_applied">应用主题已应用</string>
+
+    <string name="select_rule">选择规则</string>
+
+    <string name="debug_ping_statistics">统计信息</string>
+
+    <string name="api_empty_list">暂无条目</string>
+
+    <string name="nav_bar_layout_floating">悬浮底栏</string>
+
+    <string name="homepage_collapse">收起</string>
+
+    <string name="bottom_bar_follow_theme">跟随主题底栏色</string>
+
+    <string name="book_view">书籍视图</string>
+
+    <string name="homepage_layout_source_tab">分源Tab</string>
+
+    <string name="homepage_module_manage_title">首页模块管理</string>
+
+    <string name="debug_ping_resolved">解析IP</string>
+
+    <string name="header_font_size">字体大小</string>
+
+    <string name="quick_jump_minutes_a">快退/快进分钟数A</string>
+
+    <string name="perm_android_content_desc">控制 android.content API 的访问权限</string>
+
+    <string name="debug_date_to_timestamp">日期转时间戳</string>
+
+    <string name="allow_punct_at_line_start">标点允许出现在行首</string>
+
+    <string name="perm_book_read_desc">允许脚本读取Book对象</string>
+
+    <string name="smart_tag_rule_short_desc">章节数少于 50 章</string>
+
+    <string name="rr_date_format_md">M月d日</string>
+
+    <string name="explore_block_rule_edit">编辑屏蔽规则</string>
+
+    <string name="cover_gallery_manage">封面图集</string>
+
+    <string name="query_no_result">未找到匹配内容</string>
+
+    <string name="source_recycle_bin_cleared">回收站已清空</string>
+
+    <string name="app_theme_night_apply_failed">夜间主题应用失败</string>
+
+    <string name="replace_preview">替换预览</string>
+
+    <string name="rr_heatmap_clear_filter">清除筛选</string>
+
+    <string name="module_type_grid">网格</string>
+
+    <string name="debug_ping_host_empty">请输入域名或IP地址</string>
+
+    <string name="cache_manage_upload_failed">上传失败：%1$s</string>
+
+    <string name="fvd_downloading">下载备份文件...</string>
+
+    <string name="homepage_new_name">新名称</string>
+
+    <string name="app_theme_component_default_name">应用主题组件</string>
+
+    <string name="rr_hours">小时</string>
+
+    <string name="storage_clear_failed">清理失败</string>
+
+    <string name="highlight_rule_edit">编辑规则</string>
+
+    <string name="homepage_browse_source">浏览书源</string>
+
+    <string name="debug_clipboard_empty">剪贴板为空</string>
+
+    <string name="rr_aggregate_view">汇总视图</string>
+
+    <string name="bookmark_search_chapter_name">章节名称</string>
+
+    <string name="perm_book_delete">Book删除</string>
+
+    <string name="preview_title_start_page">启动页</string>
+
+    <string name="manga_hide_footer_info">隐藏右下角状态信息</string>
+
+    <string name="web_service_token_summary">设置Web服务认证令牌</string>
+
+    <string name="perm_book_modify">Book修改</string>
+
+    <string name="last_read_s">最后阅读 %1$s</string>
+
+    <string name="debug_curl_url">URL</string>
+
+    <string name="debug_curl_parsed">解析结果</string>
+
+    <string name="view_content">查看内容</string>
+
+    <string name="homepage_layout_config">布局配置 (layoutConfig)</string>
+
+    <string name="import_rules">导入规则</string>
+
+    <string name="manga_disable_page_anim">禁用翻页动画</string>
+
+    <string name="content_query">内容查询</string>
+
+    <string name="explore_block_rule_rss_source_scope">作用的订阅源</string>
+
+    <string name="tag_selected_opacity">选中标签不透明度</string>
+
+    <string name="multi_select_total_size">总大小: %1$s</string>
+
+    <string name="api_category_source_method">源对象方法</string>
+
+    <string name="fvd_webdav_error">WebDavError\n%s\n将从本地备份恢复。</string>
+
+    <string name="disable_source_recycle_bin">关闭规则回收站</string>
+
+    <string name="intro_lines_4">4行</string>
+
+    <string name="current_applied">当前应用</string>
+
+    <string name="debug_ping_avg_time">平均延迟</string>
+
+    <string name="module_type_waterfall">错位瀑布流</string>
+
+    <string name="rr_open_record">开启记录</string>
+
+    <string name="quick_jump_minutes_b">快退/快进分钟数B</string>
+
+    <string name="rr_calendar">日历</string>
+
+    <string name="show_category_tab">显示分类Tab</string>
+
+    <string name="backward_pre_download">向前预下载</string>
+
+    <string name="debug_ping_failed">失败</string>
+    
+
+    <string name="debug_timestamp">时间戳转换</string>
+
+    <string name="ps_toc_partial_load">目录未完全加载也能进入正文</string>
+
+    <string name="clear_old_records">清除旧记录</string>
+
+    <string name="api_copy_mode_disabled">已关闭复制模式</string>
+
+    <string name="find_text">查找文本</string>
+
+    <string name="rr_unknown_author">未知作者</string>
+
+    <string name="perm_book_read">Book读取</string>
+
+    <string name="view_backup_info_t">查看备份信息</string>
+
+    <string name="smart_tag_rule_unread_desc">尚未产生阅读进度</string>
+
+    <string name="bubble_name">气泡名称</string>
+
+    <string name="highlight_rule_theme_scope_light">仅亮色</string>
+
+    <string name="bubble_svg_edit_title">SVG...</string>
+
+    <string name="added_to_bookshelf">已加入书架：%s</string>
+
+    <string name="import_zip">导入zip</string>
+
+    <string name="highlight_rule_pattern_required">正则表达式不能为空</string>
+
+    <string name="module_status_summary">查看 App 各模块是否运行中</string>
+
+    <string name="app_theme_night_cover_missing">夜间封面图集不存在</string>
+
+    <string name="nav_item_sort_title">导航栏排序</string>
+
+    <string name="explore_block_rule_scope_all">全部</string>
+
+    <string name="keep_blank_line">保留空行</string>
+
+    <string name="storage_cache_count_engines">%1$d个引擎</string>
+
+    <string name="intro_lines_3">3行</string>
+
+    <string name="book_author_other_works_empty">未找到作者其他作品</string>
+
+    <string name="rr_minutes">分钟</string>
+
+    <string name="rr_switch_view">切换视图</string>
+
+    <string name="smart_tag_rule_reading_desc">有阅读进度且未读完</string>
+
+    <string name="find_prev_match">上一个匹配</string>
+
+    <string name="share_top_bar_config">分享顶栏包配置</string>
+
+    <string name="perm_android_system_desc">控制读取系统信息的权限</string>
+
+    <string name="select_column">选择分列(%d)</string>
+
+    <string name="perm_toast_enabled">Toast是否开启</string>
+
+    <string name="title_right">靠右</string>
+
+    <string name="cronet">Cronet</string>
+
+    <string name="pt_toc_partial_load_interval">目录不完全加载间隔</string>
+
+    <string name="perm_cookie_read_desc">允许书源读取Cookie</string>
+
+    <string name="apply_theme">应用</string>
+
+    <string name="highlight_rule_config">高亮规则</string>
+
+    <string name="homepage_args">参数 (args)</string>
+
+    <string name="explore_preload">预加载</string>
+
+    <string name="smart_tag_rule_local">本地</string>
+
+    <string name="search_doc_result_count">%d 条匹配</string>
+
+    <string name="highlight_rule_help">高亮规则说明</string>
+
+    <string name="storage_load_failed">加载失败</string>
+
+    <string name="category">分类</string>
+
+    <string name="share_note_export_failed">导出失败</string>
+
+    <string name="bookshelf_tag_rename_scope">在所有分组中重命名"%1$s"</string>
+
+    <string name="source_info_code_lines">代码行数</string>
+
+    <string name="reset_default">恢复默认</string>
+
+    <string name="expand_all">全部展开</string>
+
+    <string name="bubble_import_zip">导入 zip</string>
+
+    <string name="bubble_svg_template">SVG 模板，支持 ${color} 和 ${num}</string>
+
+    <string name="cover_html_save_changes">是否保存当前编辑？</string>
+
+    <string name="storage_clear_all">一键清理</string>
+
+    <string name="module_type_ranking">排行榜</string>
+
+    <string name="fvd_webdav_restore_error">WebDav恢复出错\n%s</string>
+
+    <string name="debug_loading">加载中...</string>
+
+    <string name="perm_section_book">Book对象管理</string>
+
+    <string name="highlight_rule_book_title_desc">高亮《》中的书名、篇名和作品名</string>
+
+    <string name="app_theme_missing_top_bar">应用主题包缺少顶栏配置</string>
+
+    <string name="paste">粘贴</string>
+
+    <string name="module_status">模块运行状态</string>
+
+    <string name="smart_tag_rule_video">视频</string>
+
+    <string name="debug_ua_firefox">Firefox</string>
+
+    <string name="nav_bar_default_day_name">日间底栏</string>
+
+    <string name="tag_bar_opacity">顶栏不透明度</string>
+
+    <string name="smart_tag_rule_cannot_update_desc">已关闭自动更新</string>
+
+    <string name="book_tag_s">标签：%s</string>
+
+    <string name="nav_bar_effect_solid">实色</string>
+
+    <string name="next_page_lazy_loading">下一页懒加载中…</string>
+
+    <string name="storage_cache_tts_desc">在线朗读引擎下载的语音文件</string>
+
+    <string name="debug_now">获取当前时间</string>
+
+    <string name="share_note_font">字体</string>
+
+    <string name="storage_cache_log_name">日志文件</string>
+
+    <string name="highlight_rule_batch_changed">已更新 %d 条规则</string>
+
+    <string name="menu_highlight_rule">高亮设置</string>
+
+    <string name="smart_tag_enable_summary">根据书籍类型、阅读进度、章节数量和更新状态自动匹配标签</string>
+
+    <string name="text_bold_content">正文</string>
+
+    <string name="highlight_rule_book_title_name">书名号高亮</string>
+
+    <string name="restore_show_selector_summary">恢复时显示文件选择对话框，可选择要恢复的内容</string>
+
+    <string name="source_used_api">源所用API</string>
+
+    <string name="explore_block_rule_config">屏蔽规则</string>
+
+    <string name="app_theme_config_corrupted">应用主题配置文件损坏，已保留原文件</string>
+
+    <string name="rr_active_days">活跃日</string>
+
+    <string name="explore_block_rule_pattern_hint">输入关键词或正则表达式</string>
+
+    <string name="show_search_progress">显示搜索进度</string>
+
+    <string name="smart_tag_rule_audio_desc">音频书籍</string>
+
+    <string name="debug_ping_timeout">超时(ms)</string>
+
+    <string name="txt_toc_rule_search">TXT目录规则-搜索</string>
+
+    <string name="backward_pre_download_s">向前预下载 %s 章</string>
+
+    <string name="book_tag_existing">已有标签</string>
+
+    <string name="download_open_folder_failed">无法打开文件夹</string>
+
+    <string name="fvd_detect_format">检测格式</string>
+
+    <string name="quick_jump_minutes_summary">分钟数：%d分钟</string>
+
+    <string name="debug_ping_resolve_failed">域名解析失败</string>
+
+    <string name="rr_heatmap_show_by_duration">按阅读时长显示</string>
+
+    <string name="application_theme_summary">统一管理主题、顶栏、底栏和封面图集，支持导入和导出当前分支(MAX)、archive 版、md3 版以及 .red 格式的主题包</string>
+
+    <string name="rr_heatmap_show_by_count">按阅读次数显示</string>
+
+    <string name="bcs_save_selection">保存选择</string>
+
+    <string name="share_note_add_template">添加模板</string>
+
+    <string name="bubble_import_count_success">成功导入 %1$d 个气泡包</string>
+
+    <string name="export_format_native">当前分支 (MAX)</string>
+
+    <string name="underline_width_setting">下划线粗细</string>
+
+    <string name="mute_play_enabled">当前静音播放已启用</string>
+
+    <string name="search_empty_title">未找到匹配结果</string>
+
+    <string name="preview_title_content">内容页</string>
+
+    <string name="homepage_create">创建</string>
+
+    <string name="explore_block_rule_is_regex">启用正则</string>
+
+    <string name="search_url_record_hint">搜索URL/域名/来源</string>
+
+    <string name="video_play_cache_summary">播放时缓存视频，看完可离线播放；关闭则只播放不缓存</string>
+
+    <string name="download_empty_paused_subtitle">没有被暂停的下载任务</string>
+
+    <string name="next_page_lazy_load">下一页懒加载</string>
+
+    <string name="import_from_clipboard">从剪贴板导入</string>
+
+    <string name="highlight_rule_reset_confirm">将高亮规则恢复为默认预置？</string>
+
+    <string name="perm_toast_duration_desc">控制Toast显示时长</string>
+
+    <string name="smart_tag_rule_local_desc">本地书籍</string>
+
+    <string name="bubble_day_emphasis">日间强调颜色</string>
+
+    <string name="app_theme_unsupported_version">不支持的应用主题包版本</string>
+
+    <string name="source_recycle_bin_restore_msg">恢复“%1$s”？</string>
+
+    <string name="all_versions">所有版本</string>
+
+    <string name="homepage_set_detail">集详情</string>
+
+    <string name="manga_mode_normal">普通模式</string>
+
+    <string name="zero_match">0 处匹配</string>
+
+    <string name="adding_books">正在添加 %d 本书…</string>
+
+    <string name="show_more_info">显示更多信息</string>
+
+    <string name="explore_block_rule_clipboard_empty">剪贴板为空</string>
+
+    <string name="homepage_joined">已加入</string>
+
+    <string name="query_hint">输入要查询的内容</string>
+
+    <string name="storage_cache_count_books">%1$d本</string>
+
+    <string name="verbose_update_log">详细更新日志</string>
+
+    <string name="bubble_force_software">强制使用软件气泡</string>
+
+    <string name="debug_response_body">响应体</string>
+
+    <string name="nav_bar_effect_glass">玻璃</string>
+
+    <string name="rr_active_days_value_single">1天</string>
+
+    <string name="smart_tag_rule_medium">中长篇</string>
+
+    <string name="preview_title_format">预览: %s</string>
+
+    <string name="highlight_rule_sample_text">预览文本</string>
+
+    <string name="bcs_export_selected">导出选中</string>
+
+    <string name="debug_no_match">没有匹配结果</string>
+
+    <string name="debug_ping_sent">发送</string>
+
+    <string name="layout_mode">布局模式</string>
+
+    <string name="sure_clear_cache">确定清理《%s》的缓存吗？</string>
+
+    <string name="preview_content">预览内容页</string>
+
+    <string name="rr_merge_same_name">合并同名书籍</string>
+
+    <string name="effect_mode">材质模式</string>
+
+    <string name="add_books_success">成功添加 %d 本书</string>
+
+    <string name="homepage_delete_module_msg">确定要删除这个模块吗？</string>
+
+    <string name="cache_manage_stats">统计</string>
+
+    <string name="backup_scope_webdav">WebDAV 云备份</string>
+
+    <string name="group_by_domain">按域名分组</string>
+
+    <string name="rr_select_merge_target">选择要合并到「%s」的记录：</string>
+
+    <string name="input_is_empty">输入不能为空</string>
+
+    <string name="homepage_expand_all">展开全部</string>
+
+    <string name="debug_encode_type">编码类型</string>
+
+    <string name="copy_current_path">复制当前路径</string>
+
+    <string name="explore_block_rule_import_success">屏蔽规则导入成功</string>
+
+    <string name="debug_result">结果</string>
+
+    <string name="switch_layout_waterfall">瀑布流</string>
+
+    <string name="more_settings">更多设置</string>
+
+    <string name="application_theme_import">导入应用主题</string>
+
+    <string name="perm_section_cookie">Cookie管理</string>
+
+    <string name="rr_total_read_achievement">累计阅读成就</string>
+
+    <string name="debug_timestamp_to_date">时间戳转日期</string>
+
+    <string name="homepage_switch_layout">切换布局</string>
+
+    <string name="smart_tag_enable">智能标签</string>
+
+    <string name="grammar_select">语法选择</string>
+
+    <string name="share_nav_bar_config">分享底栏包配置</string>
+
+    <string name="verbose_update_log_summary">启用后在调试日志中显示书籍更新过程的详细信息</string>
+
+    <string name="bubble_create_manual">手动创建</string>
+
+    <string name="source_recycle_bin_empty">回收站为空</string>
+
+    <string name="explore_block_rule_scope_author">作者</string>
+
+    <string name="standard_bottom_bar">常规底栏</string>
+
+    <string name="switch_layout_list">列表</string>
+
+    <string name="download_empty_completed_title">暂无已完成的任务</string>
+
+    <string name="api_used">已使用</string>
+
+    <string name="debug_input">输入</string>
+
+    <string name="app_theme_invalid_format">应用主题包格式错误</string>
+
+    <string name="smart_tag_rule_has_update">有更新</string>
+
+    <string name="fvd_restoring">正在恢复...</string>
+
+    <string name="process_text_menu_config">其他应用菜单配置</string>
+
+    <string name="debug_ua_custom">自定义</string>
+    
+
+    <string name="debug_timestamp_title">时间戳 (毫秒)</string>
+
+    <string name="homepage_custom_title_hint">自定义标题（留空恢复默认）</string>
+
+    <string name="rr_times_suffix">次</string>
+
+    <string name="applied">已应用</string>
+
+    <string name="debug_ping_host">目标主机</string>
+
+    <string name="top_bar_import_zip">导入 zip</string>
+
+    <string name="match_count_format">%d 处匹配</string>
+
+    <string name="rr_second">秒</string>
+
+    <string name="storage_open_path">打开路径</string>
+
+    <string name="cover_html_unsaved_hint">当前编辑的内容未保存，切换模板将丢失编辑内容</string>
+
+    <string name="explore_block_rule_source_scope">作用的书源</string>
+
+    <string name="book_read_record">阅读记录</string>
+
+    <string name="storage_cache_acache_desc">书源变量、用户信息等运行时缓存</string>
+
+    <string name="copy_matched_source_urls">拷贝匹配的源URL</string>
+
+    <string name="top_bar_wallpaper_selected">已选择</string>
+
+    <string name="time_day">天</string>
+
+    <string name="application_theme_name">应用主题名称</string>
+
+    <string name="read_aloud_floating_ui_summary">默认关闭为旧模式：可打开朗读页，但不显示悬浮窗；开启后显示朗读悬浮窗</string>
+
+    <string name="rr_read_duration">阅读时长</string>
+
+    <string name="rr_heatmap_day_unit">天</string>
+
+    <string name="homepage_delete_module">删除模块</string>
+
+    <string name="module_type_card">推荐卡片</string>
+
+    <string name="app_theme_day_top_bar_missing">日间顶栏不存在</string>
+
+    <string name="manga_mode_scroll">卷轴模式</string>
+
+    <string name="storage_clear_confirm_msg">确定要清理 \"%1$s\" 吗？此操作不可撤销。</string>
+
+    <string name="no_match_found">正则表达式有效，但未找到匹配</string>
+
+    <string name="storage_cache_internal_name">内部缓存</string>
+
+    <string name="text_bold_coarse_mode">粗略调整</string>
+
+    <string name="cover_html_code_empty">HTML代码不能为空</string>
+
+    <string name="explore_block_rule_scope_title">标题</string>
+
+    <string name="debug_ua_safari_ios">Safari iOS</string>
+
+    <string name="perm_android_content">android.content 访问</string>
+
+    <string name="fvd_missing_fields">缺少字段: %s</string>
+
+    <string name="debug_curl_test">CURL测试</string>
+
+    <string name="line_number">第 %d 行</string>
+
+    <string name="default_top_bar">默认顶栏</string>
+
+    <string name="hide_source_recycle_bin">隐藏规则回收站</string>
+
+    <string name="cannot_delete_current_theme">不能删除正在使用的主题</string>
+
+    <string name="highlight_rule_pattern">正则表达式</string>
+
+    <string name="switch_to_new_explore">切换到新版发现</string>
+
+    <string name="add_all_to_shelf">全部加入书架</string>
+
+    <string name="manga_read_mode">阅读模式</string>
+
+    <string name="application_theme_component_bottom_bar">底栏</string>
+
+    <string name="preview_source_url">预览源URL</string>
+
+    <string name="theme_summary">点击应用按钮应用主题，长按主题进入批量管理</string>
+
+    <string name="show_full_chapter_name">完全显示章节名</string>
+
+    <string name="rr_search_books">搜索书籍</string>
+
+    <string name="switch_layout_current">切换布局(当前:%1$s)</string>
+
+    <string name="storage_total_size">缓存总大小</string>
+
+    <string name="application_theme_component_cover">封面图集</string>
+
+    <string name="text_menu_edit_title">修改菜单名称</string>
+
+    <string name="app_theme_bg_image_missing">主题背景图片不存在: %1$s</string>
+
+    <string name="fvd_invalid">无效</string>
+
+    <string name="touch_page_anim_speed_title">触摸翻页速度</string>
+
+    <string name="fvd_can_restore">可以正常恢复</string>
+
+    <string name="highlight_rule_layout_scope_all">所有排版</string>
+
+    <string name="side_bar">侧边栏</string>
+
+    <string name="app_theme_encrypted_not_supported">该主题包已加密，不支持导入</string>
+
+    <string name="source_url_duplicate_title">书源地址重复</string>
+
+    <string name="homepage">首页</string>
+
+    <string name="share_note_save_failed">保存图片失败：%1$s</string>
+
+    <string name="view_backup_info">备份信息</string>
+
+    <string name="double_tap_seek_seconds">双击跳转秒数</string>
+
+    <string name="parse_backup_failed">解析备份文件失败</string>
+
+    <string name="share_note_palette">配色</string>
+
+    <string name="skip_seconds_summary">秒数：%d秒</string>
+
+    <string name="explore_block_rule_group_manage">管理分组</string>
+
+    <string name="app_theme_night_top_bar_missing">夜间顶栏不存在</string>
+
+    <string name="more_matches">还有 %d 处匹配</string>
+
+    <string name="rr_minute">分钟</string>
+
+    <string name="application_theme_delete_options_hint">删除「%1$s」时，勾选要一并删除的关联组件，未勾选的组件将被保留</string>
+
+    <string name="local_network_permission_denied">未授予本地网络权限，Web 服务已停止</string>
+
+    <string name="discard">不保存</string>
+
+    <string name="regex_valid_match_success">正则表达式有效，匹配成功</string>
+
+    <string name="video_play_cache">边播放边缓存</string>
+
+    <string name="read_aloud_floating_ui">启用朗读悬浮窗</string>
+
+    <string name="module_type_button_group">按钮组</string>
+
+    <string name="search_empty_desc">换个关键词试试，或者扩大搜索范围</string>
+
+    <string name="rr_day">天</string>
+
+    <string name="highlight_rule_pattern_hint">例如：《[^》\\n]{1,80}》</string>
+
+    <string name="highlight_rule_disable_all">全部关闭</string>
+
+    <string name="web_search">网页搜索</string>
+
+    <string name="explore_block_rule_scope_word_count">字数</string>
+
+    <string name="detecting">识别中...</string>
+
+    <string name="explore_block_rule_add">添加屏蔽规则</string>
+
+    <string name="explore_block_rule_import_invalid">无效的屏蔽规则数据</string>
+
+    <string name="share_note_render_failed">生成分享图片失败：%1$s</string>
+
+    <string name="cache_manage_delete_all_confirm">删除当前列表 %1$d 本书的全部缓存？</string>
+
+    <string name="interface_manage">界面管理</string>
+
+    <string name="realtime_preview">实时预览</string>
+
+    <string name="storage_cache_webview_name">WebView 缓存</string>
+
+    <string name="text_bold_fine_tip_message">精细调整模式支持 100~900 的字重值，数值越小字体越细，越大越粗。此功能需要 Android 9 (API 28) 以上版本。</string>
+
+    <string name="bubble_force_software_summary">识别正文图片形式的段评入口，并使用当前气泡样式渲染</string>
+
+    <string name="enable_eink_render_summary">日间与夜间模式均应用墨水屏显示风格（界面与图片转为灰阶，滚动会更耗性能）</string>
+
+    <string name="debug_url_hint">请输入URL</string>
+
+    <string name="debug_date_hint">请输入日期</string>
+
+    <string name="collapse_volume_name">卷名折叠</string>
+
+    <string name="block_rule_manage_summary">管理发现、搜索和订阅源的屏蔽规则</string>
+
+    <string name="rr_heatmap_days">天数</string>
+
+    <string name="perm_android_system">系统信息读取</string>
+
+    <string name="quick_jump_forward_b">快进%d分钟</string>
+
+    <string name="perm_book_modify_desc">允许脚本修改Book对象</string>
+
+    <string name="export_to_file">导出到文件</string>
+
+    <string name="perm_cookie_read">Cookie读取</string>
+
+    <string name="explore_block_rule_pattern_required">关键词或正则不能为空</string>
+
+    <string name="debug_execute">执行</string>
+
+    <string name="cover_html_empty">空模板</string>
+
+    <string name="rr_heatmap_read">阅读</string>
+
+    <string name="homepage_empty_title">暂无首页内容</string>
+
+    <string name="app_theme_file_too_large">应用主题文件过大</string>
+
+    <string name="show_book_tag_in_book_info">显示设置标签</string>
+
+    <string name="rr_selected_items">已选择 %d 项</string>
+
+    <string name="debug_request_src">请求体源码</string>
+
+    <string name="cache_manage_batch_upload_done">批量上传完成：成功 %1$d 个，失败 %2$d 个</string>
+
+    <string name="application_theme_empty">暂无应用主题，请先调整界面配置，再保存当前组合。</string>
+
+    <string name="download_empty_all_subtitle">在浏览器中下载的文件会显示在这里</string>
+
+    <string name="top_bar_summary_empty">暂无%s顶栏包，点击下方添加</string>
+
+    <string name="custom_top_bar">自定义顶栏</string>
+
+    <string name="rr_cancel_selection">取消选择</string>
+
+    <string name="nav_item_sort_default_home">默认主页</string>
+
+    <string name="double_tap_seek_seconds_summary">双击跳转秒数：%d秒</string>
+
+    <string name="homepage_browse_source_modules">浏览书源模块</string>
+
+    <string name="bookmark_search_book_text">原文</string>
+
+    <string name="view_result">查看结果</string>
+
+    <string name="manga_menu_auto">自动</string>
+
+    <string name="added_to_favorites">已加入收藏</string>
+
+    <string name="enable_eink_render">启用墨水屏渲染</string>
+
+    <string name="debug_response_src">响应体源码</string>
+
+    <string name="audio_play_cache">边播放边缓存</string>
+
+    <string name="top_bar_transparent">顶栏颜色透明</string>
+
+    <string name="application_theme_builtin_name">默认主题</string>
+
+    <string name="rr_heatmap_count">次数</string>
+
+    <string name="help_search">帮助文档搜索</string>
+
+    <string name="app_theme_night_nav_bar_missing">夜间底栏不存在</string>
+
+    <string name="first_read_time_tag">最初阅读时间:</string>
+
+    <string name="current_value">当前：%dsp</string>
+
+    <string name="no_process_text_apps">没有找到支持文本处理的应用</string>
+
+    <string name="homepage_view">查看</string>
+
+    <string name="search_engine_rule">搜索引擎规则</string>
+
+    <string name="explore_block_rule_scope_kind">分类</string>
+
+    <string name="debug_ua_chrome_mobile">Chrome Mobile</string>
+
+    <string name="share_note_manage">管理</string>
+
+    <string name="debug_ping_show_all">显示全部</string>
+
+    <string name="highlight_rule_theme_scope_dark">仅暗色</string>
+
+    <string name="homepage_discover">发现</string>
+
+    <string name="clipboard_empty">剪贴板为空</string>
+
+    <string name="homepage_search_source">搜索书源</string>
+
+    <string name="bottom_background_color">底栏背景色</string>
+
+    <string name="skip_intro_outro_enabled">跳过片头片尾</string>
+
+    <string name="rr_latest_read">最后阅读</string>
+
+    <string name="preview_dict">预览字典</string>
+
+    <string name="debug_headers_hint">每行一个，格式: Key: Value</string>
+
+    <string name="homepage_multi_select_hint">点击可多选分类，每个分类生成一个按钮</string>
+
+    <string name="search_help">搜索帮助</string>
+
+    <string name="share_note_template_manage">摘录分享模板</string>
+
+    <string name="same_name_book_in_shelf">书架里有同名书籍，点击加入书架会覆盖当前版本</string>
+
+    <string name="storage_cache_log_desc">应用运行日志、错误日志等</string>
+
+    <string name="record_url_enabled">URL记录已启用</string>
+
+    <string name="application_theme_not_set">未设置</string>
+
+    <string name="highlight_rule_color_invalid">颜色格式不正确</string>
+
+    <string name="debug_mode">调试工具</string>
+
+    <string name="share_note_style">分享样式</string>
+
+    <string name="wallpaper">壁纸</string>
+
+    <string name="regular_top_bar">常规顶栏</string>
+
+    <string name="key_page_anim_speed_title">按键翻页速度</string>
+
+    <string name="homepage_click_retry">点击重试</string>
+
+    <string name="stop_debug">停止调试</string>
+
+    <string name="debug_ping_packets">数据包</string>
+
+    <string name="debug_ping_start">开始测试</string>
+
+    <string name="explore_block_rule_rss_target_scope">订阅源作用范围</string>
+
+    <string name="clear_old_30_days">清除30天前的记录</string>
+
+    <string name="book_author_other_works_error">搜索失败: %1$s</string>
+
+    <string name="rr_yesterday">昨天</string>
+
+    <string name="share_note_template_manage_summary">管理正文长按分享图片使用的 HTML 模板</string>
+
+    <string name="storage_cache_epub_desc">Epub 格式书籍的解压临时文件</string>
+
+    <string name="debug_convert">转换</string>
+
+    <string name="rr_days">天</string>
+
+    <string name="highlight_rule_bracket_note_desc">高亮括号、方括号和【】中的注释、补充说明</string>
+
+    <string name="text_bold_title">标题</string>
+
+    <string name="underline_width_thin">细</string>
+
+    <string name="cover_html_code">自动生成封面代码</string>
+
+    <string name="debug_send">发送</string>
+
+    <string name="application_theme_name_exists">应用主题名称已存在</string>
+
+    <string name="switch_to_new_rss">切换到新版订阅</string>
+
+    <string name="web_service_auth_title">Web服务认证</string>
+
+    <string name="bookshelf_icon_style">书架图标样式</string>
+
+    <string name="download_manage_clear_completed">清除已完成</string>
+
+    <string name="skip_intro_seconds">跳过片头秒数</string>
+
+    <string name="rr_heatmap_wed">三</string>
+
+    <string name="perm_android_net">android.net 访问</string>
+
+    <string name="highlight_rule_scope_hint">书名或书源URL，分号分隔，留空则对所有书籍生效</string>
+
+    <string name="explore_block_rule_empty">暂无屏蔽规则</string>
+
+    <string name="source_info">源信息</string>
+
+    <string name="backup_selector">备份选择器</string>
+
+    <string name="debug_ping_received">接收</string>
+
+    <string name="bookshelf_icon_style_new">新版（封面右上角图标）</string>
+
+    <string name="app_theme_day_cover_missing">日间封面图集不存在</string>
+
+    <string name="explore_block_rule_exclude_scope_hint">排除的书源URL，分号分隔</string>
+
+    <string name="underline_offset_far">远</string>
+
+    <string name="url_record_count">共 %1$d 条记录</string>
+
+    <string name="storage_cache_temp_desc">下载临时文件、解压临时目录等</string>
+
+    <string name="import_failed">导入失败</string>
+
+    <string name="source_recycle_bin_disabled">回收模式已关闭</string>
+
+    <string name="custom_nav_bar">自定义底栏</string>
+
+    <string name="debug_log_floating_ball_summary">启用后在应用任意页面显示调试日志悬浮球</string>
+
+    <string name="unknown_type">未知类型</string>
+
+    <string name="top_bar_summary">管理主页面顶栏的%s样式</string>
+
+    <string name="view_code">查看代码</string>
+
+    <string name="preview_start_page">预览启动页</string>
+
+    <string name="bcs_total_size">总大小: %s</string>
+
+    <string name="web_service_token_title">Web服务Token</string>
+
+    <string name="api_category_function">内置函数</string>
+
+    <string name="set_timer_by_chapter">按章节定时</string>
+
+    <string name="apply">应用</string>
+
+    <string name="cover_gallery_summary">管理分组封面图集，可设置为全局默认封面源</string>
+
+    <string name="share_note_applied">已应用</string>
+
+    <string name="smart_import">智能导入</string>
+
+    <string name="homepage_custom_title">自定义标题</string>
+
+    <string name="perm_book_delete_desc">允许脚本删除Book对象</string>
+
+    <string name="rr_heatmap_next_month">下个月</string>
+
+    <string name="debug_regex_pattern_hint">请输入正则表达式</string>
+
+
+    <string name="show_bookshelf_tag_bar">显示标签栏</string>
+
+    <string name="source_content_query">源内容查询</string>
+
+    <string name="match_error">匹配出错</string>
+
+    <string name="debug_size">大小</string>
+
+    <string name="share_note_source_builtin">内置</string>
+
+    <string name="custom">自定义</string>
+
+    <string name="download_status_running">下载中</string>
+
+    <string name="fvd_title">选择恢复内容</string>
+
+    <string name="nav_bar_layout_standard">常规底栏</string>
+
+    <string name="text_bold_bold">粗</string>
+
+    <string name="highlight_rule_delete_confirm">删除规则“%1$s”？</string>
+
+    <string name="source_recycle_bin_clear_title">清空回收站</string>
+
+    <string name="text_menu_config">展开文本菜单配置</string>
+
+    <string name="homepage_all_groups">全部分组</string>
+
+    <string name="app_theme_duplicate_assets">应用主题包包含重复资源</string>
+
+    <string name="homepage_delete_set">删除集</string>
+
+    <string name="rr_heatmap_thu">四</string>
+
+    <string name="switch_layout">切换布局</string>
+
+    <string name="rr_more">更多</string>
+
+    <string name="debug_ping_count">次数</string>
+
+    <string name="homepage_load_failed">加载失败</string>
+
+    <string name="app_theme_invalid_asset_path">应用主题资源无效: %1$s</string>
+
+    <string name="debug_ping_test_desc">测试域名或IP连通性</string>
+
+    <string name="perm_cookie_write">Cookie写入</string>
+
+    <string name="debug_http_request_desc">发送HTTP请求并查看响应</string>
+
+    <string name="corner_scale">圆角倍率</string>
+
+    <string name="rr_longest_streak">最长连续</string>
+
+    <string name="perm_section_java">Java API</string>
+
+    <string name="explore_block_rule_enable_master">开启屏蔽规则</string>
+
+    <string name="debug_format_json">格式化JSON</string>
+
+    <string name="highlight_rule_layout_scope">作用排版</string>
+
+    <string name="homepage_unnamed_module">未命名模块</string>
+
+    <string name="view_cookie">查看Cookie</string>
+
+    <string name="no_backup_file">未找到备份文件</string>
+
+    <string name="smart_tag_rule_audio">有声</string>
+
+    <string name="bookshelf_icon_style_classic">经典（书名前小绿点）</string>
+
+
+    <string name="share_note_manage_templates">管理模板</string>
+
+    <string name="storage_clear_action">清理</string>
+
+    <string name="export_matched_sources">导出匹配的源</string>
+
+    <string name="smart_tag_manage">智能标签管理</string>
+
+    <string name="show_score">开启评分</string>
+
+    <string name="share_note_saved">已保存到相册</string>
+
+    <string name="debug_highlight">高亮显示</string>
+
+    <string name="enable_locate">启用定位</string>
+
+    <string name="rr_days_suffix">天</string>
+
+    <string name="export_format_archive">archive 版</string>
+
+    <string name="export_rules">导出规则</string>
+
+    <string name="source_recycle_bin_batch_restore_msg">恢复选中的 %1$d 项？</string>
+
+    <string name="video_cache_settings">缓存</string>
+
+    <string name="homepage_more">更多</string>
+
+    <string name="source_url_duplicate_cover_msg">已存在相同地址的书源“%1$s”，保存将覆盖它，是否继续？</string>
+
+    <string name="debug_regex_multiline">多行模式</string>
+
+    <string name="highlight_rule_text_color">文字颜色</string>
+
+    <string name="all_docs">所有文档</string>
+
+    <string name="rr_heatmap_less">少</string>
+
+    <string name="search_help_title">搜索帮助文档</string>
+
+    <string name="fvd_cannot_restore">无法恢复</string>
+
+    <string name="bubble_night_normal">夜间普通颜色</string>
+
+    <string name="homepage_browse_rss_source_modules">浏览订阅源模块</string>
+
+    <string name="manual_config">手动配置</string>
+
+    <string name="debug_http_request">HTTP请求调试</string>
+
+    <string name="highlight_rule_scope">作用范围，书名或书源URL</string>
+
+    <string name="clipboard_import_remember">记住我的选择</string>
+
+    <string name="local_network_permission_rationale">Android 17 起限制了局域网访问，授予「附近的设备」权限后其他设备才能连接 Web 服务</string>
+
+    <string name="debug_body">请求体</string>
+
+    <string name="homepage_rename">重命名</string>
+
+    <string name="smart_tag_rule_long">长篇</string>
+
+    <string name="debug_message">消息</string>
+
+    <string name="rr_book_count_value_single">1本</string>
+
+    <string name="process_text_menu_config_desc">选择您想要显示的其他应用菜单项，Android 6.0以上系统支持此功能</string>
+
+    <string name="need_restart_app">此更改需要重启应用才能生效，是否立即重启？</string>
+
+    <string name="clipboard_import_confirm">检测到导入口令</string>
+
+    <string name="rr_heatmap_date_format">M月d日 E</string>
+
+    <string name="highlight_rule_color_hint">留空表示不设置，或使用 #AARRGGBB / #RRGGBB</string>
+
+    <string name="source_recycle_bin_conflict_title">规则已存在</string>
+
+    <string name="perm_cookie_delete_desc">允许书源删除Cookie</string>
+
+    <string name="rr_delete_selected">删除选中</string>
+
+    <string name="debug_headers">请求头</string>
+
+    <string name="cache_manage_use_cache_failed">找不到这本书的缓存清单，无法把它加回书架</string>
+
+    <string name="highlight_rule_sample_text_hint">输入一段用于预览的文本</string>
+
+    <string name="expand_filters_by_default">筛选栏默认展开</string>
+
+    <string name="download_empty_completed_subtitle">没有已完成的下载任务</string>
+
+    <string name="intro_lines_2">2行</string>
+
+    <string name="source_recycle_bin_time_left">删除于 %1$s - 剩余 %2$d 天</string>
+
+    <string name="book_read_time_label">阅读时长：%s</string>
+
+    <string name="perm_java_lang_desc">控制 java.lang 类的访问权限</string>
+
+    <string name="explore_block_rule">屏蔽规则</string>
+
+    <string name="rr_total_read_time">共阅读 %s</string>
+
+    <string name="application_theme_component_value">%1$s\n%2$s</string>
+
+    <string name="source_info_update_time">最后更新时间</string>
+
+    <string name="share_note_template">模板</string>
+
+    <string name="download_tab_downloading">下载中</string>
+
+    <string name="smart_tag_rule_has_update_desc">最近一次检查发现新章节</string>
+
+    <string name="share_note_export_zip">导出 ZIP</string>
+
+    <string name="view_read_record">查看</string>
+
+    <string name="debug_ping_loss_rate">丢包率</string>
+
+    <string name="debug_ping_timeout_msg">请求超时</string>
+
+    <string name="video_play_settings">播放</string>
+
+    <string name="fvd_selected_info">已选 %1$d/%2$d 项，%3$s</string>
+
+    <string name="copy_crash_log_summary">崩溃后重新进入应用时自动复制日志到剪贴板</string>
+
+    <string name="share_note_menu">摘录分享</string>
+
+    <string name="play_audio">播放音频</string>
+
+    <string name="eruda_enabled">网页控制台已开启</string>
+
+    <string name="opacity">不透明度</string>
+
+    <string name="homepage_set_name">集名称</string>
+
+    <string name="highlight_rule_enabled">启用这条规则</string>
+
+    <string name="rr_book_count_value">%d本</string>
+
+    <string name="quick_jump_forward_a">快进%d分钟</string>
+
+    <string name="source_info_name">名称</string>
+
+    <string name="api_copy_mode_enabled">已开启复制模式</string>
+
+    <string name="perm_java_net">java.net 访问</string>
+
+    <string name="module_type_banner">横滑轮播</string>
+
+    <string name="auto_backup_summary">退出 APP 时自动 Webdav备份和本地备份（距上次备份超过24小时）</string>
+
+    <string name="nav_bar_summary_empty">暂无%s底栏包，点击下方添加</string>
+
+    <string name="eruda_disabled">网页控制台已关闭</string>
+
+    <string name="highlight_rule_dialog_title">高亮规则</string>
+
+    <string name="download_status_pending">等待中</string>
+
+    <string name="highlight_rule_empty">暂无高亮规则</string>
+
+    <string name="bcs_selected_count">已选 %d 本</string>
+
+    <string name="application_theme_manage">应用主题</string>
+
+    <string name="download_link_label">链接: %1$s</string>
+
+    <string name="highlight_rule_name_hint">例如：对话、书名号、旁白注释</string>
+
+    <string name="highlight_rule_layout_scope_count">已选 %1$d 个排版</string>
+
+    <string name="debug_curl_hint">粘贴curl命令，支持浏览器复制的完整命令</string>
+
+    <string name="cache_manage_delete_book_confirm">删除《%1$s》的全部缓存？</string>
+
+    <string name="quick_jump_back_b">快退%d分钟</string>
+
+    <string name="debug_regex_pattern">正则表达式</string>
+
+    <string name="homepage_module_count">%d 个模块</string>
+
+    <string name="match_times">匹配次数: %d 次</string>
+
+    <string name="debug_input_hint">请输入要转换的内容</string>
+
+    <string name="homepage_edit_module">编辑模块</string>
+
+    <string name="source_recycle_bin_count">%1$s - %2$d 项</string>
+
+    <string name="reader_info_placeholders">占位符</string>
+
+    <string name="perm_toast_duration">Toast时长控制</string>
+
+    <string name="bookshelf_icon_style_summary">书籍已在书架的提示图标显示方式</string>
+
+    <string name="text_menu_drag_sort">拖动排序</string>
+
+    <string name="debug_user_agent">User-Agent</string>
+
+    <string name="permission_manage_summary">管理Cookie、Book对象、API和Toast的访问权限</string>
+
+    <string name="highlight_rule_enable_all">全部启用</string>
+
+    <string name="cover_gallery_manage_summary">管理分组封面图集，可作为默认封面来源</string>
+
+    <string name="highlight_rule_add">新增规则</string>
+
+    <string name="debug_curl_test_desc">解析执行CURL命令</string>
+
+    <string name="highlight_rule_dialog_name">对话高亮</string>
+
+    <string name="ps_toc_partial_load_interval">%s 秒 + 书源并发率</string>
+
+    <string name="api_not_used">未使用</string>
+
+    <string name="debug_regex_test_desc">测试正则表达式匹配</string>
+
+    <string name="rr_day_before_yesterday">前天</string>
+
+    <string name="highlight_rule_exclude_scope_hint">要排除的书名或书源URL，分号分隔</string>
+
+    <string name="bubble_size_scale">大小倍率，0.5-1.5</string>
+
+    <string name="api_category_variable">内置变量</string>
+
+    <string name="homepage_create_ranking_group">创建排行榜组（%d个）</string>
+
+    <string name="debug_ping_success">成功</string>
+
+    <string name="source_recycle_bin_type_group">%1$s - %2$s</string>
+
+    <string name="book_cache">书籍缓存</string>
+
+    <string name="query_content">查询网页内容</string>
+
+    <string name="already_in_bookshelf">已在书架中</string>
+
+    <string name="applied_nav_bar_config">已应用底栏包: %s</string>
+
+    <string name="rr_confirm_delete">确认删除</string>
+
+    <string name="nav_bar_effect_frosted">磨砂</string>
+
+    <string name="perm_java_io">java.io 访问</string>
+
+    <string name="debug_url_empty">URL不能为空</string>
+
+    <string name="copy">复制</string>
+
+    <string name="underline_width">粗细</string>
+
+    <string name="share_note_select_template">选择分享模板</string>
+
+    <string name="view_restore_info_s">查看当前恢复范围与忽略项</string>
+
+    <string name="download_source_label">来源: %1$s</string>
+
+    <string name="module_type_infinite_grid">无限网格</string>
+
+    <string name="rr_timeline_view">时间线视图</string>
+<string name="accent_color">强调色</string>
+
+    <string name="highlight_rule_theme_scope">作用主题</string>
+
+    <string name="cover_html_enable_summary">使用HTML模板生成封面图片</string>
+
+    <string name="words">字数</string>
+
+    <string name="rr_heatmap_prev_month">上个月</string>
+
+    <string name="general_settings">通用设置</string>
+
+    <string name="explore_block_rule_scope_intro">简介</string>
+
+    <string name="web_debug">网页调试</string>
+
+    <string name="floating_bottom_bar">悬浮底栏</string>
+
+    <string name="download_manage_title">下载管理</string>
+
+    <string name="intro_lines_1">1行</string>
+
+    <string name="source_recycle_bin_summary">临时存放已删除规则，默认保留 7 天</string>
+
+    <string name="share_note_no_template">暂无可用模板</string>
+
+    <string name="action_menu">功能</string>
+
+    <string name="rr_heatmap_fri">五</string>
+
+    <string name="underline_width_thick">粗</string>
+
+    <string name="highlight_rule_enable_group">启用该分组</string>
+
+    <string name="clipboard_import_mode_summary">从其他应用进入主界面时，若剪贴板中存在导入口令的处理方式。</string>
+
+    <string name="share_note_reader">读者</string>
+
+    <string name="cover_html_template">HTML封面模板</string>
+
+    <string name="unsafe_ssl_summary">跳过所有网络请求的SSL证书验证，可能遭受中间人攻击，一般仅在网站证书异常时开启;如果源里访问的ip地址与源URL域名不同，也需开启，比如某些网站可以用ip直连访问</string>
+
+    <string name="preset_rules">预设规则</string>
+
+    <string name="rr_date_format_md_weekday">M月d日 E</string>
+
+    <string name="fvd_select_at_least_one">请至少选择一个文件</string>
+
+    <string name="homepage_title">首页</string>
+
+    <string name="homepage_url">URL</string>
+
+    <string name="smart_tag_rule_medium_desc">章节数 200 到 499 章</string>
+
+    <string name="book_author_other_works_loading">正在加载作者其他作品...</string>
+
+    <string name="bubble_default_name">段评气泡</string>
+
+    <string name="view_details">查看详情</string>
+
+    <string name="download_empty_failed_title">暂无下载失败的任务</string>
+
+    <string name="show_book_border">显示外边框</string>
+
+    <string name="smart_tag_rule_short">短篇</string>
+
+    <string name="bookshelf_tag_rename_title">重命名标签</string>
+
+    <string name="restore_show_selector">恢复显示选择菜单</string>
+
+    <string name="debug_pattern_empty">正则表达式不能为空</string>
+
+    <string name="debug_view_source">查看源码</string>
+
+    <string name="bcs_title">书籍缓存选择</string>
+
+    <string name="rr_confirm_delete_msg">确定要删除这条阅读记录吗？</string>
+
+    <string name="timer_chapter">%d 章</string>
+
+    <string name="fvd_backup_empty">备份文件中没有可恢复的内容</string>
+
+    <string name="manga_mode_japanese">日漫模式</string>
+
+    <string name="fvd_warning">警告</string>
+
+    <string name="collapse_all">全部折叠</string>
+
+    <string name="rr_today">今天</string>
+
+    <string name="smart_tag_rule_reading">在读</string>
+
+    <string name="switch_to_old_rss">切换到经典订阅</string>
+
+    <string name="explore_block_rule_active_rules">开启屏蔽规则后起效的规则</string>
+
+    <string name="debug_ua_default">默认</string>
+
+    <string name="fvd_deselect_all">全不选</string>
+
+    <string name="bookshelf_tag_rename">重命名</string>
+
+    <string name="rr_books_read">已读</string>
+
+    <string name="source_recycle_bin_clear_msg">彻底删除回收站内全部规则？此操作不可恢复。</string>
+
+    <string name="auto_backup_title">自动备份</string>
+
+    <string name="storage_cache_book_desc">章节文本、漫画图片等阅读内容</string>
+
+    <string name="rr_hour">小时</string>
+
+    <string name="app_theme_invalid_asset">应用主题资源格式错误</string>
+
+    <string name="download_status_completed">已完成</string>
+
+    <string name="storage_cache_internal_desc">Cronet 下载临时文件、导出临时文件、WebView 网络缓存等</string>
+
+    <string name="storage_cache_item_count">%1$d 项缓存</string>
+
+    <string name="homepage_create_button_group">创建按钮组（%d个）</string>
+
+    <string name="cache_manage_search_empty">没有匹配的书籍</string>
+
+    <string name="app_theme_name_invalid">应用主题名称无效</string>
+
+    <string name="explore_block_rule_delete_confirm">确定删除规则\"%1$s\"?</string>
+
+    <string name="rr_heatmap_subtitle">查看每天的阅读分布</string>
+
+    <string name="smart_tag_rule_update_error_desc">最近一次更新失败</string>
+
+    <string name="share_note_change_template">更换模板</string>
+
+    <string name="highlight_rule_disable_group">关闭该分组</string>
+
+    <string name="html_code">HTML代码</string>
+
+    <string name="bubble_day_normal">日间普通颜色</string>
+
+    <string name="regex_syntax_error">正则语法错误: %s</string>
+
+    <string name="explore_block_rule_group_default">默认分组</string>
+
+    <string name="highlight_rule_bracket_note_name">括号标注高亮</string>
+
+    <string name="latest_chapter">最新章节</string>
+
+    <string name="view_restore_info_t">查看恢复信息</string>
+
+    <string name="mute_play">静音播放</string>
+
+    <string name="download_status_failed">下载失败</string>
+
+    <string name="debug_curl_empty">CURL命令不能为空</string>
+
+    <string name="homepage_manual_add_module">手动添加模块</string>
+
+    <string name="bookshelf_tag_rename_label">标签名</string>
+
+    <string name="homepage_delete_set_msg">确定要删除这个集吗？集内模块将被移除。</string>
+
+    <string name="history_record">历史记录</string>
+
+    <string name="open_rss_source">打开%1$s</string>
+
+    <string name="highlight_rule_title_emphasis_desc">高亮章名、卷名、序章、尾声等标题文本</string>
+
+    <string name="debug_duration">耗时</string>
+
+    <string name="download_status_paused">已暂停</string>
+
+    <string name="content_src_empty">内容源码为空，请先进行调试</string>
+
+    <string name="explore_block_rule_pattern">关键词/正则表达式</string>
+
+    <string name="smart_tag_rule_image_desc">图片或漫画书籍</string>
+
+    <string name="dict_rule_search">字典规则-搜索</string>
+
+    <string name="storage_cache_epub_name">Epub 解压缓存</string>
+
+    <string name="source_not_exist">源不存在</string>
+
+    <string name="rr_heatmap_no_earlier_data">无更早数据</string>
+
+    <string name="source_recycle_bin_delete_msg">彻底删除“%1$s”？此操作不可恢复。</string>
+
+    <string name="view_restore_info">恢复信息</string>
+
+    <string name="debug_ping_min_time">最小延迟</string>
+
+    <string name="highlight_rule_clipboard_empty">剪贴板为空</string>
+
+    <string name="debug_ua_chrome_pc">Chrome PC</string>
+
+    <string name="debug_regex_ignore_case">忽略大小写</string>
+
+    <string name="homepage_back">返回</string>
+
+    <string name="copy_crash_log_title">复制崩溃日志</string>
+
+    <string name="share_note_import_zip">导入 ZIP</string>
+
+    <string name="nav_bar_layout_sidebar">侧边栏</string>
+
+    <string name="smart_tag_sub_summary">仅在智能标签开启时生效</string>
+
+    <string name="block_rule_manage">屏蔽规则</string>
+
+    <string name="download_resume">继续</string>
+
+    <string name="perm_section_android">安卓API</string>
+
+    <string name="rr_heatmap_more">多</string>
+
+    <string name="rr_active_days_value">%d天</string>
+
+    <string name="text_menu_edit_name_desc">留空可恢复默认名称</string>
+
+    <string name="book_author_other_works">作者其他作品</string>
+
+    <string name="skip_outro_seconds">跳过片尾秒数</string>
+
+    <string name="bubble_config_not_found">气泡配置不存在</string>
+
+    <string name="local_debug">本地调试</string>
+
+    <string name="reset_to_default">恢复默认</string>
+
+    <string name="show_bookshelf_read_progress">显示阅读进度</string>
+
+    <string name="api_no_usage">该API未在本源中使用</string>
+
+    <string name="rr_seconds">秒</string>
+
+    <string name="add_theme">添加主题</string>
+
+    <string name="fvd_valid">有效</string>
+
+    <string name="homepage_confirm">确认</string>
+
+    <string name="smart_tag_rule_online">网络书</string>
+
+    <string name="show_author_other_works_in_book_info">显示作者其他作品</string>
+
+    <string name="backup_scope_local">本地备份</string>
+
+    <string name="rr_heatmap_sat">六</string>
+
+    <string name="download_empty_paused_title">暂无已暂停的任务</string>
+
+    <string name="regex_mode">正则</string>
+
+    <string name="debug_regex_test">正则测试</string>
+
+    <string name="cache_manage_cached_count_with_size">已缓存 %1$d/%2$d · %3$s</string>
+
+    <string name="highlight_rule_export_success">高亮规则已复制到剪贴板</string>
+
+    <string name="input_test_text_hint">请输入测试文本</string>
+
+    <string name="homepage_cancel">取消</string>
+
+    <string name="rr_close_record">关闭记录</string>
+
+    <string name="enable_source_recycle_bin">开启规则回收站</string>
+
+    <string name="source_edit_preview_truncated">内容过长（%1$d 字符），已截断显示，点击全屏编辑</string>
+
+    <string name="source_recycle_bin_batch_conflict_msg">选中的 %1$d 项中包含已存在规则，是否覆盖冲突项并恢复？</string>
+
+    <string name="debug_curl_input">CURL命令</string>
+
+    <string name="app_theme_missing_manifest">缺少 application_theme.json</string>
+
+    <string name="preview_title_description">描述规则</string>
+
+    <string name="storage_cache_count_items">%1$d项</string>
+
+    <string name="filter_by_domain">按域名筛选</string>
+
+    <string name="record_url_disabled">URL记录已禁用</string>
+
+    <string name="storage_cache_acache_name">ACache 磁盘缓存</string>
+
+    <string name="rr_merge_all_none">没有可合并的同名书籍</string>
+
+    <string name="debug_date_title">日期字符串</string>
+
+    <string name="rr_merge">合并</string>
+
+    <string name="bubble_svg_template_title">SVG 模板</string>
+
+    <string name="no_backup_data">暂无备份数据</string>
+
+    <string name="left_slide_brightness_enabled">左侧滑动调节亮度</string>
+
+    <string name="highlight_rule_name">规则名称</string>
+
+    <string name="homepage_layout_mixed">混合列表</string>
+
+    <string name="storage_cache_db_name">数据库缓存</string>
+
+    <string name="select">选择</string>
+
+    <string name="enhanced_features">增强功能</string>
+
+    <string name="cover_html_enable">自动生成封面</string>
+
+    <string name="application_theme_export">导出当前应用主题</string>
+
+    <string name="bubble_custom_name">自定义段评气泡</string>
+
+    <string name="rr_heatmap_sun">日</string>
+
+    <string name="rr_streak_value">%d天</string>
+
+    <string name="fvd_read_backup_error">读取备份文件出错\n%s</string>
+
+    <string name="clear_old_7_days">清除7天前的记录</string>
+
+    <string name="debug_ping_running">测试中...</string>
+
+    <string name="debug_encode_tools">编码转换</string>
+
+    <string name="download_empty_downloading_subtitle">当前没有下载中的任务</string>
+
+    <string name="switch_layout_grid">网格</string>
+
+    <string name="api_source_not_found">未找到该书源</string>
+
+    <string name="text_bold_not_supported_message">精细字重调整需要 Android 9 (API 28) 以上版本才支持，您的设备不支持此功能。</string>
+
+    <string name="edit_theme">编辑</string>
+
+    <string name="debug_curl_method">请求方法</string>
+
+    <string name="bubble_source_local">本地</string>
 </resources>

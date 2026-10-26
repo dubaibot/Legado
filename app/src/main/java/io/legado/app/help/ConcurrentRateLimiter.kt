@@ -44,6 +44,47 @@ class ConcurrentRateLimiter(source: BaseSource?) {
                 }
             }
         }
+
+        /**
+         * 取两个并发率中限制更严格（吞吐量更低）者
+         * null/空/"0" 表示无限制，不参与比较
+         */
+        fun effectiveRate(rate1: String?, rate2: String?): String? {
+            val t1 = throughput(rate1)
+            val t2 = throughput(rate2)
+            return if (t1 <= t2) rate1 else rate2
+        }
+
+        /**
+         * 删除指定源的并发限流记录
+         * 调用方：SourceHelp.deleteBookSourceInternal / deleteRssSourceInternal（删源时清理，避免内存泄漏）
+         */
+        fun clearRecord(key: String) {
+            concurrentRecordMap.remove(key)
+        }
+
+        /**
+         * 计算并发率的吞吐量（请求/秒），用于比较限制严格程度
+         * null/空/"0" 返回正无穷（无限制，不参与比较）
+         */
+        private fun throughput(rate: String?): Double {
+            if (rate.isNullOrBlank() || rate == "0") return Double.POSITIVE_INFINITY
+            return try {
+                val idx = rate.indexOf("/")
+                if (idx > 0) {
+                    val limit = rate.take(idx).toDouble()
+                    val ms = rate.substring(idx + 1).toDouble()
+                    if (limit <= 0 || ms <= 0) Double.POSITIVE_INFINITY
+                    else limit * 1000.0 / ms
+                } else {
+                    val ms = rate.toDouble()
+                    if (ms <= 0) Double.POSITIVE_INFINITY
+                    else 1000.0 / ms
+                }
+            } catch (_: NumberFormatException) {
+                Double.POSITIVE_INFINITY
+            }
+        }
     }
 
     private val concurrentRate = source?.concurrentRate

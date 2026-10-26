@@ -80,6 +80,11 @@
             android:summary="@string/custom_hosts_summary"
             android:title="@string/custom_hosts" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiProviderManage"
+            android:summary="@string/ai_provider_manage_summary"
+            android:title="@string/ai_provider_manage" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
             android:key="webServiceWakeLock"

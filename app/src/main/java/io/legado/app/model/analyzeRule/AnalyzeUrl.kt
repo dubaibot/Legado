@@ -16,7 +16,9 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
+import io.legado.app.data.repository.debug.FlowLogRecorder
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.config.AppConfig
@@ -84,6 +86,10 @@ class AnalyzeUrl(
     private val page: Int? = null,
     private val speakText: String? = null,
     private val speakSpeed: Int? = null,
+    private val speakVolume: Int? = null,
+    private val speakPitch: Int? = null,
+    private val voiceId: String? = null,
+    private val voiceName: String? = null,
     private var baseUrl: String = "",
     private val source: BaseSource? = null,
     private val ruleData: RuleDataInterface? = null,
@@ -125,6 +131,13 @@ class AnalyzeUrl(
     // 服务器ID
     var serverID: Long? = null
         private set
+
+    /**
+     * 本地调试模式：为 true 时 [getStrResponseAwait] 不发起流水线网络请求，
+     * 规则结果是内容则直接返回，是网址则打印请求摘要后终止链路。
+     * 仅源调试会话置位，规则内部 JS 自建的 AnalyzeUrl 不受影响。
+     */
+    var localDebug = false
 
     init {
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
@@ -421,6 +434,13 @@ class AnalyzeUrl(
         isTest: Boolean = false,
         skipRateLimit: Boolean = false
     ): StrResponse {
+        // Data URL 短路：解码后返回 hex 编码的字符串，不走 OkHttp / WebView。
+        // 必须返回 hex 编码以与 type 路径（HexUtil.encodeHexStr(getByteArrayAwait())）保持一致，
+        // 否则 JS 侧 hexDecodeToString() 会因遇到非 hex 字符而抛出异常。
+        getDataUrlHexContent()?.let { return it }
+        if (localDebug) {
+            return localDebugStrResponse()
+        }
         if (type != null) {
             return StrResponse(url, HexUtil.encodeHexStr(getByteArrayAwait()))
         }
@@ -432,6 +452,97 @@ class AnalyzeUrl(
         }
     }
 
+    /**
+     * 解析 Data URL 并返回 hex 编码的 StrResponse。
+     *
+     * 与 [getByteArrayAwait] + [HexUtil.encodeHexStr] 路径返回格式一致，
+     * 确保 JS 侧 `hexDecodeToString()` 能正常解码。
+     *
+     * 支持两种格式：
+     * - `data:text/html;charset=utf-8;base64,<base64>` — base64 编码
+     * - `data:text/html;charset=utf-8,<raw>` — 非 base64 的原始文本（percent-decoded）
+     *
+     * @return hex 编码的 StrResponse；如果当前 URL 不是 data URL 或解析失败则返回 null
+     */
+    private fun getDataUrlHexContent(): StrResponse? {
+        if (!urlNoQuery.startsWith("data:")) return null
+        val dataUriRegex = AppPattern.dataUriRegex
+        // 获取 data URL 声明的 charset，优先取选项中的 charset
+        val charsetName = charset ?: extractCharsetFromDataUrl(urlNoQuery) ?: "UTF-8"
+        val base64Match = dataUriRegex.find(urlNoQuery)
+        if (base64Match != null) {
+            val base64Data = base64Match.groupValues[1]
+            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+            return StrResponse(url, HexUtil.encodeHexStr(bytes))
+        }
+        // 非 base64 的 data URL：data:[<mediatype>][;charset=xxx],<data>
+        val commaIdx = urlNoQuery.indexOf(',')
+        if (commaIdx != -1) {
+            val raw = urlNoQuery.substring(commaIdx + 1)
+            // data URL 非基础编码部分使用 percent-encoding
+            val decoded = java.net.URLDecoder.decode(raw, charsetName)
+            return StrResponse(url, HexUtil.encodeHexStr(decoded.toByteArray(Charset.forName(charsetName))))
+        }
+        // 格式不合法的 data URL，返回空 body 避免崩溃
+        return StrResponse(url, HexUtil.encodeHexStr(ByteArray(0)))
+    }
+
+    /**
+     * 从 data URL 的 media type 部分提取 charset 参数。
+     * 例: `data:text/html;charset=utf-8;base64,...` → `utf-8`
+     */
+    private fun extractCharsetFromDataUrl(dataUrl: String): String? {
+        val commaIdx = dataUrl.indexOf(',')
+        val header = if (commaIdx != -1) dataUrl.substring(0, commaIdx) else dataUrl
+        val charsetIdx = header.indexOf("charset=", ignoreCase = true)
+        if (charsetIdx != -1) {
+            val start = charsetIdx + "charset=".length
+            val end = header.indexOf(';', start)
+            val endIdx = if (end != -1) end else header.length
+            return header.substring(start, endIdx).takeIf { it.isNotBlank() }
+        }
+        return null
+    }
+
+    /**
+     * 本地调试：URL 规则在构造时已在本地执行完毕，这里不再发起流水线网络请求。
+     * 规则结果是内容则直接作为本阶段网页内容返回；是网址则打印请求摘要后以空内容继续跑解析规则
+     * （纯 JS 规则不依赖网页内容，照常执行）；为空则终止链路。
+     * 规则内部发起的取内容请求（如 JS 里的 java.ajax）走 JsExtensions 自建的 AnalyzeUrl，不经过本分支。
+     */
+    private fun localDebugStrResponse(): StrResponse {
+        val sourceKey = source?.getKey()
+        return when (judgeLocalDebugResult(ruleUrl)) {
+            LocalDebugResult.Content -> {
+                Debug.log(sourceKey, "≡本地调试：规则返回内容，直接解析")
+                StrResponse(sourceKey ?: url, ruleUrl)
+            }
+
+            LocalDebugResult.Empty -> {
+                Debug.log(sourceKey, "≡本地调试：规则结果为空")
+                throw NoStackTraceException("本地调试：规则结果为空，调试结束")
+            }
+
+            LocalDebugResult.Request -> {
+                Debug.log(sourceKey, "≡本地调试：规则算出请求 $method $url")
+                headerMap.forEach { (key, value) ->
+                    Debug.log(sourceKey, "├$key: $value")
+                }
+                body?.let { Debug.log(sourceKey, "├body: $it") }
+                // 不联网，以空内容继续跑解析规则：纯 JS 规则（不使用网页内容）照常执行打印，
+                // 依赖网页内容的规则解析结果为空——这是"不联网"的如实语义
+                Debug.log(sourceKey, "≡本地调试：未取网页内容，以空内容继续解析")
+                StrResponse(sourceKey ?: url, "")
+            }
+        }
+    }
+
+    fun isSimpleGetRequest(): Boolean {
+        return method == RequestMethod.GET &&
+            encodedForm.isNullOrEmpty() &&
+            body.isNullOrEmpty()
+    }
+
     private suspend fun executeStrRequest(
         jsStr: String? = null,
         sourceRegex: String? = null,
@@ -440,6 +551,17 @@ class AnalyzeUrl(
     ): StrResponse {
         setCookie()
         val startTime = System.currentTimeMillis()
+        
+        FlowLogRecorder.logNetwork(
+            source = source,
+            message = "发起网络请求",
+            url = url,
+            method = method.name,
+            // 传递请求头和 Cookie 用于调试日志展示，Cookie 单独提取便于独立显示
+            requestHeaders = headerMap,
+            cookies = headerMap["Cookie"]
+        )
+        
         val strResponse: StrResponse
         try {
             if (this.useWebView && useWebView) {
@@ -512,8 +634,26 @@ class AnalyzeUrl(
             }
             val connectionTime = System.currentTimeMillis() - startTime
             strResponse.putCallTime(connectionTime.toInt())
+            
+            FlowLogRecorder.logNetwork(
+                source = source,
+                message = "网络请求成功",
+                url = url,
+                method = method.name,
+                statusCode = strResponse.code(),
+                duration = connectionTime
+            )
+            
             return strResponse
         } catch (e: Exception) {
+            FlowLogRecorder.logNetwork(
+                source = source,
+                message = "网络请求失败: ${e.message}",
+                url = url,
+                method = method.name,
+                error = e
+            )
+            
             if (!isTest) {
                 throw e
             }
@@ -677,6 +817,20 @@ class AnalyzeUrl(
     }
 
     /**
+     * 本地调试下 URL 规则计算结果的类别
+     */
+    enum class LocalDebugResult {
+        /** 结果为空 */
+        Empty,
+
+        /** 结果是一个待请求的网址（含 data:、相对地址） */
+        Request,
+
+        /** 结果是网页/接口内容，可直接交给解析规则 */
+        Content
+    }
+
+    /**
      * 上传文件
      */
     suspend fun upload(fileName: String, file: Any, contentType: String): StrResponse {
@@ -770,11 +924,42 @@ class AnalyzeUrl(
         private val queryEncoder =
             RFC3986.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
         val customIp by lazy { ConcurrentHashMap<String, String>() }
+
+        /**
+         * 本地调试结果判定（纯函数）：先按 [paramPattern] 切掉尾部 ,{...} 选项段
+         * （选项段只对真实请求有意义），剩余部分按前缀启发式判定为请求还是内容。
+         */
+        fun judgeLocalDebugResult(ruleUrl: String): LocalDebugResult {
+            val matcher = paramPattern.matcher(ruleUrl)
+            val noOption = if (matcher.find()) ruleUrl.substring(0, matcher.start()) else ruleUrl
+            val trimmed = noOption.trim()
+            if (trimmed.isEmpty()) {
+                return LocalDebugResult.Empty
+            }
+            return if (trimmed.startsWith("http://", true) ||
+                trimmed.startsWith("https://", true) ||
+                trimmed.startsWith("data:", true) ||
+                trimmed.startsWith("/")
+            ) {
+                LocalDebugResult.Request
+            } else {
+                LocalDebugResult.Content
+            }
+        }
+
         fun AnalyzeUrl.getMediaItem(): MediaItem {
             setCookie()
             return ExoPlayerHelper.createMediaItem(url, headerMap)
         }
 
+        fun AnalyzeUrl.getMediaItem(customCacheKey: String? = null): MediaItem {
+            setCookie()
+            val mediaItem = ExoPlayerHelper.createMediaItem(url, headerMap)
+            if (customCacheKey != null) {
+                return mediaItem.buildUpon().setCustomCacheKey(customCacheKey).build()
+            }
+            return mediaItem
+        }
     }
 
     @Keep

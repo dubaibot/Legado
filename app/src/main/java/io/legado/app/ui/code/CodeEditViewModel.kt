@@ -11,16 +11,23 @@ import io.github.rosemoe.sora.langs.textmate.registry.provider.AssetsFileResolve
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.appDb
 import io.legado.app.help.CacheManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
+import io.legado.app.utils.GSON
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import org.eclipse.tm4e.core.registry.IThemeSource
 import org.jsoup.Jsoup
 import splitties.init.appCtx
 
+/**
+ * 代码编辑视图模型
+ * 管理代码编辑器的语言、主题、格式化等功能
+ * 支持 TextMate 语法高亮和代码格式化
+ */
 class CodeEditViewModel(application: Application) : BaseViewModel(application) {
     private val themeFileNames = arrayOf(
         "d_monokai_dimmed",
@@ -36,11 +43,24 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
     var initialText = ""
     var cursorPosition = 0
     var language: TextMateLanguage? = null
-    private var languageName = "source.js"
+    var languageName = "source.js"
+    var initialLanguageName = "source.js"  // 保存初始语言，用于恢复默认
     private val themeRegistry: ThemeRegistry = ThemeRegistry.getInstance()
     var writable = true
     var title: String? = null
+    // 源类型标识，如 "bookSource" 表示书源，"rssSource" 表示订阅源
+    var sourceType: String? = null
+    // 源的完整JSON字符串，用于切换字段时获取其他字段的值
+    var sourceJson: String? = null
+    // 当前编辑的字段标识，如 "author" 表示作者字段
+    var fieldKey: String? = null
+    // 当前编辑的板块标识，如 "info" 表示详情板块
+    var tabKey: String? = null
 
+    /**
+     * 初始化 Sora 编辑器
+     * 加载 TextMate 语法和主题配置
+     */
     fun initSora() {
         //初始化sora加载
         FileProviderRegistry.getInstance().addFileProvider(
@@ -49,26 +69,52 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         GrammarRegistry.getInstance().loadGrammars("textmate/languages.json")
     }
 
+    /**
+     * 初始化数据
+     * 从 Intent 或缓存中加载文本内容，设置语言类型
+     * @param intent 包含初始化数据的 Intent
+     * @param success 初始化成功回调
+     */
     fun initData(
         intent: Intent, success: () -> Unit
     ) {
         execute {
             val cacheKey = intent.getStringExtra("cacheKey")
             if (cacheKey != null) {
+                // 只读预览（TextDialog 等）:从内存取,保持 writable = false;读后即删防滞留
                 val cacheText = CacheManager.getFromMemory(cacheKey) as? String ?: throw Exception("未获取到查看文本")
+                CacheManager.deleteMemory(cacheKey)
                 writable = false
                 initialText = cacheText
             } else {
-                initialText = intent.getStringExtra("text") ?: throw Exception("未获取到待编辑文本")
+                // 可编辑文本:小文本走 "text" 直传,大文本走 CodeEditLauncher 内存中转(读后即删)
+                initialText = CodeEditLauncher.readText(intent) ?: throw Exception("未获取到待编辑文本")
             }
             if (isHtmlStr(initialText)) {
                 languageName = "text.html.basic"
             } else {
                 intent.getStringExtra("languageName")?.let { languageName = it }
             }
+            initialLanguageName = languageName  // 保存初始语言
             language = TextMateLanguage.create(languageName, AppConfig.editAutoComplete)
             cursorPosition = intent.getIntExtra("cursorPosition", 0)
             title = intent.getStringExtra("title")
+            sourceType = intent.getStringExtra("sourceType")
+            fieldKey = intent.getStringExtra("fieldKey")
+            tabKey = intent.getStringExtra("tabKey")
+            val sourceKey = intent.getStringExtra("sourceKey")
+            if (!sourceKey.isNullOrBlank()) {
+                when (sourceType) {
+                    "bookSource" -> appDb.bookSourceDao.getBookSource(sourceKey)?.let {
+                        sourceJson = GSON.toJson(it)
+                    }
+                    "rssSource" -> appDb.rssSourceDao.getByKey(sourceKey)?.let {
+                        sourceJson = GSON.toJson(it)
+                    }
+                }
+            } else {
+                sourceJson = intent.getStringExtra("sourceJson")
+            }
         }.onSuccess {
             success.invoke()
         }.onError {
@@ -77,12 +123,21 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
+    /**
+     * 判断文本是否为 HTML 格式
+     * @param text 待检测文本
+     * @return 是否为 HTML 格式
+     */
     private fun isHtmlStr(text: String): Boolean {
         val trimmedText = text.trim()
         val htmlRegex = Regex("""^(?:\[[\s\d.]])?<(?:html|!DOCTYPE)""", RegexOption.IGNORE_CASE)
         return htmlRegex.containsMatchIn(trimmedText) && trimmedText.endsWith(">")
     }
 
+    /**
+     * 加载 TextMate 主题
+     * @param index 主题索引
+     */
     fun loadTextMateThemes(index: Int) {
         val theme = themeFileNames.getOrElse(index) { "d_monokai" }
         val themeModel = themeRegistry.findThemeByFileName(theme)
@@ -101,6 +156,12 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
+    /**
+     * 格式化代码
+     * 支持 JavaScript、HTML 等语言的格式化
+     * 使用 js-beautify 库进行格式化
+     * @param editor 代码编辑器实例
+     */
     fun formatCode(editor: CodeEditor) {
         execute {
             val text = editor.text.toString()
@@ -162,6 +223,12 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
+    /**
+     * 使用 WebView 格式化 JavaScript 代码
+     * 通过 js-beautify 库进行格式化
+     * @param jsCode JavaScript 代码
+     * @return 格式化后的代码
+     */
     private suspend fun webFormatCode(jsCode: String): String? {
         CacheManager.putMemory("web_format_code", jsCode)
         return BackstageWebView(
@@ -189,6 +256,12 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         ).getStrResponse().body
     }
 
+    /**
+     * 格式化 HTML 代码
+     * 使用 Jsoup 库进行格式化
+     * @param html HTML 代码
+     * @return 格式化后的 HTML
+     */
     private fun formatCodeHtml(html: String): String? {
         val doc = Jsoup.parse(html)
         doc.outputSettings()

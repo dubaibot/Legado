@@ -6,6 +6,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.BookListRule
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.repository.debug.FlowLogRecorder
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.source.exploreKindsJson
@@ -14,8 +15,12 @@ import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setRuleData
+import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setToastRuleType
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleData
+import io.legado.app.model.debug.DataFlowStage
+import io.legado.app.model.debug.FieldFillRecord
+import io.legado.app.model.debug.recordField
 import io.legado.app.utils.GSON
 import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.HtmlFormatter
@@ -28,9 +33,38 @@ import splitties.init.appCtx
 
 /**
  * 获取书籍列表
+ * 书籍列表解析器
+ *
+ * 负责解析搜索和发现的书籍列表，支持：
+ * - 搜索结果列表解析
+ * - 发现分类列表解析
+ * - 书籍详情页URL模式匹配（bookUrlPattern）
+ * - 列表反转（倒序排列）
+ * - 结果过滤与提前终止
+ *
+ * 当列表规则为空时，会尝试按详情页解析（适用于搜索结果直接跳转详情页的情况）。
+ *
+ * @see WebBook.searchBook 搜索请求入口
+ * @see WebBook.exploreBook 发现请求入口
+ * @see BookListRule 列表规则定义
  */
 object BookList {
 
+    /**
+     * 解析书籍列表
+     *
+     * @param bookSource 书源
+     * @param ruleData 规则数据对象
+     * @param analyzeUrl URL分析器
+     * @param baseUrl 基础URL
+     * @param body 页面内容
+     * @param isSearch 是否为搜索（false表示发现）
+     * @param isRedirect 是否发生重定向
+     * @param filter 过滤函数，用于筛选结果（书名、作者、分类）
+     * @param shouldBreak 提前终止条件，当返回结果满足条件时停止解析
+     * @return 搜索结果列表
+     * @throws NoStackTraceException 当内容为空时抛出
+     */
     @Throws(Exception::class)
     suspend fun analyzeBookList(
         bookSource: BookSource,
@@ -56,6 +90,7 @@ object BookList {
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(baseUrl)
         analyzeRule.setCoroutineContext(currentCoroutineContext())
+        analyzeRule.setToastRuleType(if (isSearch) "SEARCH" else "EXPLORE")
         if (!isSearch) {
             checkExploreJson(bookSource)
         }
@@ -121,6 +156,7 @@ object BookList {
                     bookSource, analyzeRule, item, baseUrl, ruleData.getVariable(),
                     index == 0,
                     filter,
+                    isSearch = isSearch,
                     ruleName = ruleName,
                     ruleBookUrl = ruleBookUrl,
                     ruleAuthor = ruleAuthor,
@@ -150,6 +186,22 @@ object BookList {
         return bookList
     }
 
+    /**
+     * 获取单个书籍信息（详情页模式）
+     *
+     * 当URL匹配bookUrlPattern或列表规则为空时，
+     * 直接按详情页解析返回单个书籍信息。
+     *
+     * @param bookSource 书源
+     * @param analyzeRule 规则解析器
+     * @param analyzeUrl URL分析器
+     * @param body 页面内容
+     * @param baseUrl 基础URL
+     * @param variable 变量值
+     * @param isRedirect 是否发生重定向
+     * @param filter 过滤函数
+     * @return 搜索结果对象，如果过滤不通过则返回null
+     */
     @Throws(Exception::class)
     private suspend fun getInfoItem(
         bookSource: BookSource,
@@ -190,6 +242,32 @@ object BookList {
         return null
     }
 
+    /**
+     * 获取单个搜索结果项
+     *
+     * 从列表元素中解析单个书籍信息，包括：
+     * - 书名、作者、分类
+     * - 字数、最新章节
+     * - 简介、封面链接
+     * - 详情页链接
+     *
+     * @param bookSource 书源
+     * @param analyzeRule 规则解析器
+     * @param item 列表元素
+     * @param baseUrl 基础URL
+     * @param variable 变量值
+     * @param log 是否输出调试日志
+     * @param filter 过滤函数
+     * @param ruleName 书名规则
+     * @param ruleBookUrl 详情页URL规则
+     * @param ruleAuthor 作者规则
+     * @param ruleKind 分类规则
+     * @param ruleCoverUrl 封面URL规则
+     * @param ruleWordCount 字数规则
+     * @param ruleIntro 简介规则
+     * @param ruleLastChapter 最新章节规则
+     * @return 搜索结果对象，如果书名为空或过滤不通过则返回null
+     */
     @Throws(Exception::class)
     private suspend fun getSearchItem(
         bookSource: BookSource,
@@ -199,6 +277,7 @@ object BookList {
         variable: String?,
         log: Boolean,
         filter: ((name: String, author: String, kind: String?) -> Boolean)?,
+        isSearch: Boolean = true,
         ruleName: List<AnalyzeRule.SourceRule>,
         ruleBookUrl: List<AnalyzeRule.SourceRule>,
         ruleAuthor: List<AnalyzeRule.SourceRule>,
@@ -215,23 +294,95 @@ object BookList {
         searchBook.originOrder = bookSource.customOrder
         analyzeRule.setRuleData(searchBook)
         analyzeRule.setContent(item)
+        
+        val dataFlowFields = mutableListOf<FieldFillRecord>()
+        
+        FlowLogRecorder.logExtract(
+            source = bookSource,
+            message = "开始提取搜索结果字段"
+        )
+        
         currentCoroutineContext().ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取书名", log)
+        val originalName = searchBook.name
         searchBook.name = BookHelp.formatBookName(analyzeRule.getString(ruleName))
         Debug.log(bookSource.bookSourceUrl, "└${searchBook.name}", log)
+        
+        FlowLogRecorder.logExtract(
+            source = bookSource,
+            message = "提取书名",
+            rule = ruleName.joinToString("&&") { it.rule },
+            result = searchBook.name,
+            originalValue = originalName.takeIf { it.isNotEmpty() }
+        )
+        
+        dataFlowFields.recordField(
+            "name",
+            rule = ruleName.joinToString("&&") { it.rule },
+            result = searchBook.name,
+            original = originalName
+        )
+        
         if (searchBook.name.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取作者", log)
+            val originalAuthor = searchBook.author
             searchBook.author = BookHelp.formatBookAuthor(analyzeRule.getString(ruleAuthor))
             Debug.log(bookSource.bookSourceUrl, "└${searchBook.author}", log)
+            
+            FlowLogRecorder.logExtract(
+                source = bookSource,
+                message = "提取作者",
+                rule = ruleAuthor.joinToString("&&") { it.rule },
+                result = searchBook.author,
+                originalValue = originalAuthor.takeIf { it.isNotEmpty() }
+            )
+            
+            dataFlowFields.recordField(
+                "author",
+                rule = ruleAuthor.joinToString("&&") { it.rule },
+                result = searchBook.author,
+                original = originalAuthor
+            )
+            
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取分类", log)
             try {
+                val originalKind = searchBook.kind
                 searchBook.kind = analyzeRule.getStringList(ruleKind)?.joinToString(",")
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.kind ?: ""}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取分类",
+                    rule = ruleKind.joinToString("&&") { it.rule },
+                    result = searchBook.kind,
+                    originalValue = originalKind
+                )
+                
+                dataFlowFields.recordField(
+                    "kind",
+                    rule = ruleKind.joinToString("&&") { it.rule },
+                    result = searchBook.kind,
+                    original = originalKind
+                )
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取分类",
+                    rule = ruleKind.joinToString("&&") { it.rule },
+                    error = e
+                )
+                
+                dataFlowFields.recordField(
+                    "kind",
+                    rule = ruleKind.joinToString("&&") { it.rule },
+                    isError = true,
+                    errorMessage = e.localizedMessage
+                )
             }
             if (filter?.invoke(searchBook.name, searchBook.author, searchBook.kind) == false) {
                 return null
@@ -239,61 +390,221 @@ object BookList {
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取字数", log)
             try {
+                val originalWordCount = searchBook.wordCount
                 searchBook.wordCount = wordCountFormat(analyzeRule.getString(ruleWordCount))
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.wordCount}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取字数",
+                    rule = ruleWordCount.joinToString("&&") { it.rule },
+                    result = searchBook.wordCount,
+                    originalValue = originalWordCount?.takeIf { it.isNotEmpty() }
+                )
+                
+                dataFlowFields.recordField(
+                    "wordCount",
+                    rule = ruleWordCount.joinToString("&&") { it.rule },
+                    result = searchBook.wordCount,
+                    original = originalWordCount
+                )
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取字数",
+                    rule = ruleWordCount.joinToString("&&") { it.rule },
+                    error = e
+                )
+                
+                dataFlowFields.recordField(
+                    "wordCount",
+                    rule = ruleWordCount.joinToString("&&") { it.rule },
+                    isError = true,
+                    errorMessage = e.localizedMessage
+                )
             }
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取最新章节", log)
             try {
+                val originalLatestChapter = searchBook.latestChapterTitle
                 searchBook.latestChapterTitle = analyzeRule.getString(ruleLastChapter)
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.latestChapterTitle}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取最新章节",
+                    rule = ruleLastChapter.joinToString("&&") { it.rule },
+                    result = searchBook.latestChapterTitle,
+                    originalValue = originalLatestChapter?.takeIf { it.isNotEmpty() }
+                )
+                
+                dataFlowFields.recordField(
+                    "latestChapterTitle",
+                    rule = ruleLastChapter.joinToString("&&") { it.rule },
+                    result = searchBook.latestChapterTitle,
+                    original = originalLatestChapter
+                )
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取最新章节",
+                    rule = ruleLastChapter.joinToString("&&") { it.rule },
+                    error = e
+                )
+                
+                dataFlowFields.recordField(
+                    "latestChapterTitle",
+                    rule = ruleLastChapter.joinToString("&&") { it.rule },
+                    isError = true,
+                    errorMessage = e.localizedMessage
+                )
             }
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取简介", log)
             try {
+                val originalIntro = searchBook.intro
                 searchBook.intro = HtmlFormatter.format(analyzeRule.getString(ruleIntro))
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.intro}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取简介",
+                    rule = ruleIntro.joinToString("&&") { it.rule },
+                    result = searchBook.intro,
+                    originalValue = originalIntro
+                )
+                
+                dataFlowFields.recordField(
+                    "intro",
+                    rule = ruleIntro.joinToString("&&") { it.rule },
+                    result = searchBook.intro,
+                    original = originalIntro,
+                    truncate = true
+                )
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取简介",
+                    rule = ruleIntro.joinToString("&&") { it.rule },
+                    error = e
+                )
+                
+                dataFlowFields.recordField(
+                    "intro",
+                    rule = ruleIntro.joinToString("&&") { it.rule },
+                    isError = true,
+                    errorMessage = e.localizedMessage
+                )
             }
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取封面链接", log)
             try {
+                val originalCoverUrl = searchBook.coverUrl
                 analyzeRule.getString(ruleCoverUrl).let {
                     if (it.isNotEmpty()) {
                         searchBook.coverUrl = NetworkUtils.getAbsoluteURL(baseUrl, it)
                     }
                 }
                 Debug.log(bookSource.bookSourceUrl, "└${searchBook.coverUrl ?: ""}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取封面链接",
+                    rule = ruleCoverUrl.joinToString("&&") { it.rule },
+                    result = searchBook.coverUrl,
+                    originalValue = originalCoverUrl
+                )
+                
+                dataFlowFields.recordField(
+                    "coverUrl",
+                    rule = ruleCoverUrl.joinToString("&&") { it.rule },
+                    result = searchBook.coverUrl,
+                    original = originalCoverUrl
+                )
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                
+                FlowLogRecorder.logExtract(
+                    source = bookSource,
+                    message = "提取封面链接",
+                    rule = ruleCoverUrl.joinToString("&&") { it.rule },
+                    error = e
+                )
+                
+                dataFlowFields.recordField(
+                    "coverUrl",
+                    rule = ruleCoverUrl.joinToString("&&") { it.rule },
+                    isError = true,
+                    errorMessage = e.localizedMessage
+                )
             }
             currentCoroutineContext().ensureActive()
             Debug.log(bookSource.bookSourceUrl, "┌获取详情页链接", log)
+            val originalBookUrl = searchBook.bookUrl
             searchBook.bookUrl = analyzeRule.getString(ruleBookUrl, isUrl = true)
             if (searchBook.bookUrl.isEmpty()) {
                 searchBook.bookUrl = baseUrl
             }
             Debug.log(bookSource.bookSourceUrl, "└${searchBook.bookUrl}", log)
+            
+            FlowLogRecorder.logExtract(
+                source = bookSource,
+                message = "提取详情页链接",
+                rule = ruleBookUrl.joinToString("&&") { it.rule },
+                result = searchBook.bookUrl,
+                originalValue = originalBookUrl.takeIf { it.isNotEmpty() }
+            )
+            
+            dataFlowFields.recordField(
+                "bookUrl",
+                rule = ruleBookUrl.joinToString("&&") { it.rule },
+                result = searchBook.bookUrl,
+                original = originalBookUrl
+            )
+            
+            FlowLogRecorder.logStageDataFlow(
+                source = bookSource,
+                stage = if (isSearch) DataFlowStage.SEARCH else DataFlowStage.EXPLORE,
+                fields = dataFlowFields,
+                message = if (isSearch) "搜索阶段数据流转" else "发现阶段数据流转",
+                bookUrl = searchBook.bookUrl,
+                bookName = searchBook.name,
+                author = searchBook.author
+            )
+            
             return searchBook
         }
         return null
     }
 
+    /**
+     * 检查发现地址JSON格式
+     *
+     * 在调试模式下检查发现地址规则的JSON格式是否规范，
+     * 如果不规范则输出警告日志。
+     *
+     * @param bookSource 书源
+     */
     private fun checkExploreJson(bookSource: BookSource) {
         if (Debug.callback == null) {
             return
         }
         val json = bookSource.exploreKindsJson()
-        if (json.isEmpty()) {
+        if (
+            json.isEmpty()
+            || json.startsWith("<usehtml>")
+            || json.startsWith("<useweb>")
+        ) {
             return
         }
         val kinds = GSONStrict.fromJsonArray<ExploreKind>(json).getOrNull()

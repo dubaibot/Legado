@@ -39,7 +39,7 @@ data class TextPage(
     var chapterIndex: Int = 0,
     var height: Float = 0f,
     var leftLineSize: Int = 0,
-    var renderHeight: Int = 0
+    var renderHeight: Int = 0,
 ) {
 
     companion object {
@@ -58,6 +58,8 @@ data class TextPage(
     var paddingTop = ChapterProvider.paddingTop
     var isCompleted = false
     var hasReadAloudSpan = false
+    var hasAnimatedContent = false
+    var isResumed = false
 
     @JvmField
     var textChapter = emptyTextChapter
@@ -71,6 +73,9 @@ data class TextPage(
         get() {
             val paragraphs = arrayListOf<TextParagraph>()
             val lines = textLines.filter { it.paragraphNum > 0 }
+            // 整页没有属于段落的行（例如这一页只排了一行空行）时返回空表，
+            // 否则下面的 first() 会抛 NoSuchElementException
+            if (lines.isEmpty()) return paragraphs
             val offset = lines.first().paragraphNum - 1
             lines.forEach { line ->
                 if (paragraphs.lastIndex < line.paragraphNum - offset - 1) {
@@ -83,13 +88,14 @@ data class TextPage(
 
     fun addLine(line: TextLine) {
         line.textPage = this
+        if (line.hasAnimatedColumn) {
+            hasAnimatedContent = true
+        }
         textLines.add(line)
     }
 
-    fun getLine(index: Int): TextLine {
-        return textLines.getOrElse(index) {
-            textLines.last()
-        }
+    fun getLine(index: Int): TextLine = textLines.getOrElse(index) {
+        textLines.lastOrNull() ?: TextLine.emptyTextLine
     }
 
     /**
@@ -149,8 +155,13 @@ data class TextPage(
             val visibleWidth = ChapterProvider.visibleRight - ChapterProvider.paddingLeft
             val paint = ChapterProvider.contentPaint
             val layout = StaticLayout(
-                text, paint, visibleWidth,
-                Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false
+                text,
+                paint,
+                visibleWidth,
+                Layout.Alignment.ALIGN_NORMAL,
+                1f,
+                0f,
+                false,
             )
             val letterSpacing = paint.letterSpacing * paint.textSize
             var y = (ChapterProvider.visibleHeight - layout.height) / 2f
@@ -163,7 +174,7 @@ data class TextPage(
                 textLine.lineBottom =
                     ChapterProvider.paddingTop + y + layout.getLineBottom(lineIndex)
                 var x = ChapterProvider.paddingLeft +
-                        (visibleWidth - layout.getLineMax(lineIndex)) / 2
+                    (visibleWidth - layout.getLineMax(lineIndex)) / 2
                 textLine.text =
                     text.substring(layout.getLineStart(lineIndex), layout.getLineEnd(lineIndex))
                 for (i in textLine.text.indices) {
@@ -174,7 +185,7 @@ data class TextPage(
                     }
                     val x1 = x + cw
                     textLine.addColumn(
-                        TextColumn(start = x, end = x1, char)
+                        TextColumn(start = x, end = x1, char),
                     )
                     x = x1
                 }
@@ -281,9 +292,7 @@ data class TextPage(
     /**
      * @return 页面所在章节
      */
-    fun getTextChapter(): TextChapter {
-        return textChapter
-    }
+    fun getTextChapter(): TextChapter = textChapter
 
     /**
      * 判断章节字符位置是否在这一页中
@@ -299,7 +308,7 @@ data class TextPage(
     }
 
     fun draw(view: ContentTextView, canvas: Canvas, relativeOffset: Float) {
-        if (AppConfig.optimizeRender) {
+        if (AppConfig.optimizeRender && !hasAnimatedContent) {
             render(view)
             canvas.withTranslation(0f, relativeOffset) {
                 canvasRecorder.draw(this)
@@ -320,7 +329,7 @@ data class TextPage(
                 0f,
                 (paddingLeft + visibleWidth).toFloat(),
                 height - 1.dpToPx(),
-                paint
+                paint,
             )
             PaintPool.recycle(paint)
         }
@@ -337,7 +346,9 @@ data class TextPage(
 
     fun render(view: ContentTextView): Boolean {
         if (!isCompleted) return false
-        return canvasRecorder.recordIfNeeded(view.width, renderHeight + 10.dpToPx()) { //高度留余，避免图片过高时被截断 下划线最远10dp
+        if (hasAnimatedContent) return false
+        return canvasRecorder.recordIfNeeded(view.width, renderHeight + 10.dpToPx()) {
+            // 高度留余，避免图片过高时被截断 下划线最远10dp
             drawPage(view, this)
         }
     }
@@ -360,9 +371,7 @@ data class TextPage(
         }
     }
 
-    fun hasImageOrEmpty(): Boolean {
-        return textLines.any { it.isImage } || textLines.isEmpty()
-    }
+    fun hasImageOrEmpty(): Boolean = textLines.any { it.isImage } || textLines.isEmpty()
 
     fun upRenderHeight() {
         renderHeight = ceil(lines.last().lineBottom).toInt()

@@ -32,7 +32,6 @@ import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContinuationPending
-import org.mozilla.javascript.JavaScriptException
 import org.mozilla.javascript.RhinoException
 import org.mozilla.javascript.Script
 import org.mozilla.javascript.Scriptable
@@ -47,7 +46,9 @@ import kotlin.coroutines.CoroutineContext
  */
 internal class RhinoCompiledScript(
     private val engine: RhinoScriptEngine,
-    private val script: Script
+    private val script: Script,
+    private val source: String,
+    private val sourceName: String,
 ) : CompiledScript() {
 
     override fun getEngine(): ScriptEngine {
@@ -57,30 +58,27 @@ internal class RhinoCompiledScript(
     override fun eval(scope: Scriptable, coroutineContext: CoroutineContext?): Any? {
         val cx = Context.enter() as RhinoContext
         val previousCoroutineContext = cx.coroutineContext
+        val previousDebugger = cx.debugger
         if (coroutineContext != null && coroutineContext[Job] != null) {
             cx.coroutineContext = coroutineContext
         }
         cx.allowScriptRun = true
         cx.recursiveCount++
+        // 安装 RhinoDebugAdapter 以追踪脚本执行行号，执行完毕后恢复原来的 debugger
+        cx.setDebugger(RhinoDebugAdapter, null)
         val result: Any?
         try {
             cx.checkRecursive()
             val ret = script.exec(cx, scope)
             result = engine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
-            val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
-            val msg: String = if (re is JavaScriptException) {
-                re.value.toString()
-            } else {
-                re.toString()
-            }
-            val se = ScriptException(msg, re.sourceName(), line)
-            se.initCause(re)
-            throw se
+            throw RhinoScriptEngine.createScriptException(re, source, sourceName)
         } finally {
             cx.coroutineContext = previousCoroutineContext
             cx.allowScriptRun = false
             cx.recursiveCount--
+            // 恢复之前的 debugger，避免影响其他脚本引擎的调试行为
+            cx.setDebugger(previousDebugger, null)
             Context.exit()
         }
         return result
@@ -112,15 +110,7 @@ internal class RhinoCompiledScript(
                     }
                 }
             } catch (re: RhinoException) {
-                val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
-                val msg: String = if (re is JavaScriptException) {
-                    re.value.toString()
-                } else {
-                    re.toString()
-                }
-                val se = ScriptException(msg, re.sourceName(), line)
-                se.initCause(re)
-                throw se
+                throw RhinoScriptEngine.createScriptException(re, source, sourceName)
             } catch (var14: IOException) {
                 throw ScriptException(var14)
             } finally {

@@ -1,6 +1,7 @@
 package io.legado.app.ui.association
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.MutableLiveData
 import com.jayway.jsonpath.JsonPath
 import io.legado.app.R
@@ -21,6 +22,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.RuleUpdate
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonArrayOrObject
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.isAbsUrl
@@ -28,7 +30,6 @@ import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isUri
 import io.legado.app.utils.splitNotBlank
-import androidx.core.net.toUri
 
 
 class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
@@ -165,9 +166,10 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                 }
 
                 mText.isUri() -> {
-                    val uri = mText.toUri()
+                    val uri = Uri.parse(mText)
                     uri.inputStream(context).getOrThrow().use { inputS ->
-                        GSON.fromJsonArray<BookSource>(inputS).getOrThrow().let {
+                        val text = inputS.reader().readText()
+                        GSON.fromJsonArrayOrObject<BookSource>(text).getOrThrow().let {
                             val source = it.firstOrNull() ?: return@let
                             if (source.bookSourceUrl.isEmpty()) {
                                 throw NoStackTraceException("不是书源")
@@ -181,7 +183,7 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
             }
         }.onError {
             errorLiveData.postValue("ImportError:${it.localizedMessage}")
-            AppLog.put("ImportError:${it.localizedMessage}", it)
+            AppLog.put("ImportError:${it.localizedMessage}", it, dialogName = "导入书源")
         }.onSuccess {
             comparisonSource()
         }
@@ -200,8 +202,9 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
             } else {
                 url(url)
             }
-        }.decompressed().byteStream().use {
-            GSON.fromJsonArray<BookSource>(it).getOrThrow().let { list ->
+        }.decompressed().byteStream().use { inputS ->
+            val text = inputS.reader().readText()
+            GSON.fromJsonArrayOrObject<BookSource>(text).getOrThrow().let { list ->
                 val source = list.firstOrNull() ?: return@let
                 if (source.bookSourceUrl.isEmpty()) {
                     throw NoStackTraceException("不是书源")

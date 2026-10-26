@@ -22,10 +22,13 @@ object EventBus {
     const val NOTIFY_MAIN = "notifyMain"
     const val WEB_SERVICE = "webService"
     const val UP_DOWNLOAD = "upDownload"
+    const val MCP_SERVICE = "mcpService"
     const val UP_DOWNLOAD_STATE = "upDownloadState"
     const val SAVE_CONTENT = "saveContent"
     const val CHECK_SOURCE = "checkSource"
     const val CHECK_SOURCE_DONE = "checkSourceDone"
+    const val NAVIGATION_BAR_CHANGED = "navigationBarChanged"
+    const val CHECK_SOURCE_RESULT = "checkSourceResult"     // 单个书源校源结果
     const val TIP_COLOR = "tipColor"
     const val SOURCE_CHANGED = "sourceChanged"
     const val SEARCH_RESULT = "searchResult"
@@ -39,4 +42,10 @@ object EventBus {
     const val REFRESH_BOOK_CONTENT = "refreshBookContent"
     const val REFRESH_BOOK_TOC = "refreshBookToc"
     const val UP_VIDEO_INFO = "upVideoInfo"
+    const val AUTO_TASK_SERVICE = "autoTaskService"
+    const val TOP_BAR_CHANGED = "topBarChanged"
+    const val VIDEO_PLAY_ERROR = "videoPlayError"
+    const val VIDEO_BOOK_UNIT_SWITCHED = "videoBookUnitSwitched"
+    const val ARTICLES_LOADED = "articlesLoaded"
+    const val COVER_HTML_TEMPLATE_CHANGED = "coverHtmlTemplateChanged"  // HTML封面模板变更
 }

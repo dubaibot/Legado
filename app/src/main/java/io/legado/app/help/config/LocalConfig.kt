@@ -38,6 +38,12 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putLong("lastBackup", value)
         }
 
+    var lastRestore: Long
+        get() = getLong("lastRestore", 0)
+        set(value) {
+            putLong("lastRestore", value)
+        }
+
     var privacyPolicyOk: Boolean
         get() = getBoolean("privacyPolicyOk")
         set(value) {
@@ -73,6 +79,9 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
 
     val needUpDictRule: Boolean
         get() = !isLastVersion(2, "needUpDictRule")
+
+    val needUpHighlightRules: Boolean
+        get() = !isLastVersion(1, "highlightRuleVersion")
 
     var versionCode
         get() = getLong(versionCodeKey, 0)
@@ -172,5 +181,12 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putString("exploreSourceName_$sourceUrl", value)
         }
     }
+
+    /** 每本书定时更新对话框上次使用的间隔（小时），缺省 1 */
+    var bookAutoTaskIntervalHours: Int
+        get() = getInt("bookAutoTaskIntervalHours", 1)
+        set(value) {
+            edit { putInt("bookAutoTaskIntervalHours", value) }
+        }
 
 }
