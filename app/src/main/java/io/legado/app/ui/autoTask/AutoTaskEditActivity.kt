@@ -22,6 +22,7 @@ import io.legado.app.model.AutoTaskRule
 import io.legado.app.model.AutoTask
 import io.legado.app.model.AutoTaskRuleValidator
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.widget.compose.AppManagementAction
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
@@ -51,6 +52,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
     private var editorState by mutableStateOf(AutoTaskEditorState())
     private var editingField: AutoTaskEditorField? = null
     private var editingCacheKey: String? = null
+    private var dirty = false
 
     private val codeEditorLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -61,12 +63,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
         editingCacheKey = null
 
         val data = result.data
-        val returnedCacheKey = data?.getStringExtra("cacheKey")
-        val editedText = if (returnedCacheKey != null) {
-            CacheManager.getFromMemory(returnedCacheKey) as? String
-        } else {
-            data?.getStringExtra("text")
-        }
+        val editedText = CodeEditLauncher.readText(data)
         if (result.resultCode == Activity.RESULT_OK && field != null && editedText != null) {
             val cursor = data?.getIntExtra("cursorPosition", editedText.length)
                 ?.takeIf { it in 0..editedText.length }
@@ -74,9 +71,6 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
             updateEditorField(field, TextFieldValue(editedText, TextRange(cursor)))
         }
         sourceCacheKey?.let(CacheManager::deleteMemory)
-        if (returnedCacheKey != null && returnedCacheKey != sourceCacheKey) {
-            returnedCacheKey.let(CacheManager::deleteMemory)
-        }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -114,7 +108,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
             ) {
                 AutoTaskEditScreen(
                     state = editorState,
-                    onStateChange = { editorState = it },
+                    onStateChange = { editorState = it; dirty = true },
                     style = style,
                     onOpenEditor = ::openCodeEditor,
                     onLogin = ::openLogin
@@ -133,6 +127,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
                         loaded = true
                         origin = rule.copy()
                         editorState = rule.toEditorState()
+                        dirty = false
                     }
                 }
             }
@@ -144,6 +139,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
         viewModel.save(rule) {
             origin = it.copy()
             loaded = true
+            dirty = false
             finishAfterSave = true
             setResult(RESULT_OK)
             finish()
@@ -151,6 +147,10 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
     }
 
     private fun buildRule(): AutoTaskRule? {
+        if (taskId != null && !loaded) {
+            toastOnUi(R.string.is_loading)
+            return null
+        }
         val name = editorState.name.text.trim()
         if (name.isBlank()) {
             toastOnUi(R.string.auto_task_name_required)
@@ -248,6 +248,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
         }
         runCatching { GSON.fromJsonObject<AutoTaskRule>(text).getOrThrow() }
             .onSuccess { imported ->
+                dirty = true
                 editorState = imported.toEditorState()
             }
             .onFailure { toastOnUi(it.localizedMessage.orEmpty()) }
@@ -301,6 +302,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
     }
 
     private fun updateEditorField(field: AutoTaskEditorField, value: TextFieldValue) {
+        dirty = true
         editorState = when (field) {
             AutoTaskEditorField.COMMENT -> editorState.copy(comment = value)
             AutoTaskEditorField.SCRIPT -> editorState.copy(script = value)
@@ -316,8 +318,7 @@ class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTas
             super.finish()
             return
         }
-        val current = buildDraft()
-        if (origin != null && current != origin) {
+        if (dirty) {
             showComposeConfirmDialog(
                 title = getString(R.string.exit),
                 message = getString(R.string.exit_no_save),
