@@ -35,7 +35,6 @@
         android:clipToPadding="false"
         android:paddingStart="@dimen/main_bottom_controls_horizontal_padding"
         android:paddingEnd="@dimen/main_bottom_controls_horizontal_padding"
-        android:paddingBottom="@dimen/main_bottom_controls_bottom_padding"
         app:layout_constraintBottom_toBottomOf="parent"
         tools:ignore="RtlSymmetry">
 

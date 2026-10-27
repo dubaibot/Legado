@@ -6,7 +6,9 @@ import android.graphics.Color
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.MenuItem
+import android.view.View
 import android.view.ViewGroup
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import io.legado.app.utils.ColorUtils
 import androidx.activity.addCallback
@@ -42,6 +44,7 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.association.ImportBookSourceDialog
@@ -252,13 +255,25 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (AppConfig.isEInkMode) {
             bottomNavigationView.setBackgroundResource(R.drawable.bg_eink_border_top)
         }
+        // 内容延伸到系统导航栏下方，让液态玻璃底栏向下覆盖导航栏区域
+        window.decorView.systemUiVisibility =
+            window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         bottomNavigationView.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val height = windowInsets.navigationBarHeight
+            // 玻璃壳向下延伸导航栏高度，覆盖系统导航栏
+            bottomNavigationGlass.layoutParams =
+                (bottomNavigationGlass.layoutParams as ConstraintLayout.LayoutParams).apply {
+                    height = resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height) + height
+                }
             view.bottomPadding = height
             windowInsets.inset(0, 0, 0, height)
         }
         bottomNavigationGlassView.bind(contentContainer)
         bottomNavigationIndicatorGlassView.bind(contentContainer)
+    }
+
+    override fun upNavigationBarColor() {
+        setNavigationBarColorAuto(Color.TRANSPARENT, transparent = true)
     }
 
     /**
