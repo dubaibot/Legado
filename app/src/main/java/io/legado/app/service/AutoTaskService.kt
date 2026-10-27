@@ -245,12 +245,18 @@ class AutoTaskService : BaseService() {
     override fun startForegroundNotification() {
         val notification = notificationBuilder.build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Tasks may legitimately run for several minutes. The short-service
-            // type is platform-limited and would terminate valid work.
+            // Alarm mode uses SHORT_SERVICE so the system permits restart from a
+            // background alarm. DATA_SYNC has stricter background-start
+            // restrictions on Android 16+ that can block the alarm chain.
+            val serviceType = if (useAlarmMode()) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            }
             startForeground(
                 NotificationId.AutoTaskService,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                serviceType
             )
         } else {
             startForeground(NotificationId.AutoTaskService, notification)
@@ -262,7 +268,6 @@ class AutoTaskService : BaseService() {
         stopAfter: Boolean = useAlarmMode(),
         manualTaskId: String? = null
     ) {
-        if (oneShotJob?.isActive == true) return
         oneShotJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 taskLock.withLock {
@@ -275,17 +280,15 @@ class AutoTaskService : BaseService() {
                         // Schedule before automatic execution so a service
                         // restart cannot lose the next wake-up. A manual run
                         // with the global switch off must remain one-shot.
+                        // SHORT_SERVICE has a ~3 min platform limit; scheduling
+                        // after the task would break the chain if the task
+                        // exceeds it.
                         scheduleNextFutureAlarm(System.currentTimeMillis())
                     }
                     if (!manualTaskId.isNullOrBlank()) {
                         AutoTask.get(manualTaskId)?.let { runTask(it) }
                     } else {
                         processDueTasks()
-                    }
-                    if (useAlarmMode() && getPrefBoolean(PreferKey.autoTaskService)) {
-                        // A task may have changed lastRunAt; recompute from the
-                        // fresh state and replace the one-shot alarm.
-                        scheduleNextFutureAlarm(System.currentTimeMillis())
                     }
                 }
             } catch (cancelled: CancellationException) {
