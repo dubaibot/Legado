@@ -263,7 +263,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             // 玻璃壳向下延伸导航栏高度，覆盖系统导航栏
             bottomNavigationGlass.layoutParams =
                 (bottomNavigationGlass.layoutParams as ConstraintLayout.LayoutParams).apply {
-                    height = resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height) + height
+                    this.height = resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height) + height
                 }
             view.bottomPadding = height
             windowInsets.inset(0, 0, 0, height)
