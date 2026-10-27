@@ -120,3 +120,13 @@ Entries discovered by the Agent during task execution should follow this format:
   - 构建命令：`cd <worktree>/app && ../gradlew :app:assembleRelease -x lint -x lintVitalAppRelease -x test --no-daemon`，全量约 12min
   - APK 命名 myreader_app_3.26.102701_{universal,arm64-v8a,armeabi-v7a}.apk；产物目录 /tmp/opencode/test-wt2/app/build/outputs/apk/app/release/，复制到 /workspace/app/build/outputs/apk/app/release/ 由 8901 端口 http.server 对外提供
   - 签名走用户级 ~/.gradle/gradle.properties（myreader 密钥），worktree 内无需再配
+
+[环境无预装 JDK/Android SDK 时的构建前置]
+- Date: 2026-10-27
+- Context: 在 feat/debug-tracker 分支用 assembleDebug 重新生成 APK（含图标改动）
+- Category: Environment Configuration
+- Instructions:
+  - 环境默认无 java/sdkmanager，需先装 JDK 17（apt openjdk-17-jdk-headless，位于 /usr/lib/jvm/java-17-openjdk-amd64）与 Android cmdline-tools（装到 /opt/android-sdk，sdkmanager 装 platforms;android-36、build-tools;35.0.0/36.0.0、platform-tools），并写 local.properties `sdk.dir=/opt/android-sdk`
+  - debug 构建走 ~/.android/debug.keystore（Android Debug 签名，包名 com.myreaderD.reader.debug），与 release 的 myreader 密钥不同
+  - Maven Central 偶发 TLS 中断（Remote host terminated the handshake），重试即可，已下载依赖缓存于 ~/.gradle/caches
+  - 构建必须用 background_terminal_create（峰值内存约 4.9GB），禁止前台直接跑
