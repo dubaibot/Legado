@@ -38,6 +38,7 @@ import io.legado.app.ui.main.bookshelf.observeBookshelfTagSource
 import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
 import io.legado.app.ui.widget.RoundedTagBarView
+import io.legado.app.ui.widget.applyTopBarWallpaper
 import io.legado.app.ui.widget.topBarContentColor
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.setEdgeEffectColor
@@ -409,6 +410,7 @@ class BookshelfFragment1() :
         observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) { isNightMode ->
             if (isNightMode == AppConfig.isNightTheme) {
                 tagBar?.applyTopBarStyle(force = true)
+                binding.titleBar.applyTopBarWallpaper()
             }
         }
     }

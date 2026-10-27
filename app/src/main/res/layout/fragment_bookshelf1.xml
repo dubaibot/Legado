@@ -10,7 +10,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:attachToActivity="false"
-        app:contentLayout="@layout/view_tab_layout_min"
         app:title="@string/bookshelf" />
 
     <io.legado.app.ui.widget.RoundedTagBarView

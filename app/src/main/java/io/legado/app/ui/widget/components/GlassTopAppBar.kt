@@ -117,9 +117,10 @@ fun GlassTopAppBar(
         TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
     }
     val isRegular = config.style == TopBarConfig.STYLE_REGULAR
-    // 顶栏包背景：仅 regular 样式消费（对齐 MainTopBarView renderBackgroundLayer）
-    val wallpaperFile = remember(styleSignature, isRegular) {
-        if (isRegular && !config.wallpaperPath.isNullOrBlank()) {
+    // 顶栏背景壁纸：默认样式（顶栏管理「默认顶部背景」设置）与常规样式顶栏包都消费；
+    // 壁纸存在时容器透明、由 Image 铺满顶栏区域（对齐 MainTopBarView renderBackgroundLayer）
+    val wallpaperFile = remember(styleSignature) {
+        if (!config.wallpaperPath.isNullOrBlank()) {
             TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
         } else {
             null

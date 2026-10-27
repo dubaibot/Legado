@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
@@ -29,9 +30,12 @@ import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
+import io.legado.app.ui.widget.applyTopBarWallpaper
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.transaction
@@ -84,6 +88,16 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         initGroupData()
         initQuickGroupBar()
         upModeUI()
+        updateMainBottomPadding((activity as? MainActivity)?.mainContentBottomPadding() ?: 0)
+    }
+
+    override fun updateMainBottomPadding(bottomPadding: Int) {
+        binding.root.setPadding(
+            binding.root.paddingLeft,
+            binding.root.paddingTop,
+            binding.root.paddingRight,
+            bottomPadding
+        )
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
@@ -343,13 +357,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
-    override fun editBookmark(source: BookSourcePart): Boolean {
-        ExploreQuickGroups.showEditSourceNameDialog(requireContext(), layoutInflater, source) {
-            gridAdapter.notifyDataSetChanged()
-        }
-        return true
-    }
-
     override fun editSource(sourceUrl: String) {
         startActivity<BookSourceEditActivity> {
             putExtra("sourceUrl", sourceUrl)
@@ -358,6 +365,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     override fun toTop(source: BookSourcePart) {
         viewModel.topSource(source)
+    }
+
+    override fun toBottom(source: BookSourcePart) {
+        viewModel.toBottom(source)
     }
 
     override fun deleteSource(source: BookSourcePart) {
@@ -384,6 +395,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 binding.rvFind.scrollToPosition(0)
             } else {
                 binding.rvFind.smoothScrollToPosition(0)
+            }
+        }
+    }
+
+    override fun observeLiveBus() {
+        super.observeLiveBus()
+        observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) { isNightMode ->
+            if (isNightMode == AppConfig.isNightTheme) {
+                binding.titleBar.applyTopBarWallpaper()
             }
         }
     }

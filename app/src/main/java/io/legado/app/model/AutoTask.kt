@@ -11,6 +11,7 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import splitties.init.appCtx
 import java.text.SimpleDateFormat
@@ -304,7 +305,7 @@ object AutoTask {
     fun executionCoordinator(context: Context = appCtx): AutoTaskExecutionCoordinator {
         return AutoTaskExecutionCoordinator(
             scriptExecutor = { rule ->
-                buildSource(rule).evalJS(rule.normalizedScript())
+                buildSource(rule).evalJS(rule.normalizedScript(), coroutineContext = currentCoroutineContext())
             },
             actionHandler = { rule, value, logger ->
                 AutoTaskProtocol.handle(

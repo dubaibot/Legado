@@ -2945,6 +2945,7 @@
     <string name="paragraph_rule_debug_status_ok">Processed</string>
 
 <string name="top_bar_manage">Top bar manager</string>
+<string name="top_bar_default_background">Default top bar background</string>
 
     <string name="webview_back_again_exit">Press back again to exit</string>
 

@@ -313,6 +313,8 @@ object AutoTaskActionParser {
         if (result == null) return null
         val json = when (result) {
             is String -> result
+            // 模板字符串求值结果是 ConsString(非 String),直接当 JSON 文本
+            is CharSequence -> result.toString()
             is Scriptable -> runCatching {
                 GSON.toJson(result.toJsonCompatible())
             }.getOrNull()
@@ -326,6 +328,9 @@ object AutoTaskActionParser {
     private fun Any?.toJsonCompatible(): Any? = when (this) {
         null, is String, is Number, is Boolean -> this
         Undefined.instance -> null
+        // ConsString(模板字符串)实现了 CharSequence 但不是 String,
+        // GSON 反射会序列化成 {left,right,length,isFlat} 内部字段而非文本
+        is CharSequence -> toString()
         is Wrapper -> unwrap().toJsonCompatible()
         is NativeArray -> {
             ids.sortedBy { it.toString().toIntOrNull() ?: Int.MAX_VALUE }

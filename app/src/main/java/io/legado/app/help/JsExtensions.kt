@@ -35,6 +35,7 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.QueryTTF
+import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.association.OpenUrlConfirmActivity
 import io.legado.app.utils.ArchiveUtils
@@ -1294,6 +1295,63 @@ interface JsExtensions : JsEncodeUtils {
             putExtra("sourceOrigin", source.getKey())
             putExtra("sourceName", source.getTag())
             putExtra("sourceType", source.getSourceType())
+        }
+    }
+
+    @JavascriptInterface
+    fun open(name: String) {
+        open(name, null, null, null)
+    }
+
+    @JavascriptInterface
+    fun open(name: String, url: String?) {
+        open(name, url, null, null)
+    }
+
+    @JavascriptInterface
+    fun open(name: String, url: String?, title: String?) {
+        open(name, url, title, null)
+    }
+
+    /**
+     * 打开登录界面、内置浏览器或其他页面。
+     * 支持从后台 Service（如定时任务）调用，通过 FLAG_ACTIVITY_NEW_TASK 启动。
+     *
+     * @param name 操作名称：login / sort / rss / search / explore
+     * @param url 目标 URL（部分操作需要）
+     * @param title 标题
+     * @param origin 源标识
+     */
+    @JavascriptInterface
+    fun open(name: String, url: String? = null, title: String? = null, origin: String? = null) {
+        rhinoContextOrNull?.ensureActive()
+        when (name) {
+            "login" -> {
+                val source = getSource() ?: return
+                val toSourceKey = origin?.takeIf { it.isNotBlank() } ?: source.getKey()
+                when (source) {
+                    is BookSource -> {
+                        if (toSourceKey.startsWith("auto_task:", true)) {
+                            appCtx.startActivity<SourceLoginActivity> {
+                                putExtra("type", "autoTask")
+                                putExtra("key", toSourceKey)
+                            }
+                        } else {
+                            appCtx.startActivity<SourceLoginActivity> {
+                                putExtra("type", "bookSource")
+                                putExtra("key", toSourceKey)
+                            }
+                        }
+                    }
+
+                    is RssSource -> {
+                        appCtx.startActivity<SourceLoginActivity> {
+                            putExtra("type", "rssSource")
+                            putExtra("key", toSourceKey)
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -213,6 +213,35 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         return bottomNav.height.takeIf { it > 0 } ?: bottomNav.minimumHeight
     }
 
+    /**
+     * 移动底栏选中指示器到当前选中菜单项位置。
+     */
+    private fun moveIndicatorToSelected() {
+        val indicator = binding.bottomNavigationIndicatorContainer
+        val navView = binding.bottomNavigationView
+        navView.post {
+            var index = -1
+            for (i in 0 until navView.menu.size()) {
+                if (navView.menu.getItem(i).isChecked) {
+                    index = i
+                    break
+                }
+            }
+            if (index < 0) return@post
+            val menuView = navView.getChildAt(0) as? ViewGroup ?: return@post
+            if (index >= menuView.childCount) return@post
+            val itemView = menuView.getChildAt(index)
+            if (itemView.width <= 0) return@post
+            val itemLoc = IntArray(2)
+            itemView.getLocationOnScreen(itemLoc)
+            val indicatorLoc = IntArray(2)
+            indicator.getLocationOnScreen(indicatorLoc)
+            val x = itemLoc[0] - indicatorLoc[0] - (indicator.width - itemView.width) / 2
+            indicator.animate().translationX(x.toFloat()).setDuration(200).start()
+            binding.bottomNavigationIndicatorGlassView.refresh()
+        }
+    }
+
     private fun initView() = binding.run {
         viewPagerMain.setEdgeEffectColor(primaryColor)
         viewPagerMain.offscreenPageLimit = 3
@@ -228,6 +257,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             view.bottomPadding = height
             windowInsets.inset(0, 0, 0, height)
         }
+        bottomNavigationGlassView.bind(contentContainer)
+        bottomNavigationIndicatorGlassView.bind(contentContainer)
     }
 
     /**
@@ -382,7 +413,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun observeLiveBus() {
         viewModel.onUpBooksLiveData.observe(this) {
             if (onUpBooksBadgeView == null) {
-                onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(0)
+                val menu = binding.bottomNavigationView.menu
+                var badgeIndex = 0
+                var visibleCount = 0
+                for (i in 0 until menu.size()) {
+                    if (menu.getItem(i).isVisible) {
+                        if (menu.getItem(i).itemId == R.id.menu_bookshelf) {
+                            badgeIndex = visibleCount
+                            break
+                        }
+                        visibleCount++
+                    }
+                }
+                onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(badgeIndex)
             }
             onUpBooksBadgeView!!.setBadgeCount(it)
         }
@@ -493,7 +536,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
         override fun onPageSelected(position: Int) {
             pagePosition = position
-            binding.bottomNavigationView.menu[realPositions[position]].isChecked = true
+            val menuId = when (realPositions[position]) {
+                idBookshelf -> R.id.menu_bookshelf
+                idExplore -> R.id.menu_discovery
+                idRss -> R.id.menu_rss
+                else -> R.id.menu_my_config
+            }
+            binding.bottomNavigationView.menu.findItem(menuId)?.isChecked = true
+            moveIndicatorToSelected()
+            binding.bottomNavigationGlassView.refresh()
         }
 
     }

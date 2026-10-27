@@ -11,6 +11,7 @@ import io.legado.app.base.BaseFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.FragmentMyConfigBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.NameListPreference
@@ -29,10 +30,13 @@ import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
 import io.legado.app.ui.dict.rule.DictRuleActivity
 import io.legado.app.ui.file.FileManageActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.replace.ReplaceRuleActivity
+import io.legado.app.ui.widget.applyTopBarWallpaper
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.putPrefBoolean
@@ -61,6 +65,16 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
         if (preferenceFragment == null) preferenceFragment = MyPreferenceFragment()
         childFragmentManager.beginTransaction()
             .replace(R.id.pre_fragment, preferenceFragment, fragmentTag).commit()
+        updateMainBottomPadding((activity as? MainActivity)?.mainContentBottomPadding() ?: 0)
+    }
+
+    override fun updateMainBottomPadding(bottomPadding: Int) {
+        binding.root.setPadding(
+            binding.root.paddingLeft,
+            binding.root.paddingTop,
+            binding.root.paddingRight,
+            bottomPadding
+        )
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
@@ -70,6 +84,15 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     override fun onCompatOptionsItemSelected(item: MenuItem) {
         when (item.itemId) {
             R.id.menu_help -> showHelp("appHelp")
+        }
+    }
+
+    override fun observeLiveBus() {
+        super.observeLiveBus()
+        observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) { isNightMode ->
+            if (isNightMode == AppConfig.isNightTheme) {
+                binding.titleBar.applyTopBarWallpaper()
+            }
         }
     }
 

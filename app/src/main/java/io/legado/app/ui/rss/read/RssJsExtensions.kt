@@ -93,8 +93,22 @@ open class RssJsExtensions(
 
 
     @JavascriptInterface
-    @JvmOverloads
-    fun open(name: String, url: String? = null, title: String? = null, origin: String? = null) {
+    override fun open(name: String) {
+        open(name, null, null, null)
+    }
+
+    @JavascriptInterface
+    override fun open(name: String, url: String?) {
+        open(name, url, null, null)
+    }
+
+    @JavascriptInterface
+    override fun open(name: String, url: String?, title: String?) {
+        open(name, url, title, null)
+    }
+
+    @JavascriptInterface
+    override fun open(name: String, url: String?, title: String?, origin: String?) {
         val activity = activityRef.get() ?: return
         activity.lifecycleScope.launch(IO) {
             val source = getSource() ?: return@launch

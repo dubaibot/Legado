@@ -104,6 +104,19 @@ Entries discovered by the Agent during task execution should follow this format:
 - Instructions:
   - release 签名仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效（app/build.gradle signingConfigs 条件块），属性缺失时产出未签名 APK，安装必报「安装包无效」
   - 签名属性写在 ~/.gradle/gradle.properties（不进仓库）：RELEASE_STORE_FILE/RELEASE_STORE_PASSWORD/RELEASE_KEY_ALIAS/RELEASE_KEY_PASSWORD
+  - 用户级（GRADLE_USER_HOME）gradle.properties 优先级高于项目级：在项目 gradle.properties 里重复写 RELEASE_* 不会生效，构建始终用 ~/.gradle 那份（曾误配项目级 legado.jks 被静默覆盖，APK 仍用 myreader 密钥签名）
   - 密钥库 /workspace/keystore/myreader-release.jks（alias myreader，密码在上述属性文件），已 gitignore /keystore/
   - 签名验证命令：/opt/android-sdk/build-tools/36.0.0/apksigner verify --print-certs <apk>
   - 换签名密钥后旧版本必须先卸载才能装新包（签名冲突）
+
+[test 分支本地构建配方（worktree）]
+- Date: 2026-10-26
+- Context: 用户要求 test 分支安装包，在 /tmp/opencode/test-wt2 用 detached worktree 构建
+- Category: Build Methods
+- Instructions:
+  - worktree 必须 `git worktree add --detach <dir> origin/test`；worktree 内缺 local.properties，需补 `sdk.dir=/opt/android-sdk` 否则报 SDK location not found
+  - test 分支 gradle.properties 默认 -Xmx6g 超出终端 cgroup 上限 5.45GB，R8 阶段必 OOM：改为 -Xmx4g + `kotlin.compiler.execution.strategy=in-process` + `org.gradle.workers.max=2`（与 /workspace 一致配方）
+  - applicationId 改 com.myreaderD.reader 后 google-services.json 无匹配客户端会报 No matching client found：需为 com.myreaderD.reader.release 增加客户端条目（已提交 232f458），Firebase 崩溃/性能统计依赖该文件
+  - 构建命令：`cd <worktree>/app && ../gradlew :app:assembleRelease -x lint -x lintVitalAppRelease -x test --no-daemon`，全量约 12min
+  - APK 命名 myreader_app_3.26.102701_{universal,arm64-v8a,armeabi-v7a}.apk；产物目录 /tmp/opencode/test-wt2/app/build/outputs/apk/app/release/，复制到 /workspace/app/build/outputs/apk/app/release/ 由 8901 端口 http.server 对外提供
+  - 签名走用户级 ~/.gradle/gradle.properties（myreader 密钥），worktree 内无需再配

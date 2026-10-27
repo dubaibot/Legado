@@ -44,6 +44,7 @@ import org.mozilla.javascript.ContextFactory
 import org.mozilla.javascript.ContinuationPending
 import org.mozilla.javascript.Function
 import org.mozilla.javascript.JavaScriptException
+import org.mozilla.javascript.NativeJSON
 import org.mozilla.javascript.RhinoException
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
@@ -419,6 +420,31 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
             result1 = result1.toString()
         }
         return if (result1 is Undefined) null else result1
+    }
+
+    fun stringifyScriptable(
+        value: Scriptable,
+        coroutineContext: CoroutineContext? = null,
+        throwOnFailure: Boolean = false,
+    ): String? {
+        val topScope = value.parentScope?.let { ScriptableObject.getTopLevelScope(it) } ?: return null
+        val cx = Context.enter() as RhinoContext
+        val previousCoroutineContext = cx.coroutineContext
+        if (coroutineContext != null && coroutineContext[Job] != null) {
+            cx.coroutineContext = coroutineContext
+        }
+        try {
+            val raw = try {
+                NativeJSON.stringify(cx, topScope, value, null, null)
+            } catch (e: Exception) {
+                if (throwOnFailure) throw e
+                return null
+            }
+            return unwrapReturnValue(raw) as? String
+        } finally {
+            cx.coroutineContext = previousCoroutineContext
+            Context.exit()
+        }
     }
 
     init {

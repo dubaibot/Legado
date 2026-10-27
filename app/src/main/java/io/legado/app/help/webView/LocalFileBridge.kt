@@ -1,11 +1,10 @@
 package io.legado.app.help.webView
 
-import android.content.Intent
 import android.net.Uri
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -17,6 +16,7 @@ import java.lang.ref.WeakReference
  */
 class LocalFileBridge(
     activity: AppCompatActivity,
+    private val openDocumentLauncher: ActivityResultLauncher<Array<String>>,
     private val webViewProvider: () -> WebView?
 ) {
     companion object {
@@ -26,10 +26,11 @@ class LocalFileBridge(
 
     private val activityRef: WeakReference<AppCompatActivity> = WeakReference(activity)
 
-    // 单个文件选择器
-    private val openDocument = activity.registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
+    /**
+     * 由 Activity 在 registerForActivityResult 回调中调用。
+     * registerForActivityResult 必须在 Lifecycle STARTED 之前注册，故选择器由 Activity 注册后注入。
+     */
+    fun handleLocalFileResult(uri: Uri?) {
         if (uri == null) {
             callback(null, ok = false, error = "canceled")
         } else {
@@ -42,7 +43,7 @@ class LocalFileBridge(
         val activity = activityRef.get() ?: return
         activity.runOnUiThread {
             val mimeTypes = parseAcceptTypes(acceptTypes)
-            openDocument.launch(mimeTypes)
+            openDocumentLauncher.launch(mimeTypes)
         }
     }
 

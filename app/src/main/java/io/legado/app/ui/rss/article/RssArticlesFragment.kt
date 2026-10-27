@@ -111,7 +111,7 @@ class RssArticlesFragment() : VMBaseFragment<RssArticlesViewModel>(R.layout.frag
                 GridLayoutManager(requireContext(), 2)
             }
             4 -> {
-                recyclerView.setPadding(4, 0, 4, 0)
+                recyclerView.setPadding(8, 0, 8, 0)
                 GridLayoutManager(requireContext(), 3)
             }
             else -> {

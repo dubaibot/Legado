@@ -3,11 +3,15 @@ package io.legado.app.ui.main.explore
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.view.ViewGroup
+import android.widget.PopupMenu
+import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ItemExploreSourceBinding
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.utils.startActivity
 
 /**
  * 新版发现书签样式书源网格
@@ -38,10 +42,36 @@ class ExploreNewSourceAdapter(context: Context, private val callBack: CallBack) 
             }
         }
         holder.itemView.setOnLongClickListener {
-            getItem(holder.bindingAdapterPosition - getHeaderCount())?.let {
-                callBack.editBookmark(it)
-            } ?: false
+            showMenu(binding, holder.bindingAdapterPosition - getHeaderCount())
+            true
         }
+    }
+
+    private fun showMenu(binding: ItemExploreSourceBinding, position: Int): Boolean {
+        val source = getItem(position) ?: return true
+        val popupMenu = PopupMenu(context, binding.root)
+        popupMenu.inflate(R.menu.explore_item)
+        popupMenu.menu.findItem(R.id.menu_login).isVisible = source.hasLoginUrl
+        popupMenu.menu.findItem(R.id.menu_refresh).isVisible = false
+        popupMenu.setOnMenuItemClickListener {
+            when (it.itemId) {
+                R.id.menu_edit -> {
+                    callBack.editSource(source.bookSourceUrl)
+                }
+
+                R.id.menu_top -> callBack.toTop(source)
+                R.id.menu_bottom -> callBack.toBottom(source)
+                R.id.menu_search -> callBack.searchBook(source)
+                R.id.menu_login -> context.startActivity<SourceLoginActivity> {
+                    putExtra("type", "bookSource")
+                    putExtra("key", source.bookSourceUrl)
+                }
+                R.id.menu_del -> callBack.deleteSource(source)
+            }
+            true
+        }
+        popupMenu.show()
+        return true
     }
 
     private fun getDisplayName(source: BookSourcePart): String {
@@ -83,9 +113,14 @@ class ExploreNewSourceAdapter(context: Context, private val callBack: CallBack) 
     interface CallBack {
         fun openExplore(source: BookSourcePart)
 
-        /**
-         * 长按编辑书签显示名
-         */
-        fun editBookmark(source: BookSourcePart): Boolean
+        fun editSource(sourceUrl: String)
+
+        fun toTop(source: BookSourcePart)
+
+        fun toBottom(source: BookSourcePart)
+
+        fun deleteSource(source: BookSourcePart)
+
+        fun searchBook(source: BookSourcePart)
     }
 }

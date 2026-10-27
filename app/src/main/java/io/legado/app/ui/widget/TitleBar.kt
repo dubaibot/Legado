@@ -204,6 +204,8 @@ class TitleBar @JvmOverloads constructor(
             }
 
             stateListAnimator = null
+            // 默认顶部背景图：配置了壁纸时叠加在顶栏自身背景之上（仅顶部栏有背景图片）
+            applyTopBarWallpaper()
         }
         a.recycle()
     }

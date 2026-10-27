@@ -22,8 +22,10 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.normalizeFileName
+import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -107,8 +109,34 @@ object TopBarConfig {
             tagSelectedColor = context.themeCardColorOrDefault(),
             backgroundColor = defaultBackgroundColor(isNight),
             cornerScale = if (style == STYLE_REGULAR) 0f else 1f,
+            wallpaperPath = defaultWallpaperPath(isNight),
+            wallpaperAlpha = defaultWallpaperAlpha(isNight),
             showSearchInDefaultStyle = MainLayoutPresetConfig.defaultTopBarShowSearch(),
             updatedAt = 0L
+        )
+    }
+
+    /** 默认顶部背景图路径（日/夜独立预置；裁剪落盘于外部目录，路径绝对且稳定）。 */
+    private fun defaultWallpaperPath(isNight: Boolean): String? =
+        appCtx.getPrefString(
+            if (isNight) PreferKey.topBarDefaultWallpaperNight else PreferKey.topBarDefaultWallpaperDay
+        )?.takeIf { it.isNotBlank() }
+
+    private fun defaultWallpaperAlpha(isNight: Boolean): Int =
+        appCtx.getPrefInt(
+            if (isNight) PreferKey.topBarDefaultWallpaperAlphaNight else PreferKey.topBarDefaultWallpaperAlphaDay,
+            100
+        ).coerceIn(0, 100)
+
+    /** 保存默认顶部背景图（壁纸路径 + 透明度），供顶栏管理界面调用。 */
+    fun setDefaultWallpaper(isNight: Boolean, path: String?, alpha: Int) {
+        appCtx.putPrefString(
+            if (isNight) PreferKey.topBarDefaultWallpaperNight else PreferKey.topBarDefaultWallpaperDay,
+            path?.takeIf { it.isNotBlank() }
+        )
+        appCtx.putPrefInt(
+            if (isNight) PreferKey.topBarDefaultWallpaperAlphaNight else PreferKey.topBarDefaultWallpaperAlphaDay,
+            alpha.coerceIn(0, 100)
         )
     }
 
@@ -134,7 +162,7 @@ object TopBarConfig {
     fun currentSignature(isNight: Boolean): String {
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) {
-            return "$isNight|$DEFAULT_DIR_NAME|${MainLayoutPresetConfig.defaultTopBarStyle()}|${MainLayoutPresetConfig.defaultTopBarShowSearch()}|${appCtx.themeUiSignature()}"
+            return "$isNight|$DEFAULT_DIR_NAME|${MainLayoutPresetConfig.defaultTopBarStyle()}|${MainLayoutPresetConfig.defaultTopBarShowSearch()}|${defaultWallpaperPath(isNight).isNullOrBlank()}|${appCtx.themeUiSignature()}"
         }
         val configFile = File(localDir(isNight, dirName), packageFileName)
         return "$isNight|$dirName|${configFile.lastModified()}|${appCtx.themeUiSignature()}"

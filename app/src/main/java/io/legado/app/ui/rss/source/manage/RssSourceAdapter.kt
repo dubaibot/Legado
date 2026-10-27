@@ -1,5 +1,6 @@
 package io.legado.app.ui.rss.source.manage
 
+import android.graphics.drawable.GradientDrawable
 import android.content.Context
 import android.os.Bundle
 import android.view.View
@@ -13,6 +14,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ItemRssSourceBinding
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
@@ -74,7 +76,7 @@ class RssSourceAdapter(context: Context, val callBack: CallBack) :
     ) {
         binding.run {
             if (payloads.isEmpty()) {
-                root.setBackgroundColor(ColorUtils.withAlpha(context.backgroundColor, 0.5f))
+                applySelectedBackground(root, selected.contains(item), context)
                 cbSource.text = item.getDisplayNameGroup()
                 swtEnabled.isChecked = item.enabled
                 cbSource.isChecked = selected.contains(item)
@@ -85,11 +87,30 @@ class RssSourceAdapter(context: Context, val callBack: CallBack) :
                         when (it) {
                             "upName" -> cbSource.text = item.getDisplayNameGroup()
                             "enabled" -> swtEnabled.isChecked = bundle.getBoolean("enabled")
-                            "selected" -> cbSource.isChecked = selected.contains(item)
+                            "selected" -> {
+                                cbSource.isChecked = selected.contains(item)
+                                applySelectedBackground(root, selected.contains(item), context)
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private fun applySelectedBackground(root: View, isSelected: Boolean, context: Context) {
+        if (isSelected) {
+            val density = context.resources.displayMetrics.density
+            val strokeWidth = (density * 2).toInt()
+            val cornerRadius = 8 * density
+            val bgDrawable = GradientDrawable().apply {
+                setColor(ColorUtils.withAlpha(context.accentColor, 0.2f))
+                setStroke(strokeWidth, context.accentColor)
+                setCornerRadius(cornerRadius)
+            }
+            root.background = bgDrawable
+        } else {
+            root.setBackgroundColor(ColorUtils.withAlpha(context.backgroundColor, 0.5f))
         }
     }
 

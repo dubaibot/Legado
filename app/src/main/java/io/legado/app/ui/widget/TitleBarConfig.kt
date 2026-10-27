@@ -72,6 +72,28 @@ fun TitleBar.applyTopBarConfig() {
 }
 
 /**
+ * 默认顶部背景图：仅当默认顶栏（STYLE_DEFAULT）配置了壁纸时，在顶栏自身背景之上叠加壁纸图层。
+ *
+ * 与 [applyTopBarConfig] 的区别：本函数**不改写顶栏底色**（保留各页面原有的
+ * primaryColor / 透明 / 墨水屏落地），只在其上叠一层壁纸——对应「仅顶部栏有背景图片」。
+ * 未配置壁纸时直接返回：零开销、零视觉变化。
+ *
+ * 仅作用于默认样式：常规样式顶栏包（STYLE_REGULAR）的壁纸由 [applyTopBarConfig] 完整落地
+ * （圆角底色 + 壁纸两层），不在此重复叠加。
+ */
+fun TitleBar.applyTopBarWallpaper() {
+    if (skipTopBarConfig) return
+    val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+    if (config.style != TopBarConfig.STYLE_DEFAULT) return
+    val file = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme) ?: return
+    val wallpaper = bitmapLayer(file, config.wallpaperAlpha, 0f) ?: return
+    val base = background ?: ColorDrawable(context.primaryColor)
+    background = LayerDrawable(arrayOf(base, wallpaper))
+    // 壁纸铺上后按合成底色重取标题/图标颜色，避免深色壁纸配深色文字看不清
+    applyTopBarContentColor()
+}
+
+/**
  * 墨水屏渲染下的顶栏落地。
  *
  * 墨水屏只该把彩色换成灰阶，不该改写用户配好的顶栏外观——用户设了「顶栏颜色透明」

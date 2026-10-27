@@ -73,6 +73,9 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
     private var pendingConfig: TopBarConfig.Config? = null
     private var editingDialog: LinearLayout? = null
     private var pendingWallpaperCropRequest: ImageCropHelper.Request? = null
+    private var editingDefaultBackground = false
+    private var defaultWallpaperPath: String? = null
+    private var defaultWallpaperAlpha = 100
 
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
@@ -92,8 +95,13 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
         pendingWallpaperCropRequest = null
         if (result.isNullOrBlank()) return@registerForActivityResult
         if (File(result).exists()) {
-            pendingConfig?.wallpaperPath = result
-            refreshEditDialog()
+            if (editingDefaultBackground) {
+                defaultWallpaperPath = result
+                refreshEditDialog()
+            } else {
+                pendingConfig?.wallpaperPath = result
+                refreshEditDialog()
+            }
         } else {
             toastOnUi(getString(R.string.image_crop_failed, getString(R.string.error_decode_bitmap)))
         }
@@ -206,9 +214,10 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
 
     private fun showEditDialog(entry: TopBarConfig.Entry?) {
         if (entry?.dirName == TopBarConfig.DEFAULT_DIR_NAME) {
-            toastOnUi(R.string.navigation_bar_default_readonly)
+            showDefaultBackgroundDialog()
             return
         }
+        editingDefaultBackground = false
         val base = entry ?: TopBarConfig.Entry(
             config = TopBarConfig.defaultConfig(this, isNightMode).copy(name = nextPackageName()),
             source = TopBarConfig.Source.LOCAL,
@@ -416,7 +425,7 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
             ?.trim()
             ?.let { pendingConfig?.name = it }
         root.removeAllViews()
-        val rebuilt = buildEditView()
+        val rebuilt = if (editingDefaultBackground) buildDefaultBackgroundView() else buildEditView()
         while (rebuilt.childCount > 0) {
             val child = rebuilt.getChildAt(0)
             rebuilt.removeView(child)
@@ -441,6 +450,69 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
                 refreshEditDialog()
             }
         }
+    }
+
+    /**
+     * 默认顶部背景设置：仅壁纸 + 壁纸透明度两项，保存到 TopBarConfig 默认条目预置。
+     */
+    private fun showDefaultBackgroundDialog() {
+        editingDefaultBackground = true
+        val config = TopBarConfig.defaultConfig(this, isNightMode)
+        defaultWallpaperPath = config.wallpaperPath
+        defaultWallpaperAlpha = config.wallpaperAlpha
+        val root = buildDefaultBackgroundView()
+        editingDialog = root
+        alert(R.string.top_bar_default_background) {
+            customView {
+                ScrollView(this@TopBarManageActivity).apply {
+                    addView(root)
+                }
+            }
+            okButton { saveDefaultBackground() }
+            cancelButton()
+        }
+    }
+
+    private fun buildDefaultBackgroundView(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(8.dp, 8.dp, 8.dp, 8.dp)
+            addView(optionRow(getString(R.string.wallpaper), wallpaperLabel(defaultWallpaperPath)) {
+                showDefaultWallpaperSelector()
+            })
+            addView(optionRow(getString(R.string.top_bar_wallpaper_alpha), "${defaultWallpaperAlpha}%") {
+                showSliderPicker(getString(R.string.top_bar_wallpaper_alpha), defaultWallpaperAlpha) {
+                    defaultWallpaperAlpha = it
+                }
+            })
+        }
+    }
+
+    private fun showDefaultWallpaperSelector() {
+        val hasWallpaper = !defaultWallpaperPath.isNullOrBlank()
+        val actions = buildList {
+            add(getString(R.string.select_image))
+            if (hasWallpaper) add(getString(R.string.delete))
+        }
+        selector(getString(R.string.wallpaper), actions) { _, index ->
+            if (index == 0) {
+                selectWallpaper.launch {
+                    mode = HandleFileContract.IMAGE
+                    title = getString(R.string.wallpaper)
+                }
+            } else {
+                defaultWallpaperPath = null
+                refreshEditDialog()
+            }
+        }
+    }
+
+    private fun saveDefaultBackground() {
+        editingDefaultBackground = false
+        TopBarConfig.setDefaultWallpaper(isNightMode, defaultWallpaperPath, defaultWallpaperAlpha)
+        postEvent(EventBus.TOP_BAR_CHANGED, isNightMode)
+        toastOnUi(R.string.success)
+        loadPackages()
     }
 
     private fun startWallpaperCrop(uri: Uri) {
@@ -641,6 +713,7 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
                     add(Action.DELETE)
                 }
             } else {
+                add(Action.EDIT)
                 add(Action.IMPORT_CLIPBOARD)
             }
         }
@@ -741,7 +814,7 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
                 tvApply.setTextColor(
                     if (isActive) accentColor else ContextCompat.getColor(context, R.color.primaryText)
                 )
-                tvEdit.visibility = if (item.dirName == TopBarConfig.DEFAULT_DIR_NAME) View.GONE else View.VISIBLE
+                tvEdit.visibility = View.VISIBLE
             }
         }
 
@@ -775,10 +848,10 @@ class TopBarManageActivity : BaseActivity<ActivityTopBarManageBinding>(), ColorP
                 append(getString(R.string.corner_scale))
                 append(" ")
                 append(cornerScaleLabel(entry.config.cornerScale))
-                if (!entry.config.wallpaperPath.isNullOrBlank()) {
-                    append(" · ")
-                    append(getString(R.string.wallpaper))
-                }
+            }
+            if (!entry.config.wallpaperPath.isNullOrBlank()) {
+                append(" · ")
+                append(getString(R.string.wallpaper))
             }
             append(" · ")
             append(getString(R.string.tag_bar_opacity))

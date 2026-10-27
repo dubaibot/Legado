@@ -58,11 +58,14 @@ object RssParserByRule {
             )
         }
         Debug.log(sourceUrl, body, state = 10, category = DebugCategory.RSS)
+        // 预处理 body：将 HTML 实体 &nbsp; 替换为 XML 合法数字实体 &#160;，
+        // 避免 KXmlParser 报 XmlPullParserException: unresolved: &nbsp;
+        val processedBody = body!!.replace("&nbsp;", "&#160;")
         var ruleArticles = rssSource.ruleArticles
         if (ruleArticles.isNullOrBlank()) {
             Debug.log(sourceUrl, "⇒列表规则为空, 使用默认规则解析", category = DebugCategory.RSS)
             AppLog.putDebugWithTag(AppLog.TAG_RSS, "RSS使用默认规则解析 sourceHash=${rssSource.sourceUrl.hashCode()}", level = AppLog.Level.INFO)
-            val result = RssParserDefault.parseXML(sortName, body, sourceUrl)
+            val result = RssParserDefault.parseXML(sortName, processedBody, sourceUrl)
             if (result.first.isNotEmpty()) {
                 recorder.success(
                     RssExecutionStep.PARSE_LIST,
@@ -77,7 +80,7 @@ object RssParserByRule {
             // 循环外的 analyzeRule 用于获取列表集合/下一页/规则拆分（串行执行，结果不可变，可安全共享）
             val analyzeRule = AnalyzeRule(ruleData, rssSource)
             analyzeRule.setCoroutineContext(currentCoroutineContext())
-            analyzeRule.setContent(body).setBaseUrl(listBaseUrl)
+            analyzeRule.setContent(processedBody).setBaseUrl(listBaseUrl)
             analyzeRule.setRedirectUrl(redirectUrl)
             var reverse = false
             if (ruleArticles.startsWith("-")) {

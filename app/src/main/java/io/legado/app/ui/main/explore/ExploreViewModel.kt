@@ -17,6 +17,14 @@ class ExploreViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
+    fun toBottom(bookSource: BookSourcePart) {
+        execute {
+            val maxXh = appDb.bookSourceDao.maxOrder
+            bookSource.customOrder = maxXh + 1
+            appDb.bookSourceDao.upOrder(bookSource)
+        }
+    }
+
     fun deleteSource(source: BookSourcePart) {
         execute {
             SourceHelp.deleteBookSource(source.bookSourceUrl)

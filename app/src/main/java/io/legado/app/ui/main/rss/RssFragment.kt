@@ -12,14 +12,17 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.FragmentRssBinding
 import io.legado.app.databinding.ItemRssBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.rss.article.ReadRecordDialog
 import io.legado.app.ui.rss.article.RssSortActivity
@@ -28,8 +31,10 @@ import io.legado.app.ui.rss.read.ReadRssActivity
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
 import io.legado.app.ui.rss.subscription.RuleSubActivity
+import io.legado.app.ui.widget.applyTopBarWallpaper
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
@@ -77,6 +82,16 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         initRecyclerView()
         initGroupData()
         upRssFlowJob()
+        updateMainBottomPadding((activity as? MainActivity)?.mainContentBottomPadding() ?: 0)
+    }
+
+    override fun updateMainBottomPadding(bottomPadding: Int) {
+        binding.root.setPadding(
+            binding.root.paddingLeft,
+            binding.root.paddingTop,
+            binding.root.paddingRight,
+            bottomPadding
+        )
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
@@ -240,5 +255,14 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
 
     override fun disable(rssSource: RssSource) {
         viewModel.disable(rssSource)
+    }
+
+    override fun observeLiveBus() {
+        super.observeLiveBus()
+        observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) { isNightMode ->
+            if (isNightMode == AppConfig.isNightTheme) {
+                binding.titleBar.applyTopBarWallpaper()
+            }
+        }
     }
 }

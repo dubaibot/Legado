@@ -180,6 +180,15 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
     }
 
+    //模块①：本地文件桥接。registerForActivityResult 必须在 Lifecycle STARTED 之前调用，
+    //故在此处注册，再由 initWebView 构造 LocalFileBridge 时注入 launcher
+    private var localFileBridge: LocalFileBridge? = null
+    private val localFileChooser = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        localFileBridge?.handleLocalFileResult(uri)
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         pooledWebView = WebViewPool.acquire(this)
         currentWebView = pooledWebView.realWebView
@@ -434,9 +443,9 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         //添加屏幕方向控制，网页关闭，openUI
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
         //模块①：注入本地文件桥接
-        currentWebView.addJavascriptInterface(
-            LocalFileBridge(this) { currentWebView }, LocalFileBridge.NAME
-        )
+        val bridge = LocalFileBridge(this, localFileChooser) { currentWebView }
+        localFileBridge = bridge
+        currentWebView.addJavascriptInterface(bridge, LocalFileBridge.NAME)
         //模块⑥：注入图片选择桥接
         currentWebView.addJavascriptInterface(ImageSelectBridge(), "lycImgSelect")
         currentWebView.webViewClient = CustomWebViewClient()

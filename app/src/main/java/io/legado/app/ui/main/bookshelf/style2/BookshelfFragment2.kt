@@ -43,6 +43,7 @@ import io.legado.app.ui.main.bookshelf.compose.buildBookshelfBookItems
 import io.legado.app.ui.main.bookshelf.compose.updateBookshelfEntryUpdating
 import io.legado.app.ui.theme.LegadoTheme
 import io.legado.app.ui.widget.RoundedTagBarView
+import io.legado.app.ui.widget.applyTopBarWallpaper
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.observeEvent
@@ -458,6 +459,7 @@ class BookshelfFragment2() :
         observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) { isNightMode ->
             if (isNightMode == AppConfig.isNightTheme) {
                 tagBar?.applyTopBarStyle(force = true)
+                binding.titleBar.applyTopBarWallpaper()
             }
         }
     }

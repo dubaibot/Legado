@@ -194,6 +194,10 @@
             android:name="io.legado.app.ui.image.ImageGalleryActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:launchMode="singleTask" />
+        <activity
+            android:name=".ui.image.ImageCropActivity"
+            android:launchMode="standard"
+            android:screenOrientation="behind" />
         <!-- 授权界面 -->
         <activity
             android:name="io.legado.app.lib.permission.PermissionActivity"
@@ -274,6 +278,11 @@
             android:name=".ui.book.source.manage.BookSourceActivity"
             android:launchMode="singleTop"
             android:screenOrientation="behind" />
+        <!-- 书源检测 -->
+        <activity
+            android:name=".ui.book.source.check.CheckSourceActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
         <!-- 订阅源管理 -->
         <activity
             android:name=".ui.rss.source.manage.RssSourceActivity"

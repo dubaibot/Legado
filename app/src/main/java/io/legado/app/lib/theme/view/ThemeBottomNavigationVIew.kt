@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.util.AttributeSet
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -33,18 +34,15 @@ class ThemeBottomNavigationVIew(context: Context, attrs: AttributeSet) :
     init {
         val transparentNavBar = context.transparentNavBar
         val bgColor = context.bottomBackground
-        if (transparentNavBar) {
-            setBackgroundColor(Color.TRANSPARENT)
-        } else {
-            setBackgroundColor(bgColor)
-            elevation = context.elevation
-        }
+        // 背景设为透明，由 StableLiquidGlassView 提供毛玻璃效果
+        setBackgroundColor(Color.TRANSPARENT)
         val colorStateList = createThemeColorStateList()
         itemIconTintList = colorStateList
         itemTextColor = colorStateList
+        // itemBackground 设为透明，避免默认 ripple 覆盖毛玻璃效果
+        itemBackground = Color.TRANSPARENT.toDrawable()
         if (AppConfig.isEInkMode || transparentNavBar) {
             isItemHorizontalTranslationEnabled = false
-            itemBackground = Color.TRANSPARENT.toDrawable()
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(this, null)
@@ -88,8 +86,20 @@ class ThemeBottomNavigationVIew(context: Context, attrs: AttributeSet) :
     fun addBadgeView(index: Int): BadgeView {
         //获取底部菜单view
         val menuView = getChildAt(0) as ViewGroup
-        //获取第index个itemView
-        val itemView = menuView.getChildAt(index) as ViewGroup
+        // 跳过隐藏(GONE)的 child，按可见 child 计数定位
+        var itemIndex = 0
+        var itemView: ViewGroup? = null
+        for (i in 0 until menuView.childCount) {
+            val child = menuView.getChildAt(i)
+            if (child.visibility != View.GONE) {
+                if (itemIndex == index) {
+                    itemView = child as ViewGroup
+                    break
+                }
+                itemIndex++
+            }
+        }
+        itemView ?: return BadgeView(context)
         val badgeBinding = ViewNavigationBadgeBinding.inflate(LayoutInflater.from(context))
         itemView.addView(badgeBinding.root)
         return badgeBinding.viewBadge

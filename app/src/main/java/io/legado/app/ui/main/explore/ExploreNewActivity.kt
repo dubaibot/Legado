@@ -10,7 +10,10 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ActivityExploreNewBinding
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.book.explore.ExploreShowActivity
+import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -93,10 +96,31 @@ class ExploreNewActivity : VMBaseActivity<ActivityExploreNewBinding, ExploreNewV
         }
     }
 
-    override fun editBookmark(source: BookSourcePart): Boolean {
-        ExploreQuickGroups.showEditSourceNameDialog(this, layoutInflater, source) {
-            adapter.notifyDataSetChanged()
+    override fun editSource(sourceUrl: String) {
+        startActivity<BookSourceEditActivity> {
+            putExtra("sourceUrl", sourceUrl)
         }
-        return true
+    }
+
+    override fun toTop(source: BookSourcePart) {
+        viewModel.topSource(source)
+    }
+
+    override fun toBottom(source: BookSourcePart) {
+        viewModel.toBottom(source)
+    }
+
+    override fun deleteSource(source: BookSourcePart) {
+        alert(R.string.draw) {
+            setMessage(getString(R.string.sure_del) + "\n" + source.bookSourceName)
+            noButton()
+            yesButton {
+                viewModel.deleteSource(source)
+            }
+        }
+    }
+
+    override fun searchBook(source: BookSourcePart) {
+        SearchActivity.start(this, source)
     }
 }
