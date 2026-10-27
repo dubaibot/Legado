@@ -14,7 +14,7 @@ static def releaseTime() {
 }
 
 def name = "myreader"
-def version = "3.26.100100"
+def version = "3.26.102702"
 def gitCommits = 0
 try {
     def result = 'git rev-list HEAD --count'.execute().text.trim()
@@ -48,7 +48,7 @@ android {
         }
     }
     defaultConfig {
-        applicationId "com.myreader.reader"
+        applicationId "com.myreaderD.reader"
         // media3 1.10.1（m 视频栈）硬性要求 minSdk 23，与 fork m 决策一致
         minSdk 23
         targetSdk 36
