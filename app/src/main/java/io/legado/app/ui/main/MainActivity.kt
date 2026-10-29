@@ -113,6 +113,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
     private var onUpBooksBadgeView: BadgeView? = null
 
+    override fun setupSystemBar() {
+        super.setupSystemBar()
+        if (fullScreen && !isInMultiWindow) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val flags = window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LAYOUT_STABLE.inv()
+            window.decorView.systemUiVisibility = flags or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        }
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         upBottomMenu()
         initView()
@@ -257,10 +266,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             bottomNavigationView.setBackgroundResource(R.drawable.bg_eink_border_top)
         }
         // 内容延伸到系统导航栏下方，让液态玻璃底栏向下覆盖导航栏区域
-        // setDecorFitsSystemWindows(false) 让内容绘制到导航栏后方，玻璃壳才能向下覆盖
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.decorView.systemUiVisibility =
-            window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        // flags 已在 setupSystemBar() 中设置：setDecorFitsSystemWindows(false) + LAYOUT_HIDE_NAVIGATION
         bottomNavigationView.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val height = windowInsets.navigationBarHeight
             // 玻璃壳向下延伸导航栏高度，覆盖系统导航栏

@@ -1,5 +1,6 @@
 package io.legado.app.model
 
+import io.legado.app.constant.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -114,12 +115,19 @@ class AutoTaskExecutionCoordinator(
                     throw error
                 } catch (error: Throwable) {
                     val finishedAt = now()
+                    val errorDetail = buildString {
+                        append(error.message ?: error.toString())
+                        error.stackTrace.take(10).forEach {
+                            append("\n  at ").append(it)
+                        }
+                    }
+                    AppLog.put("AutoTask[${rule.id}] script execution failed", error)
                     AutoTaskRunResult(
                         ruleId = rule.id,
                         status = AutoTaskRunStatus.FAILED,
                         startedAt = startedAt,
                         finishedAt = finishedAt,
-                        error = (error.message ?: error.toString()).take(MAX_DETAIL_LENGTH)
+                        error = errorDetail.take(MAX_DETAIL_LENGTH)
                     )
                 }
             }

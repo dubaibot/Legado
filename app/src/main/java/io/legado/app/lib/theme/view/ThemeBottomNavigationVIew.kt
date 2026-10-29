@@ -41,6 +41,8 @@ class ThemeBottomNavigationVIew(context: Context, attrs: AttributeSet) :
         itemTextColor = colorStateList
         // itemBackground 设为透明，避免默认 ripple 覆盖毛玻璃效果
         itemBackground = Color.TRANSPARENT.toDrawable()
+        // 禁用激活指示器，避免灰色方形标记覆盖毛玻璃效果
+        isItemActiveIndicatorEnabled = false
         if (AppConfig.isEInkMode || transparentNavBar) {
             isItemHorizontalTranslationEnabled = false
         }
