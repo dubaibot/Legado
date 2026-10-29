@@ -55,26 +55,27 @@ Entries discovered by the Agent during task execution should follow this format:
   - 删除枚举/注册表条目时逐条按行前缀删（每条目单行成对）；禁用「进入 skip 后等 endswith 复位」的状态机——SPEAK_ENGINE( 前缀同时命中进入分支并 continue，复位永不执行，曾吞掉 BaseContentSearchDialog 600 行尾部
   - 每次脚本改写文件后立刻断言花括号/KDoc 平衡 + 文件行数与预期一致，并在关键锚点（createDialog/SourceFieldItem 等）抽查存在性
 
-[assembleDebug 全量编译通过与缺失视图类占位策略]
-- Date: 2026-10-23
-- Context: 第 6 节验证基线 assembleDebug 构建，历经 dbg6-dbg14 共 9 轮迭代修复
+[构建配方与引擎构建约束（assembleDebug/release/worktree 合并）]
+- Date: 2026-10-29（合并 2026-10-23 与 2026-10-26 条目）
+- Context: 多轮构建验证、test 分支 worktree 构建、JS 引擎换件构建
 - Category: Build Methods
 - Instructions:
-  - 构建基线：AGP 8.13.2、Kotlin 2.3.10、Gradle 8.14.4、compileSdk/targetSdk 36、minSdk 23；Room 2.7.1；依赖 media3 1.10.1
-  - 编译必须用后台终端（cgroup 限制 memory_percent 70 / cpu_percent 200 / timeout 30min），日志 tee 到 /tmp/opencode/assemble_dbgNN.log
-  - 错误规模演进：dbg6 884 → dbg7 712 → dbg8 0 Kotlin错（资源链接失败）→ dbg10 273 → dbg11 240 → dbg12 130 → dbg13 27 Java错（缺视图类）→ dbg14 BUILD SUCCESSFUL
-  - Kotlin 编译耗时约 5-10min，Java 编译+打包约 1-2min；总构建约 11min
-  - 并行 agent 修复策略：按文件簇分组，每个 agent 独立搜索 fork 对照修复，只添加缺失成员不覆盖
-  - 缺失视图类占位策略：布局引用但无 Kotlin 代码直接访问的自定义视图，创建简单 FrameLayout/TextView 子类桩实现即可通过编译（BatteryViewOrgin、EpubReadView、ReadAiFloatingPanel、ReadAiSummaryPanel、ReadAloudPlayerPanel）
-  - StableLiquidGlassView 依赖 com.qmdeve.liquidglass 库（非项目依赖），替换为无依赖的 FrameLayout 桩实现
-  - exo_icon_* drawable 来自 media3-ui 1.10.1 AAR（media3-exoplayer 不包含）；video_* 和 unlock drawable 在所有 fork 和 git 历史中均不存在，创建占位版本
+  - 构建基线：AGP 8.13.2、Kotlin 2.3.10、Gradle 8.14.4、compileSdk/targetSdk 36；依赖 media3 1.10.1、Room 2.7.1
+  - 编译必须用后台终端（cgroup memory_percent 70 / cpu_percent 200 / timeout 30min），日志 tee 到 /tmp/opencode/assemble_dbgNN.log
+  - Kotlin 编译约 5-10min，Java+打包约 1-2min，assembleDebug 全量约 10-11min；assembleRelease（含 R8+lintVital）约 23min
+  - `-x lintVitalAnalyzeAppRelease -x lintVitalAnalyzeRelease` 不跳过 `lintVitalAppRelease`（不同任务名）
+  - soundtouch-jni 需 proguard keep：`-keep class com.tianscar.soundtouch.** { *; }`
+  - 缺失视图类占位策略：布局引用但无代码直接访问的自定义视图，创建 FrameLayout/TextView 子类桩即可通过编译（BatteryViewOrgin、EpubReadView、ReadAiFloatingPanel、ReadAiSummaryPanel、ReadAloudPlayerPanel）；StableLiquidGlassView 用无依赖 FrameLayout 桩替代
+  - exo_icon_* drawable 来自 media3-ui 1.10.1 AAR；video_* 和 unlock drawable 在所有 fork 和 git 历史中均不存在，创建占位版本
   - Room 迁移链合并为 90→96 单步（ws 的 91-94 中间 schema 不可考）
-  - AppConfig.kt 重建策略：取 HEAD 833 行提交版为基座 + fork 联合收割的 71 缺失成员
   - gradle.properties 内存收敛：-Xmx4g + in-process kotlin 编译，单堆 4GB 避免 OOM
-  - assembleRelease 验证（D35）：R8 混淆通过，总耗时 23m 20s（Kotlin 编译约 8min + R8 约 2min + lintVital 约 10min + 打包约 3min）
-  - `-x lintVitalAnalyzeAppRelease -x lintVitalAnalyzeRelease` 不会跳过 `lintVitalAppRelease`（不同任务名），但该任务正常完成无需额外跳过
-  - soundtouch-jni（D30 TTS 引擎依赖）需要 proguard keep 规则：`-keep class com.tianscar.soundtouch.** { *; }`（ng fork 有此规则）
-  - Release APK 产物：universal 31.9MB（R8 混淆后）、arm64-v8a 23.3MB、armeabi-v7a 22.5MB
+  - 编译错误修复策略：按文件簇分组并行修复，只添加缺失成员不覆盖
+  - Release APK：universal 31.9MB / arm64-v8a 23.3MB / armeabi-v7a 22.5MB
+  - worktree 构建：`git worktree add --detach <dir> origin/test`，worktree 需补 local.properties（sdk.dir）；test 分支 gradle.properties 改 -Xmx4g + in-process + workers.max=2 防 R8 OOM
+  - applicationId 改 com.myreaderD.reader 需为 google-services.json 增 com.myreaderD.reader.release 客户端条目
+  - JS 引擎换件约束：engine 用 org.htmlunit:htmlunit-core-js:5.3.0，其 SlotMapOwner 使用 MethodHandle.invokeExact（min-api 26），app 与 modules/rhino 的 minSdk 必须保持 26（回退 23 会在 mergeExtDexAppDebug 报 D8 错）
+  - APK 下载预览：复制产物到 /tmp/opencode，由后台终端 `python3 -m http.server 8902` 对外提供
+  - 构建日志经 `| tail` 缓冲时文件为 0 字节，必须等命令结束再读
 
 [死代码审计方法教训]
 - Date: 2026-10-24
@@ -87,8 +88,8 @@ Entries discovered by the Agent during task execution should follow this format:
   - Launcher1-7 等类可定义在同名外文件中（WelcomeActivity.kt 内含 7 个 Launcher 顶级类），按类名全树 grep 而非按文件名找
   - Kotlin 词法扫描需正确处理 raw string 的 `""""` 四引号结尾（末尾 3 引号是终止符，第 4 个是内容），否则误报花括号不平衡
 
-[分支盘点与收编方法]
-- Date: 2026-10-24
+[分支与 MR 工作流]
+- Date: 2026-10-24（MR 推送知识 2026-10-29 补充）
 - Context: 分支合并复核时发现 origin 上有 8 个从未 fetch 的旧分支（git branch -r 不可见），经 ls-remote 才暴露
 - Category: Workflow & Collaboration
 - Instructions:
@@ -96,6 +97,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - 被后续重做取代的旧分支链用 `git merge -s ours <tip>` 收编：历史统一（52 提交经第二父可达）、工作树零变化、删除安全；真合并会复活 209 个双线修改冲突与被取代的旧实现
   - 收编前先验拓扑（merge-base --is-ancestor 两两比对找链式超集末端），只需合并超集分支一个即可覆盖全链
   - 删除远程分支后跑 `git fetch --prune origin` 清理本地跟踪引用
+  - MR 创建：remote 是 GitHub，`git push -o merge_request.create` 会 HTTP 500，gh CLI 未认证；MR 需用户手动从 GitHub 创建
 
 [Release APK 签名配置]
 - Date: 2026-10-25
@@ -108,18 +110,6 @@ Entries discovered by the Agent during task execution should follow this format:
   - 密钥库 /workspace/keystore/myreader-release.jks（alias myreader，密码在上述属性文件），已 gitignore /keystore/
   - 签名验证命令：/opt/android-sdk/build-tools/36.0.0/apksigner verify --print-certs <apk>
   - 换签名密钥后旧版本必须先卸载才能装新包（签名冲突）
-
-[test 分支本地构建配方（worktree）]
-- Date: 2026-10-26
-- Context: 用户要求 test 分支安装包，在 /tmp/opencode/test-wt2 用 detached worktree 构建
-- Category: Build Methods
-- Instructions:
-  - worktree 必须 `git worktree add --detach <dir> origin/test`；worktree 内缺 local.properties，需补 `sdk.dir=/opt/android-sdk` 否则报 SDK location not found
-  - test 分支 gradle.properties 默认 -Xmx6g 超出终端 cgroup 上限 5.45GB，R8 阶段必 OOM：改为 -Xmx4g + `kotlin.compiler.execution.strategy=in-process` + `org.gradle.workers.max=2`（与 /workspace 一致配方）
-  - applicationId 改 com.myreaderD.reader 后 google-services.json 无匹配客户端会报 No matching client found：需为 com.myreaderD.reader.release 增加客户端条目（已提交 232f458），Firebase 崩溃/性能统计依赖该文件
-  - 构建命令：`cd <worktree>/app && ../gradlew :app:assembleRelease -x lint -x lintVitalAppRelease -x test --no-daemon`，全量约 12min
-  - APK 命名 myreader_app_3.26.102701_{universal,arm64-v8a,armeabi-v7a}.apk；产物目录 /tmp/opencode/test-wt2/app/build/outputs/apk/app/release/，复制到 /workspace/app/build/outputs/apk/app/release/ 由 8901 端口 http.server 对外提供
-  - 签名走用户级 ~/.gradle/gradle.properties（myreader 密钥），worktree 内无需再配
 
 [环境无预装 JDK/Android SDK 时的构建前置]
 - Date: 2026-10-27
