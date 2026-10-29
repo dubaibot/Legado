@@ -1,10 +1,11 @@
 package com.script.rhino
 
-import org.mozilla.javascript.NativeJavaClass
-import org.mozilla.javascript.Scriptable
+import org.htmlunit.corejs.javascript.NativeJavaClass
+import org.htmlunit.corejs.javascript.Scriptable
+import org.htmlunit.corejs.javascript.VarScope
 
 class ProtectedNativeJavaClass(
-    scope: Scriptable,
+    scope: VarScope,
     javaClass: Class<*>,
     private val protectedName: Set<String> = emptySet()
 ) : NativeJavaClass(scope, javaClass) {

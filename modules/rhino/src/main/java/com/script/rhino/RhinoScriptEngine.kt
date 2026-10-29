@@ -37,19 +37,21 @@ import androidx.collection.LruCache
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
-import org.mozilla.javascript.Callable
-import org.mozilla.javascript.ConsString
-import org.mozilla.javascript.Context
-import org.mozilla.javascript.ContextFactory
-import org.mozilla.javascript.ContinuationPending
-import org.mozilla.javascript.Function
-import org.mozilla.javascript.JavaScriptException
-import org.mozilla.javascript.NativeJSON
-import org.mozilla.javascript.RhinoException
-import org.mozilla.javascript.Scriptable
-import org.mozilla.javascript.ScriptableObject
-import org.mozilla.javascript.Undefined
-import org.mozilla.javascript.Wrapper
+import org.htmlunit.corejs.javascript.Callable
+import org.htmlunit.corejs.javascript.ConsString
+import org.htmlunit.corejs.javascript.Context
+import org.htmlunit.corejs.javascript.ContextFactory
+import org.htmlunit.corejs.javascript.ContinuationPending
+import org.htmlunit.corejs.javascript.Function
+import org.htmlunit.corejs.javascript.JavaScriptException
+import org.htmlunit.corejs.javascript.NativeJSON
+import org.htmlunit.corejs.javascript.RhinoException
+import org.htmlunit.corejs.javascript.Scriptable
+import org.htmlunit.corejs.javascript.ScriptableObject
+import org.htmlunit.corejs.javascript.TopLevel
+import org.htmlunit.corejs.javascript.Undefined
+import org.htmlunit.corejs.javascript.VarScope
+import org.htmlunit.corejs.javascript.Wrapper
 import java.io.IOException
 import java.io.Reader
 import java.io.StringReader
@@ -198,7 +200,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
 
     override fun eval(
         reader: Reader,
-        scope: Scriptable,
+        scope: VarScope,
         coroutineContext: CoroutineContext?
     ): Any? {
         // 先读取全部内容以便在异常时显示源码上下文
@@ -232,7 +234,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
     }
 
     @Throws(ContinuationPending::class)
-    override suspend fun evalSuspend(reader: Reader, scope: Scriptable): Any? {
+    override suspend fun evalSuspend(reader: Reader, scope: VarScope): Any? {
         // 先读取全部内容以便在异常时显示源码上下文
         val source = reader.readText()
         val sourceName = registerSource(
@@ -309,7 +311,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
                 thiz1 = Context.toObject(thiz1, topLevel)
             }
             val engineScope = getRuntimeScope(context)
-            val localScope = thiz1 ?: engineScope
+            val localScope = thiz1 as? Scriptable ?: engineScope.globalThis
             val obj = ScriptableObject.getProperty(localScope, name) as? Function
                 ?: throw NoSuchMethodException("no such method: $name")
             var scope = obj.parentScope
@@ -347,25 +349,31 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
         }
     }
 
-    override fun getRuntimeScope(context: ScriptContext): Scriptable {
-        val newScope: Scriptable = ExternalScriptable(context, indexedProps)
-        val cx = Context.enter()
-        try {
-            newScope.prototype = RhinoTopLevel(cx, this)
-        } finally {
-            Context.exit()
+    override fun getRuntimeScope(context: ScriptContext): ScriptBindings {
+        val bindings = ScriptBindings()
+        getRuntimeScope(bindings)
+        val engineBindings = context.getBindings(ScriptContext.ENGINE_SCOPE)
+        if (engineBindings != null) {
+            for ((key, value) in engineBindings) {
+                bindings.set(key, value)
+            }
         }
-        //newScope.put("context", newScope, context)
-        return newScope
+        return bindings
     }
 
-    override fun getRuntimeScope(bindings: ScriptBindings): Scriptable {
+    /** 全新一套标准对象顶层作用域,可作 chainTo 的父层复用 */
+    fun newStandardTopLevel(): TopLevel {
         val cx = Context.enter()
         try {
-            bindings.prototype = cx.initStandardObjects()
+            return cx.initStandardObjects()
         } finally {
             Context.exit()
         }
+    }
+
+    /** 对齐旧语义:每次调用挂接一套全新标准对象,脚本对内建原型的改动不跨调用泄漏 */
+    override fun getRuntimeScope(bindings: ScriptBindings): ScriptBindings {
+        bindings.chainTo(newStandardTopLevel())
         return bindings
     }
 
@@ -478,33 +486,17 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
             override fun doTopCall(
                 callable: Callable,
                 cx: Context,
-                scope: Scriptable,
+                scope: VarScope,
                 thisObj: Scriptable?,
                 args: Array<Any>
             ): Any? {
-                var accContext: AccessControlContext? = null
-                val global = ScriptableObject.getTopLevelScope(scope)
-                val globalProto = global.prototype
-                if (globalProto is RhinoTopLevel) {
-                    accContext = globalProto.accessContext
-                }
-                return if (accContext != null) AccessController.doPrivileged(
-                    PrivilegedAction {
-                        superDoTopCall(callable, cx, scope, thisObj, args)
-                    }, accContext
-                ) else superDoTopCall(
-                    callable,
-                    cx,
-                    scope,
-                    thisObj,
-                    args
-                )
+                return superDoTopCall(callable, cx, scope, thisObj, args)
             }
 
             private fun superDoTopCall(
                 callable: Callable,
                 cx: Context,
-                scope: Scriptable,
+                scope: VarScope,
                 thisObj: Scriptable?,
                 args: Array<Any>
             ): Any? {
@@ -545,7 +537,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
                         obj1 = Context.toObject(obj1, topLevel)
                     }
                     val engineScope = getRuntimeScope(context)
-                    val localScope = obj1 ?: engineScope
+                    val localScope = obj1 as? Scriptable ?: engineScope.globalThis
                     val methods = clazz.methods
                     val methodsSize = methods.size
                     for (index in 0 until methodsSize) {

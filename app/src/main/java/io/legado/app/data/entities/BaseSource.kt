@@ -30,10 +30,10 @@ import io.legado.app.utils.has
 import io.legado.app.utils.isMainThread
 import kotlinx.coroutines.runBlocking
 import org.intellij.lang.annotations.Language
-import org.mozilla.javascript.Scriptable
-import org.mozilla.javascript.ScriptableObject
-import org.mozilla.javascript.Undefined
-import org.mozilla.javascript.Wrapper
+import org.htmlunit.corejs.javascript.Scriptable
+import org.htmlunit.corejs.javascript.ScriptableObject
+import org.htmlunit.corejs.javascript.Undefined
+import org.htmlunit.corejs.javascript.Wrapper
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -455,7 +455,7 @@ interface BaseSource : JsExtensions {
             RhinoScriptEngine.getRuntimeScope(bindings)
         } else {
             bindings.apply {
-                prototype = sharedScope
+                chainTo(sharedScope)
             }
         }
         return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)
@@ -487,13 +487,8 @@ interface BaseSource : JsExtensions {
             }
             bindings.apply(bindingsConfig)
         }
-        val isolatedScope = SharedJsScope.createIsolatedScope(jsLib, coroutineContext)
-        val scope = if (isolatedScope == null) {
-            RhinoScriptEngine.getRuntimeScope(bindings)
-        } else {
-            bindings.apply {
-                prototype = isolatedScope
-            }
+        val scope = bindings.apply {
+            chainTo(SharedJsScope.createIsolatedScope(jsLib, coroutineContext))
         }
         return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)
     }

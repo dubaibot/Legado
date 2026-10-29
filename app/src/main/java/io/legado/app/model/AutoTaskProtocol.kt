@@ -230,7 +230,7 @@ object AutoTaskProtocol {
             is String -> parseActionsFromJson(result)
             // NativeArray/NativeObject 内部可能嵌套模板字符串插值产生的 ConsString,
             // GSON 反射会把它序列化成 {left,right,length,isFlat} 内部字段而非字符串本身
-            is org.mozilla.javascript.Scriptable -> {
+            is org.htmlunit.corejs.javascript.Scriptable -> {
                 val json = RhinoScriptEngine.stringifyScriptable(result)
                     ?: runCatching { GSON.toJson(result) }.getOrNull()
                 if (json.isNullOrBlank()) null else parseActionsFromJson(json)

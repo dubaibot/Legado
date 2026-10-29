@@ -24,11 +24,13 @@
  */
 package com.script.rhino
 
-import org.mozilla.javascript.Context
-import org.mozilla.javascript.NativeJavaPackage
-import org.mozilla.javascript.ScriptRuntime
-import org.mozilla.javascript.Scriptable
-import org.mozilla.javascript.WrapFactory
+import org.htmlunit.corejs.javascript.Context
+import org.htmlunit.corejs.javascript.NativeJavaPackage
+import org.htmlunit.corejs.javascript.ScriptRuntime
+import org.htmlunit.corejs.javascript.Scriptable
+import org.htmlunit.corejs.javascript.VarScope
+import org.htmlunit.corejs.javascript.WrapFactory
+import org.htmlunit.corejs.javascript.lc.type.TypeInfo
 
 /**
  * This wrap factory is used for security reasons. JSR 223 script
@@ -49,20 +51,21 @@ object RhinoWrapFactory : WrapFactory() {
 
     override fun wrapAsJavaObject(
         cx: Context,
-        scope: Scriptable?,
+        scope: VarScope?,
         javaObject: Any,
-        staticType: Class<*>?
+        staticType: TypeInfo?
     ): Scriptable? {
         if (!RhinoClassShutter.visibleToScripts(javaObject)) {
             return null
         }
-        return wrapOrNull(scope, javaObject, staticType)
+        val staticClass = staticType?.asClass()
+        return wrapOrNull(scope, javaObject, staticClass)
             ?: super.wrapAsJavaObject(cx, scope, javaObject, staticType)
     }
 
     override fun wrapJavaClass(
         cx: Context,
-        scope: Scriptable,
+        scope: VarScope,
         javaClass: Class<*>
     ): Scriptable {
         if (!RhinoClassShutter.visibleToScripts(javaClass)) {
@@ -75,7 +78,7 @@ object RhinoWrapFactory : WrapFactory() {
     }
 
     private fun wrapOrNull(
-        scope: Scriptable?,
+        scope: VarScope?,
         javaObject: Any,
         staticType: Class<*>?
     ): Scriptable? {

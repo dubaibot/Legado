@@ -41,8 +41,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.nodes.Node
-import org.mozilla.javascript.NativeObject
-import org.mozilla.javascript.Scriptable
+import org.htmlunit.corejs.javascript.NativeObject
+import org.htmlunit.corejs.javascript.TopLevel
 import java.lang.ref.WeakReference
 import java.net.URL
 import java.util.Locale
@@ -81,7 +81,7 @@ class AnalyzeRule(
     private val stringRuleCache = hashMapOf<String, List<SourceRule>>()
     private val regexCache = hashMapOf<String, Regex?>()
     private val scriptCache = hashMapOf<String, CompiledScript>()
-    private var topScopeRef: WeakReference<Scriptable>? = null
+    private var topScopeRef: WeakReference<TopLevel>? = null
     private var evalJSCallCount = 0
 
     private var coroutineContext: CoroutineContext = EmptyCoroutineContext
@@ -1066,12 +1066,12 @@ class AnalyzeRule(
         val scope = if (topScope == null) {
             RhinoScriptEngine.getRuntimeScope(bindings).apply {
                 if (evalJSCallCount++ > 16) {
-                    topScopeRef = WeakReference(prototype)
+                    topScopeRef = WeakReference(RhinoScriptEngine.newStandardTopLevel())
                 }
             }
         } else {
             bindings.apply {
-                prototype = topScope
+                chainTo(topScope)
             }
         }
         

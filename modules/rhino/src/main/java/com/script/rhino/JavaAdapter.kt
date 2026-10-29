@@ -25,8 +25,8 @@
 package com.script.rhino
 
 import com.script.Invocable
-import org.mozilla.javascript.*
-import org.mozilla.javascript.Function
+import org.htmlunit.corejs.javascript.*
+import org.htmlunit.corejs.javascript.Function
 
 /**
  * This class implements Rhino-like JavaAdapter to help implement a Java
@@ -58,12 +58,12 @@ internal class JavaAdapter private constructor(private val engine: Invocable) : 
     }
 
     @Throws(RhinoException::class)
-    override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<Any>): Any {
+    override fun call(cx: Context, scope: VarScope, thisObj: Scriptable, args: Array<Any>): Any {
         return construct(cx, scope, args)
     }
 
     @Throws(RhinoException::class)
-    override fun construct(cx: Context, scope: Scriptable, args: Array<Any>): Scriptable {
+    override fun construct(cx: Context, scope: VarScope, args: Array<Any>): Scriptable {
         return if (args.size == 2) {
             var clazz: Class<*>? = null
             val obj = args[0]
@@ -92,7 +92,7 @@ internal class JavaAdapter private constructor(private val engine: Invocable) : 
     companion object {
         @JvmStatic
         @Throws(RhinoException::class)
-        fun init(cx: Context, scope: Scriptable, sealed: Boolean) {
+        fun init(cx: Context, scope: VarScope, sealed: Boolean) {
             val topLevel = scope as RhinoTopLevel
             val engine: Invocable = topLevel.scriptEngine
             val obj = JavaAdapter(engine)

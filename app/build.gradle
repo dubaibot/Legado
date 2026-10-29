@@ -49,8 +49,8 @@ android {
     }
     defaultConfig {
         applicationId "com.myreaderD.reader"
-        // media3 1.10.1（m 视频栈）硬性要求 minSdk 23，与 fork m 决策一致
-        minSdk 23
+        // media3 1.10.1（m 视频栈）要求 minSdk 23；htmlunit-core-js fork 需 minSdk 26（MethodHandle.invokeExact），与 Legado_T 一致
+        minSdk 26
         targetSdk 36
         versionCode Math.max(10001, 10000 + gitCommits)
         versionName version

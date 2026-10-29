@@ -5,7 +5,7 @@ package com.script
 
 import com.script.ScriptContext.Companion.ENGINE_SCOPE
 import com.script.ScriptContext.Companion.GLOBAL_SCOPE
-import org.mozilla.javascript.Scriptable
+import org.htmlunit.corejs.javascript.VarScope
 import java.io.Reader
 import java.io.StringReader
 import kotlin.coroutines.CoroutineContext
@@ -54,15 +54,15 @@ abstract class AbstractScriptEngine(val bindings: Bindings? = null) : ScriptEngi
         return getBindings(ENGINE_SCOPE)?.get(key)
     }
 
-    override fun eval(reader: Reader, scope: Scriptable): Any? {
+    override fun eval(reader: Reader, scope: VarScope): Any? {
         return eval(reader, scope, null)
     }
 
-    override suspend fun evalSuspend(script: String, scope: Scriptable): Any? {
+    override suspend fun evalSuspend(script: String, scope: VarScope): Any? {
         return this.evalSuspend(StringReader(script), scope)
     }
 
-    override fun eval(script: String, scope: Scriptable): Any? {
+    override fun eval(script: String, scope: VarScope): Any? {
         return this.eval(StringReader(script), scope)
     }
 
@@ -71,7 +71,7 @@ abstract class AbstractScriptEngine(val bindings: Bindings? = null) : ScriptEngi
         return this.eval(reader, getRuntimeScope(context))
     }
 
-    override fun eval(script: String, scope: Scriptable, coroutineContext: CoroutineContext?): Any? {
+    override fun eval(script: String, scope: VarScope, coroutineContext: CoroutineContext?): Any? {
         return this.eval(StringReader(script), scope, coroutineContext)
     }
 

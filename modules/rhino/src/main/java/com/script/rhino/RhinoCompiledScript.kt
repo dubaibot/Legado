@@ -30,11 +30,11 @@ import com.script.ScriptException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
-import org.mozilla.javascript.Context
-import org.mozilla.javascript.ContinuationPending
-import org.mozilla.javascript.RhinoException
-import org.mozilla.javascript.Script
-import org.mozilla.javascript.Scriptable
+import org.htmlunit.corejs.javascript.Context
+import org.htmlunit.corejs.javascript.ContinuationPending
+import org.htmlunit.corejs.javascript.RhinoException
+import org.htmlunit.corejs.javascript.Script
+import org.htmlunit.corejs.javascript.VarScope
 import java.io.IOException
 import kotlin.coroutines.CoroutineContext
 
@@ -55,7 +55,7 @@ internal class RhinoCompiledScript(
         return engine
     }
 
-    override fun eval(scope: Scriptable, coroutineContext: CoroutineContext?): Any? {
+    override fun eval(scope: VarScope, coroutineContext: CoroutineContext?): Any? {
         val cx = Context.enter() as RhinoContext
         val previousCoroutineContext = cx.coroutineContext
         val previousDebugger = cx.debugger
@@ -84,7 +84,7 @@ internal class RhinoCompiledScript(
         return result
     }
 
-    override suspend fun evalSuspend(scope: Scriptable): Any? {
+    override suspend fun evalSuspend(scope: VarScope): Any? {
         val cx = Context.enter() as RhinoContext
         var ret: Any?
         withContext(VMBridgeReflect.contextLocal.asContextElement()) {
