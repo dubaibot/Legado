@@ -4,43 +4,36 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import io.legado.app.model.AutoTaskRule
-import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AutoTaskRuleDao {
 
-    @Query("SELECT * FROM auto_task_rules ORDER BY sortOrder ASC, id ASC")
-    fun flowAll(): Flow<List<AutoTaskRule>>
-
-    @Query("SELECT * FROM auto_task_rules ORDER BY sortOrder ASC, id ASC")
+    @Query("select * from auto_task_rules order by sortOrder, id")
     fun all(): List<AutoTaskRule>
 
-    @Query("SELECT * FROM auto_task_rules WHERE id = :id LIMIT 1")
-    fun get(id: String): AutoTaskRule?
+    @get:Query("select ifnull(max(sortOrder), -1) from auto_task_rules")
+    val maxOrder: Int
 
-    @Query("SELECT COUNT(*) FROM auto_task_rules")
-    fun count(): Int
-
-    @Query("SELECT MAX(sortOrder) FROM auto_task_rules")
-    fun maxOrder(): Int?
+    @Query("select * from auto_task_rules where id = :id")
+    fun getById(id: String): AutoTaskRule?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insert(vararg rules: AutoTaskRule)
+    fun insert(vararg rule: AutoTaskRule)
 
     @Update
-    fun update(rule: AutoTaskRule): Int
+    fun update(vararg rule: AutoTaskRule)
 
-    @Query("UPDATE auto_task_rules SET sortOrder = :sortOrder WHERE id = :id")
-    fun updateOrder(id: String, sortOrder: Int): Int
+    @Query("delete from auto_task_rules where id = :id")
+    fun delete(id: String)
 
-    @Query("UPDATE auto_task_rules SET enable = :enabled WHERE id = :id")
-    fun updateEnabled(id: String, enabled: Boolean): Int
+    @Query("update auto_task_rules set sortOrder = :sortOrder where id = :id")
+    fun updateOrder(id: String, sortOrder: Int)
 
-    @Query("DELETE FROM auto_task_rules WHERE id = :id")
-    fun delete(id: String): Int
-
-    @Query("DELETE FROM auto_task_rules")
-    fun deleteAll(): Int
+    @Transaction
+    fun resetOrder(rules: List<AutoTaskRule>) {
+        rules.forEachIndexed { index, rule -> updateOrder(rule.id, index) }
+    }
 }

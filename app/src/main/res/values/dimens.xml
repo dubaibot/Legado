@@ -294,4 +294,14 @@
     <dimen name="bookshelf_tag_item_padding_horizontal">12dp</dimen>
 
     <dimen name="main_sidebar_panel_padding_horizontal">18dp</dimen>
+
+    <!-- Legado_T auto task UI dimensions -->
+    <dimen name="space_s">8dp</dimen>
+    <dimen name="space_m">12dp</dimen>
+    <dimen name="space_l">16dp</dimen>
+    <dimen name="text_body">14sp</dimen>
+    <dimen name="text_caption">12sp</dimen>
+    <dimen name="radius_s">8dp</dimen>
+    <dimen name="radius_m">12dp</dimen>
+    <dimen name="radius_full">999dp</dimen>
 </resources>

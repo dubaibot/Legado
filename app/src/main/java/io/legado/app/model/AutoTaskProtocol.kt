@@ -10,6 +10,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import com.script.rhino.RhinoScriptEngine
 import io.legado.app.help.book.isLocal
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
@@ -17,19 +18,17 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isTrue
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import org.mozilla.javascript.NativeArray
-import org.mozilla.javascript.Scriptable
-import org.mozilla.javascript.ScriptableObject
-import org.mozilla.javascript.Undefined
-import org.mozilla.javascript.Wrapper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-/** Built-in actions returned by an AutoTask script. */
 object AutoTaskProtocol {
+
+    private val refreshTocLocks = Array(32) { Mutex() }
 
     data class HandleResult(
         val handled: Boolean,
@@ -43,21 +42,19 @@ object AutoTaskProtocol {
         taskName: String? = null,
         logger: ((String) -> Unit)? = null
     ): HandleResult {
-        val actions = AutoTaskActionParser.parse(result) ?: return HandleResult(false)
-        val summaries = ArrayList<String>(actions.size)
+        val actions = parseActions(result) ?: return HandleResult(false)
+        val summaries = mutableListOf<String>()
         for (action in actions) {
             currentCoroutineContext().ensureActive()
             val summary = handleAction(action, context, taskName)
+            currentCoroutineContext().ensureActive()
             if (summary.isNotBlank()) {
-                summaries += summary
+                summaries.add(summary)
                 logger?.invoke(summary)
             }
         }
-        return HandleResult(
-            handled = true,
-            summary = summaries.joinToString(" | ").ifBlank { null },
-            details = summaries
-        )
+        val merged = summaries.joinToString(" | ").ifBlank { null }
+        return HandleResult(true, merged, summaries)
     }
 
     private suspend fun handleAction(
@@ -65,87 +62,71 @@ object AutoTaskProtocol {
         context: Context,
         taskName: String?
     ): String {
-        val type = action.string("type")?.lowercase(Locale.ROOT).orEmpty()
+        val type = getString(action, "type")?.lowercase(Locale.ROOT).orEmpty()
         return when (type) {
             "refreshtoc" -> handleRefreshToc(action, context)
             "notify" -> handleNotify(action, context, taskName)
-            else -> throw IllegalArgumentException("unknown auto task action: $type")
+            else -> throw IllegalArgumentException("未知动作: $type")
         }
     }
 
-    private suspend fun handleRefreshToc(
+    private suspend fun handleRefreshToc(action: Map<String, Any?>, context: Context): String {
+        val bookUrl = getString(action, "bookUrl")?.trim().orEmpty()
+        if (bookUrl.isBlank()) return "refreshToc 缺少 bookUrl"
+        val lock = refreshTocLocks[(bookUrl.hashCode() and Int.MAX_VALUE) % refreshTocLocks.size]
+        return lock.withLock {
+            currentCoroutineContext().ensureActive()
+            handleRefreshTocLocked(bookUrl, action, context)
+        }
+    }
+
+    private suspend fun handleRefreshTocLocked(
+        bookUrl: String,
         action: Map<String, Any?>,
         context: Context
     ): String {
-        val bookUrl = action.string("bookUrl").orEmpty()
-        if (bookUrl.isBlank()) return "refreshToc 缺少 bookUrl"
-        val book = appDb.bookDao.getBook(bookUrl)
-            ?: return "refreshToc 未找到书籍"
-
-        return AutoTaskBookOperationGate.withBook(bookUrl) {
-            currentCoroutineContext().ensureActive()
-            val before = appDb.bookChapterDao.getChapterList(bookUrl)
-            val refresh = BookController.refreshToc(mapOf("url" to listOf(bookUrl)))
-            if (!refresh.isSuccess) {
-                return@withBook "《${book.name}》刷新失败: ${refresh.errorMsg}"
-            }
-            currentCoroutineContext().ensureActive()
-            val after = appDb.bookChapterDao.getChapterList(bookUrl)
-            val diff = AutoTaskTocDiff.between(
-                before.toAutoTaskChapterSnapshots(),
-                after.toAutoTaskChapterSnapshots()
+        val book = appDb.bookDao.getBook(bookUrl) ?: return "refreshToc 未找到书籍"
+        val beforeList = appDb.bookChapterDao.getChapterList(bookUrl)
+        val beforeCount = beforeList.size
+        currentCoroutineContext().ensureActive()
+        val refresh = BookController.refreshTocAwait(mapOf("url" to listOf(bookUrl)))
+        currentCoroutineContext().ensureActive()
+        if (!refresh.isSuccess) {
+            return "《${book.name}》更新失败: ${refresh.errorMsg}"
+        }
+        val afterList = appDb.bookChapterDao.getChapterList(bookUrl)
+        val afterCount = afterList.size
+        val newCount = (afterCount - beforeCount).coerceAtLeast(0)
+        val notifyObj = getMap(action, "notify")
+        val notifyEnabled = notifyObj?.let { getBoolean(it, "enable", defaultValue = true) } ?: false
+        val notifyMin = notifyObj?.let { getInt(it, "minCount") } ?: 1
+        val cacheObj = getMap(action, "cache")
+        val cacheEnabled = cacheObj?.let { getBoolean(it, "enable", defaultValue = false) } ?: false
+        val shouldNotify = notifyEnabled && newCount >= notifyMin && newCount > 0
+        val shouldCache = cacheEnabled && newCount > 0
+        val latestTitle = getLatestChapterTitle(afterList)
+        val titleTpl = notifyObj?.let { getString(it, "title") }
+        val contentTpl = notifyObj?.let { getString(it, "content") }
+        if (shouldNotify) {
+            notifyBookUpdate(
+                context = context,
+                book = book,
+                newCount = newCount,
+                latestTitle = latestTitle,
+                titleTpl = titleTpl,
+                contentTpl = contentTpl
             )
-            val notify = action.map("notify")
-            val notifyEnabled = notify?.boolean("enable", true) ?: false
-            val notifyMin = (notify?.int("minCount") ?: 1).coerceAtLeast(1)
-            val cache = action.map("cache")
-            val cacheEnabled = cache?.boolean("enable", false) ?: false
-            val shouldNotify = notifyEnabled && diff.newCount >= notifyMin
-            if (shouldNotify) {
-                notifyBookUpdate(
-                    context = context,
-                    book = book,
-                    newCount = diff.newCount,
-                    latestTitle = latestChapterTitle(after),
-                    titleTemplate = notify?.string("title"),
-                    contentTemplate = notify?.string("content")
-                )
-            }
-            val queued = if (cacheEnabled && diff.newCount > 0 && !book.isLocal) {
-                queueNewChapterRanges(context, book, diff.added.map { it.index })
-            } else {
-                0
-            }
-            buildRefreshSummary(book, diff, shouldNotify, queued)
         }
-    }
-
-    private fun queueNewChapterRanges(
-        context: Context,
-        book: Book,
-        indexes: List<Int>
-    ): Int {
-        if (indexes.isEmpty()) return 0
-        val sorted = indexes.distinct().sorted()
-        var start = sorted.first()
-        var previous = start
-        var queued = 0
-        fun enqueue(rangeStart: Int, rangeEnd: Int) {
-            if (rangeStart > rangeEnd) return
-            CacheBook.start(context, book, rangeStart, rangeEnd)
-            queued += rangeEnd - rangeStart + 1
-        }
-        sorted.drop(1).forEach { index ->
-            if (index == previous + 1) {
-                previous = index
-            } else {
-                enqueue(start, previous)
-                start = index
-                previous = index
+        var cacheCount = 0
+        if (shouldCache) {
+            val start = beforeCount
+            val end = afterCount - 1
+            if (start <= end && !book.isLocal) {
+                CacheBook.start(context, book, start, end)
+                cacheCount = end - start + 1
             }
         }
-        enqueue(start, previous)
-        return queued
+        return buildSummary(book, newCount, shouldNotify, cacheCount)
     }
 
     private fun handleNotify(
@@ -153,41 +134,41 @@ object AutoTaskProtocol {
         context: Context,
         taskName: String?
     ): String {
-        val time = formatTime(System.currentTimeMillis(), "MM-dd HH:mm")
+        val titleTpl = getString(action, "title")
+        val contentTpl = getString(action, "content")
+        val time = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())
         val title = formatCommonTemplate(
-            action.string("title") ?: context.getString(R.string.auto_task_notify_title),
+            titleTpl ?: context.getString(R.string.auto_task_notify_title),
             taskName,
             time
         )
         val content = formatCommonTemplate(
-            action.string("content")
-                ?: context.getString(R.string.auto_task_notify_content, taskName.orEmpty()),
+            contentTpl ?: context.getString(R.string.auto_task_notify_content, taskName ?: ""),
             taskName,
             time
         )
-        val priority = when (action.string("level")?.lowercase(Locale.ROOT)) {
+        val level = getString(action, "level")?.lowercase(Locale.ROOT).orEmpty()
+        val priority = when (level) {
             "high", "error", "fail", "failed" -> NotificationCompat.PRIORITY_HIGH
             "low" -> NotificationCompat.PRIORITY_LOW
             else -> NotificationCompat.PRIORITY_DEFAULT
         }
-        val id = action.int("id")?.let {
+        val notifyId = getInt(action, "id")?.let {
             NotificationId.AutoTaskNotifyBase + (it and 0x7fff)
         } ?: run {
-            NotificationId.AutoTaskNotifyBase +
-                ("${taskName.orEmpty()}|$title|$content".hashCode() and 0x7fff)
+            val key = "${taskName.orEmpty()}|$title|$content"
+            NotificationId.AutoTaskNotifyBase + (key.hashCode() and 0x7fff)
         }
-        NotificationManagerCompat.from(context).notify(
-            id,
-            NotificationCompat.Builder(context, AppConst.channelIdWeb)
-                .setSmallIcon(R.drawable.ic_web_service_noti)
-                .setContentTitle(title)
-                .setContentText(content)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .setPriority(priority)
-                .build()
-        )
+        val notification = NotificationCompat.Builder(context, AppConst.channelIdWeb)
+            .setSmallIcon(R.drawable.ic_web_service_noti)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(priority)
+            .build()
+        NotificationManagerCompat.from(context).notify(notifyId, notification)
         return "通知: $title"
     }
 
@@ -196,191 +177,175 @@ object AutoTaskProtocol {
         book: Book,
         newCount: Int,
         latestTitle: String?,
-        titleTemplate: String?,
-        contentTemplate: String?
+        titleTpl: String?,
+        contentTpl: String?
     ) {
-        val time = formatTime(System.currentTimeMillis(), "MM-dd HH:mm")
+        val time = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())
         val defaultTitle = context.getString(R.string.auto_task_book_update_title, book.name)
         val defaultContent = if (latestTitle.isNullOrBlank()) {
             context.getString(R.string.auto_task_book_update_content_count, newCount)
         } else {
             context.getString(R.string.auto_task_book_update_content, newCount, latestTitle)
         }
-        val title = formatBookTemplate(
-            titleTemplate ?: defaultTitle,
-            book,
-            newCount,
-            latestTitle,
-            time
-        )
-        val content = formatBookTemplate(
-            contentTemplate ?: defaultContent,
-            book,
-            newCount,
-            latestTitle,
-            time
-        )
-        val id = NotificationId.AutoTaskBookUpdateBase +
-            (book.bookUrl.hashCode() and Int.MAX_VALUE) % 10_000
-        NotificationManagerCompat.from(context).notify(
-            id,
-            NotificationCompat.Builder(context, AppConst.channelIdWeb)
-                .setSmallIcon(R.drawable.ic_web_service_noti)
-                .setContentTitle(title)
-                .setContentText(content)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .build()
-        )
+        val title = formatTemplate(titleTpl ?: defaultTitle, book, newCount, latestTitle, time)
+        val content = formatTemplate(contentTpl ?: defaultContent, book, newCount, latestTitle, time)
+        val notifyId = NotificationId.AutoTaskBookUpdateBase +
+            (book.bookUrl.hashCode() and 0x7fffffff) % 10000
+        val notification = NotificationCompat.Builder(context, AppConst.channelIdWeb)
+            .setSmallIcon(R.drawable.ic_web_service_noti)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(notifyId, notification)
     }
 
-    private fun buildRefreshSummary(
+    private fun buildSummary(
         book: Book,
-        diff: AutoTaskTocDiff,
+        newCount: Int,
         notified: Boolean,
-        queued: Int
+        cacheCount: Int
     ): String {
-        val name = book.name.ifBlank { book.bookUrl }
-        val parts = ArrayList<String>(4)
-        parts += "《$name》"
-        parts += if (diff.newCount > 0) "+${diff.newCount}" else "无更新"
-        if (diff.inserted.isNotEmpty()) parts += "插入${diff.inserted.size}"
-        if (diff.removed.isNotEmpty()) parts += "删除${diff.removed.size}"
-        if (diff.moved.isNotEmpty() && diff.added.isEmpty()) parts += "重排"
-        if (diff.hasDuplicateChapters) parts += "重复身份${diff.duplicateKeys.size}"
-        if (notified) parts += "已通知"
-        if (queued > 0) parts += "已排队缓存$queued"
+        val name = if (book.name.isBlank()) book.bookUrl else book.name
+        val parts = mutableListOf("《$name》")
+        if (newCount > 0) {
+            parts.add("+$newCount")
+        } else {
+            parts.add("无更新")
+        }
+        if (notified) parts.add("通知")
+        if (cacheCount > 0) parts.add("缓存$cacheCount")
         return parts.joinToString(" ")
     }
 
-    private fun latestChapterTitle(list: List<BookChapter>): String? =
-        list.lastOrNull { !it.isVolume }?.title ?: list.lastOrNull()?.title
-
-    private fun formatBookTemplate(
-        template: String,
-        book: Book,
-        newCount: Int,
-        latestTitle: String?,
-        time: String
-    ): String = template
-        .replace("{book}", book.name)
-        .replace("{author}", book.author)
-        .replace("{newCount}", newCount.toString())
-        .replace("{chapter}", latestTitle.orEmpty())
-        .replace("{time}", time)
-
-    private fun formatCommonTemplate(template: String, taskName: String?, time: String): String =
-        template.replace("{task}", taskName.orEmpty()).replace("{time}", time)
-
-    private fun formatTime(time: Long, pattern: String): String =
-        SimpleDateFormat(pattern, Locale.getDefault()).format(Date(time))
-
-    private fun Map<String, Any?>.string(key: String): String? =
-        valueIgnoreCase(key)?.toString()?.trim()?.takeIf { it.isNotBlank() }
-
-    private fun Map<String, Any?>.int(key: String): Int? = when (val value = valueIgnoreCase(key)) {
-        is Number -> value.toInt()
-        is String -> value.trim().toIntOrNull()
-        else -> null
+    private fun getLatestChapterTitle(list: List<BookChapter>): String? {
+        return list.lastOrNull { !it.isVolume }?.title ?: list.lastOrNull()?.title
     }
 
-    private fun Map<String, Any?>.boolean(key: String, default: Boolean): Boolean =
-        when (val value = valueIgnoreCase(key)) {
-            is Boolean -> value
-            is Number -> value.toInt() != 0
-            is String -> value.isTrue(default)
-            else -> default
-        }
-
-    private fun Map<String, Any?>.map(key: String): Map<String, Any?>? =
-        valueIgnoreCase(key).asStringMap()
-
-    private fun Map<String, Any?>.valueIgnoreCase(key: String): Any? =
-        this[key] ?: entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value
-
-    private fun Any?.asStringMap(): Map<String, Any?>? = when (this) {
-        is Map<*, *> -> LinkedHashMap<String, Any?>().also { out ->
-            forEach { (key, value) -> if (key != null) out[key.toString()] = value }
-        }
-        else -> null
-    }
-}
-
-/** Isolated parser so malformed script return values never reach action code. */
-object AutoTaskActionParser {
-    fun parse(result: Any?): List<Map<String, Any?>>? {
+    private fun parseActions(result: Any?): List<Map<String, Any?>>? {
         if (result == null) return null
-        val json = when (result) {
-            is String -> result
-            // 模板字符串求值结果是 ConsString(非 String),直接当 JSON 文本
-            is CharSequence -> result.toString()
-            is Scriptable -> runCatching {
-                GSON.toJson(result.toJsonCompatible())
-            }.getOrNull()
-            else -> runCatching { GSON.toJson(result) }.getOrNull()
-        } ?: return null
-        return parseJson(json)
-    }
-
-    /** Convert Rhino values before handing them to Gson; Rhino objects are not
-     * Gson beans and serializing them directly can recurse through prototypes. */
-    private fun Any?.toJsonCompatible(): Any? = when (this) {
-        null, is String, is Number, is Boolean -> this
-        Undefined.instance -> null
-        // ConsString(模板字符串)实现了 CharSequence 但不是 String,
-        // GSON 反射会序列化成 {left,right,length,isFlat} 内部字段而非文本
-        is CharSequence -> toString()
-        is Wrapper -> unwrap().toJsonCompatible()
-        is NativeArray -> {
-            ids.sortedBy { it.toString().toIntOrNull() ?: Int.MAX_VALUE }
-                .map { key -> scriptableProperty(this, key).toJsonCompatible() }
-        }
-        is Scriptable -> {
-            LinkedHashMap<String, Any?>().also { out ->
-                ids.forEach { key ->
-                    val name = key.toString()
-                    out[name] = scriptableProperty(this, key).toJsonCompatible()
-                }
+        return when (result) {
+            is String -> parseActionsFromJson(result)
+            // NativeArray/NativeObject 内部可能嵌套模板字符串插值产生的 ConsString,
+            // GSON 反射会把它序列化成 {left,right,length,isFlat} 内部字段而非字符串本身
+            is org.mozilla.javascript.Scriptable -> {
+                val json = RhinoScriptEngine.stringifyScriptable(result)
+                    ?: runCatching { GSON.toJson(result) }.getOrNull()
+                if (json.isNullOrBlank()) null else parseActionsFromJson(json)
+            }
+            else -> {
+                val json = runCatching { GSON.toJson(result) }.getOrNull()
+                if (json.isNullOrBlank()) null else parseActionsFromJson(json)
             }
         }
-        is Map<*, *> -> LinkedHashMap<String, Any?>().also { out ->
-            forEach { (key, value) -> if (key != null) out[key.toString()] = value.toJsonCompatible() }
-        }
-        is Iterable<*> -> map { it.toJsonCompatible() }
-        else -> this
     }
 
-    private fun scriptableProperty(scriptable: Scriptable, key: Any): Any? = when (key) {
-        is Number -> scriptable.get(key.toInt(), scriptable)
-        else -> ScriptableObject.getProperty(scriptable, key.toString())
-    }
-
-    private fun parseJson(text: String): List<Map<String, Any?>>? {
+    private fun parseActionsFromJson(text: String): List<Map<String, Any?>>? {
         val trimmed = text.trim()
         return when {
-            trimmed.isJsonArray() -> GSON.fromJsonArray<Map<String, Any?>>(trimmed)
-                .getOrNull()?.mapNotNull { it.asStringMap() }
+            trimmed.isJsonArray() -> {
+                val list = GSON.fromJsonArray<Map<String, Any?>>(trimmed).getOrNull()
+                list?.mapNotNull { ensureStringKeyMap(it) }
+            }
             trimmed.isJsonObject() -> {
-                val root = GSON.fromJsonObject<Map<String, Any?>>(trimmed).getOrNull()
-                    ?.asStringMap() ?: return null
-                val actions = root.valueIgnoreCase("actions")
-                when (actions) {
-                    is List<*> -> actions.mapNotNull { it.asStringMap() }
-                    else -> if (root.valueIgnoreCase("type") != null) listOf(root) else null
-                }
+                val map = GSON.fromJsonObject<Map<String, Any?>>(trimmed).getOrNull()
+                mapToActions(map)
             }
             else -> null
         }
     }
 
-    private fun Any?.asStringMap(): Map<String, Any?>? = when (this) {
-        is Map<*, *> -> LinkedHashMap<String, Any?>().also { out ->
-            forEach { (key, value) -> if (key != null) out[key.toString()] = value }
+    private fun mapToActions(root: Map<String, Any?>?): List<Map<String, Any?>>? {
+        if (root == null) return null
+        val normalized = ensureStringKeyMap(root) ?: return null
+        val actionsValue = normalized["actions"]
+        return when (actionsValue) {
+            is List<*> -> actionsValue.mapNotNull { ensureStringKeyMap(it) }
+            else -> if (normalized.containsKey("type")) listOf(normalized) else null
         }
-        else -> null
     }
 
-    private fun Map<String, Any?>.valueIgnoreCase(key: String): Any? =
-        this[key] ?: entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value
+    private fun ensureStringKeyMap(value: Any?): Map<String, Any?>? {
+        return when (value) {
+            is Map<*, *> -> {
+                val out = LinkedHashMap<String, Any?>()
+                value.forEach { (k, v) ->
+                    if (k != null) out[k.toString()] = v
+                }
+                out
+            }
+            else -> null
+        }
+    }
+
+    private fun getString(map: Map<String, Any?>, vararg keys: String): String? {
+        for (key in keys) {
+            val value = getValueIgnoreCase(map, key)
+            val str = value?.toString()?.trim()
+            if (!str.isNullOrBlank()) return str
+        }
+        return null
+    }
+
+    private fun getInt(map: Map<String, Any?>, vararg keys: String): Int? {
+        for (key in keys) {
+            val value = getValueIgnoreCase(map, key)
+            when (value) {
+                is Number -> return value.toInt()
+                is String -> value.toIntOrNull()?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun getBoolean(
+        map: Map<String, Any?>,
+        key: String,
+        defaultValue: Boolean
+    ): Boolean {
+        val value = getValueIgnoreCase(map, key)
+        return when (value) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            is String -> value.isTrue(defaultValue)
+            else -> defaultValue
+        }
+    }
+
+    private fun getMap(map: Map<String, Any?>, key: String): Map<String, Any?>? {
+        val value = getValueIgnoreCase(map, key)
+        return ensureStringKeyMap(value)
+    }
+
+    private fun getValueIgnoreCase(map: Map<String, Any?>, key: String): Any? {
+        map[key]?.let { return it }
+        return map.entries.firstOrNull { it.key.equals(key, true) }?.value
+    }
+
+    private fun formatTemplate(
+        template: String,
+        book: Book,
+        newCount: Int,
+        latestTitle: String?,
+        time: String
+    ): String {
+        return template
+            .replace("{book}", book.name)
+            .replace("{author}", book.author)
+            .replace("{newCount}", newCount.toString())
+            .replace("{chapter}", latestTitle.orEmpty())
+            .replace("{time}", time)
+    }
+
+    private fun formatCommonTemplate(
+        template: String,
+        taskName: String?,
+        time: String
+    ): String {
+        return template
+            .replace("{task}", taskName.orEmpty())
+            .replace("{time}", time)
+    }
 }

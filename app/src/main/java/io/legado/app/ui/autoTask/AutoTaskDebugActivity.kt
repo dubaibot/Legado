@@ -4,90 +4,66 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.viewModels
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivityAutoTaskDebugBinding
-import io.legado.app.ui.widget.compose.AppManagementAction
-import io.legado.app.ui.widget.compose.AppManagementMenuAction
-import io.legado.app.ui.widget.compose.AppManagementScaffold
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryColor
+import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.gone
+import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.launch
 
-class AutoTaskDebugActivity : VMBaseActivity<ActivityAutoTaskDebugBinding, AutoTaskDebugViewModel>() {
-
-    override val binding by viewBinding(ActivityAutoTaskDebugBinding::inflate)
-    override val viewModel by viewModels<AutoTaskDebugViewModel>()
-
-    private var debugState by mutableStateOf<AutoTaskDebugState>(AutoTaskDebugState.Idle)
-
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.composeRoot.setViewCompositionStrategy(
-            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-        )
-        binding.composeRoot.setContent {
-            val running = debugState is AutoTaskDebugState.Running
-            val title = when (val state = debugState) {
-                is AutoTaskDebugState.Running -> state.task.name
-                is AutoTaskDebugState.Finished -> state.task.name
-                is AutoTaskDebugState.Cancelled -> state.task.name
-                else -> getString(R.string.auto_task_debug_title)
-            }.ifBlank { getString(R.string.auto_task_debug_title) }
-            AppManagementScaffold(
-                title = title,
-                selectedCount = 0,
-                totalCount = 0,
-                topActions = listOf(
-                    AppManagementAction(
-                        text = getString(R.string.auto_task_debug_cancel),
-                        iconRes = R.drawable.ic_stop_black_24dp,
-                        danger = true,
-                        onClick = viewModel::cancel,
-                        menuActions = null
-                    ).takeIf { running } ?: AppManagementAction(
-                        text = getString(R.string.more_menu),
-                        iconRes = R.drawable.ic_more_vert,
-                        menuActions = ::debugMenuActions
-                    )
-                ),
-                onBack = ::finish
-            ) {
-                AutoTaskDebugScreen(
-                    state = debugState,
-                    onCancel = viewModel::cancel,
-                    onClearLogs = viewModel::clearLiveLogs
-                )
-            }
-        }
-        observeState()
-        viewModel.loadAndStart(intent.getStringExtra(EXTRA_TASK_ID))
-    }
-
-    private fun observeState() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.state.collect { debugState = it }
-            }
-        }
-    }
-
-    private fun debugMenuActions(): List<AppManagementMenuAction> = listOf(
-        AppManagementMenuAction(
-            text = getString(R.string.auto_task_debug_clear),
-            onClick = viewModel::clearLiveLogs
-        )
-    )
+class AutoTaskDebugActivity :
+    VMBaseActivity<ActivityAutoTaskDebugBinding, AutoTaskDebugViewModel>() {
 
     companion object {
         private const val EXTRA_TASK_ID = "taskId"
 
-        fun startIntent(context: Context, taskId: String): Intent =
-            Intent(context, AutoTaskDebugActivity::class.java).putExtra(EXTRA_TASK_ID, taskId)
+        fun startIntent(context: Context, id: String): Intent {
+            return Intent(context, AutoTaskDebugActivity::class.java).apply {
+                putExtra(EXTRA_TASK_ID, id)
+            }
+        }
+    }
+
+    override val binding by viewBinding(ActivityAutoTaskDebugBinding::inflate)
+    override val viewModel by viewModels<AutoTaskDebugViewModel>()
+    private val adapter by lazy { AutoTaskDebugAdapter(this) }
+
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
+        initRecyclerView()
+        viewModel.observe { state, msg ->
+            lifecycleScope.launch {
+                adapter.addItem(msg)
+                if (state == -1 || state == 1000) {
+                    binding.rotateLoading.gone()
+                }
+            }
+        }
+        viewModel.init(intent.getStringExtra(EXTRA_TASK_ID)) {
+            startDebug()
+        }
+    }
+
+    private fun initRecyclerView() {
+        binding.recyclerView.setEdgeEffectColor(primaryColor)
+        binding.recyclerView.adapter = adapter
+        binding.recyclerView.applyNavigationBarPadding()
+        binding.rotateLoading.loadingColor = accentColor
+    }
+
+    private fun startDebug() {
+        adapter.clearItems()
+        viewModel.startDebug({
+            binding.rotateLoading.visible()
+        }, {
+            toastOnUi(getString(R.string.auto_task_no_task))
+            binding.rotateLoading.gone()
+        })
     }
 }

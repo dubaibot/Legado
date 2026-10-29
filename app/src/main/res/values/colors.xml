@@ -21,6 +21,11 @@
     <color name="background_menu">@color/md_grey_200</color>
     <color name="background_prefs">#7fffffff</color>
 
+    <color name="glass_bar">#A8D9E6F7</color>
+    <color name="glass_bar_shadow">#260A1D35</color>
+    <color name="glass_bar_highlight">#52FFFFFF</color>
+    <color name="glass_overlay">#22FFFFFF</color>
+
     <color name="transparent">#00000000</color>
 
     <color name="transparent10">#10000000</color>
@@ -149,4 +154,6 @@
     <color name="border_card_surface">#1A000000</color>
     <color name="background_tab_container">#0A000000</color>
     <color name="background_preview_card">#FFFFFF</color>
+    <!-- Legado_T auto task UI -->
+    <color name="reviewHandle">#36000000</color>
 </resources>

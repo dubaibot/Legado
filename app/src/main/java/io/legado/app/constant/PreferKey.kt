@@ -175,6 +175,7 @@ object PreferKey {
     const val barElevation = "barElevation"
     const val transparentStatusBar = "transparentStatusBar"
     const val immNavigationBar = "immNavigationBar"
+    const val transparentActionBar = "transparentActionBar"
     const val defaultCover = "defaultCover"
     const val defaultCoverDark = "defaultCoverDark"
     const val replaceEnableDefault = "replaceEnableDefault"
@@ -397,6 +398,9 @@ object PreferKey {
     const val highlightRuleDialog = "highlightRuleDialog"
     const val highlightRuleGroups = "highlightRuleGroups"
     const val highlightRuleItems = "highlightRuleItems"
+    const val homepageLayoutMode = "homepageLayoutMode"
+    const val homepagePreload = "homepagePreload"
+    const val homepageSourceHidden = "homepageSourceHidden"
     const val loadCoverHighQuality = "loadCoverHighQuality"
     const val mainLayoutPreset = "mainLayoutPreset"
     const val mcpPort = "mcpPort"
@@ -447,5 +451,7 @@ object PreferKey {
     const val sourceRecycleBinEnabled = "sourceRecycleBinEnabled"
     const val textBoldMode = "textBoldMode"
     const val touchPageAnimSpeed = "touchPageAnimSpeed"
+    const val askClipboardImport = "askClipboardImport" // 已废弃，仅用于向 clipboardImportMode 迁移
+    const val clipboardImportMode = "clipboardImportMode" // 剪贴板导入口令模式，取值见 ClipboardImportMode
 
 }

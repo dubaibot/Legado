@@ -17,6 +17,11 @@ interface CookieManagerInterface {
      */
     fun getCookie(url: String): String
 
+    fun getCookie(scope: String, url: String): String = getCookie(url)
+
+    /** 获取指定键的 Cookie 值 */
+    fun getKey(url: String, key: String): String = cookieToMap(getCookie(url))[key].orEmpty()
+
     /**
      * 移除cookie
      */

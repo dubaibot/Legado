@@ -1,351 +1,299 @@
 package io.legado.app.ui.autoTask
 
-import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
+import android.widget.EditText
 import androidx.activity.viewModels
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivityAutoTaskEditBinding
-import io.legado.app.help.CacheManager
-import io.legado.app.model.AutoTaskRule
+import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.AutoTask
-import io.legado.app.model.AutoTaskRuleValidator
-import io.legado.app.ui.code.CodeEditActivity
-import io.legado.app.ui.widget.compose.AppManagementAction
-import io.legado.app.ui.widget.compose.AppManagementMenuAction
-import io.legado.app.ui.widget.compose.AppManagementScaffold
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.model.AutoTaskRule
+import io.legado.app.ui.book.source.edit.BookSourceEditAdapter
+import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.widget.keyboard.KeyboardToolPop
+import io.legado.app.ui.widget.recycler.NoChildScrollLinearLayoutManager
+import io.legado.app.ui.widget.text.EditEntity
+import io.legado.app.ui.widget.dialog.WebCodeDialog
 import io.legado.app.utils.CronSchedule
 import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.getClipText
+import io.legado.app.utils.imeHeight
+import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.ui.login.SourceLoginActivity
-import kotlinx.coroutines.launch
+import splitties.views.bottomPadding
 
-class AutoTaskEditActivity : VMBaseActivity<ActivityAutoTaskEditBinding, AutoTaskEditViewModel>() {
+class AutoTaskEditActivity :
+    VMBaseActivity<ActivityAutoTaskEditBinding, AutoTaskEditViewModel>(),
+    KeyboardToolPop.CallBack,
+    WebCodeDialog.Callback {
 
-    override val binding by viewBinding(ActivityAutoTaskEditBinding::inflate)
-    override val viewModel by viewModels<AutoTaskEditViewModel>()
-
-    private var taskId: String? = null
-    private var loaded = false
-    private var finishAfterSave = false
-    private var origin: AutoTaskRule? = null
-    private var editorState by mutableStateOf(AutoTaskEditorState())
-    private var editingField: AutoTaskEditorField? = null
-    private var editingCacheKey: String? = null
-
-    private val codeEditorLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val field = editingField
-        val sourceCacheKey = editingCacheKey
-        editingField = null
-        editingCacheKey = null
-
-        val data = result.data
-        val returnedCacheKey = data?.getStringExtra("cacheKey")
-        val editedText = if (returnedCacheKey != null) {
-            CacheManager.getFromMemory(returnedCacheKey) as? String
-        } else {
-            data?.getStringExtra("text")
-        }
-        if (result.resultCode == Activity.RESULT_OK && field != null && editedText != null) {
-            val cursor = data?.getIntExtra("cursorPosition", editedText.length)
-                ?.takeIf { it in 0..editedText.length }
-                ?: editedText.length
-            updateEditorField(field, TextFieldValue(editedText, TextRange(cursor)))
-        }
-        sourceCacheKey?.let(CacheManager::deleteMemory)
-        if (returnedCacheKey != null && returnedCacheKey != sourceCacheKey) {
-            returnedCacheKey.let(CacheManager::deleteMemory)
-        }
-    }
-
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        taskId = intent.getStringExtra(EXTRA_TASK_ID)
-        binding.composeRoot.setViewCompositionStrategy(
-            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-        )
-        binding.composeRoot.setContent {
-            val style = rememberAppDialogStyle()
-            AppManagementScaffold(
-                title = getString(
-                    if (taskId.isNullOrBlank()) R.string.auto_task_add else R.string.auto_task_edit
-                ),
-                selectedCount = 0,
-                totalCount = 0,
-                topActions = listOfNotNull(
-                    AppManagementAction(
-                        text = getString(R.string.action_save),
-                        iconRes = R.drawable.ic_save,
-                        primary = true,
-                        onClick = ::saveTask
-                    ),
-                    AppManagementAction(
-                        text = getString(R.string.login),
-                        iconRes = R.drawable.ic_bottom_person_e,
-                        onClick = ::openLogin
-                    ),
-                    AppManagementAction(
-                        text = getString(R.string.more_menu),
-                        iconRes = R.drawable.ic_more_vert,
-                        menuActions = { editorMenuActions() }
-                    )
-                ),
-                onBack = ::finish
-            ) {
-                AutoTaskEditScreen(
-                    state = editorState,
-                    onStateChange = { editorState = it },
-                    style = style,
-                    onOpenEditor = ::openCodeEditor,
-                    onLogin = ::openLogin
-                )
-            }
-        }
-        observeTask()
-        viewModel.load(taskId)
-    }
-
-    private fun observeTask() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.task.collect { rule ->
-                    if (rule != null && !loaded) {
-                        loaded = true
-                        origin = rule.copy()
-                        editorState = rule.toEditorState()
-                    }
+    companion object {
+        fun startIntent(context: Context, id: String? = null): Intent {
+            return Intent(context, AutoTaskEditActivity::class.java).apply {
+                if (!id.isNullOrBlank()) {
+                    putExtra("id", id)
                 }
             }
         }
     }
 
-    private fun saveTask() {
-        val rule = buildRule() ?: return
-        viewModel.save(rule) {
-            origin = it.copy()
-            loaded = true
-            finishAfterSave = true
-            setResult(RESULT_OK)
-            finish()
-        }
-    }
+    override val binding by viewBinding(ActivityAutoTaskEditBinding::inflate)
+    override val viewModel by viewModels<AutoTaskEditViewModel>()
 
-    private fun buildRule(): AutoTaskRule? {
-        val name = editorState.name.text.trim()
-        if (name.isBlank()) {
-            toastOnUi(R.string.auto_task_name_required)
-            return null
-        }
-        val cron = editorState.cron.text.trim().ifBlank { AutoTaskRule.DEFAULT_CRON }
-        if (CronSchedule.parse(cron) == null) {
-            toastOnUi(R.string.auto_task_cron_invalid)
-            return null
-        }
-        val script = editorState.script.text.trim()
-        if (script.isBlank()) {
-            toastOnUi(R.string.auto_task_script_empty)
-            return null
-        }
-        val rate = editorState.concurrentRate.text.trim().ifBlank { null }
-        if (!AutoTaskRuleValidator.isValidConcurrentRate(rate.orEmpty())) {
-            toastOnUi(R.string.auto_task_concurrent_rate)
-            return null
-        }
-        val base = origin ?: viewModel.task.value ?: AutoTaskRule()
-        return base.copy(
-            name = name,
-            cron = cron,
-            comment = editorState.comment.text.trim().ifBlank { null },
-            script = script,
-            header = editorState.header.text.trim().ifBlank { null },
-            jsLib = editorState.jsLib.text.trim().ifBlank { null },
-            concurrentRate = rate,
-            loginUrl = editorState.loginUrl.text.trim().ifBlank { null },
-            loginUi = editorState.loginUi.text.trim().ifBlank { null },
-            loginCheckJs = editorState.loginCheckJs.text.trim().ifBlank { null },
-            enable = editorState.enabled,
-            enabledCookieJar = editorState.cookieJar
-        )
-    }
-
-    private fun editorMenuActions(): List<AppManagementMenuAction> {
-        return listOf(
-            AppManagementMenuAction(
-                text = getString(R.string.auto_task_debug),
-                enabled = editorState.script.text.isNotBlank(),
-                onClick = ::debugTask
-            ),
-            AppManagementMenuAction(
-                text = getString(R.string.login),
-                onClick = ::openLogin
-            ),
-            AppManagementMenuAction(
-                text = getString(R.string.copy_source),
-                onClick = { sendToClip(GSON.toJson(buildDraft())) }
-            ),
-            AppManagementMenuAction(
-                text = getString(R.string.paste_source),
-                onClick = ::pasteSource
-            ),
-            AppManagementMenuAction(
-                text = getString(R.string.help),
-                onClick = { showHelp("autoTaskHelp") }
+    private val webEditRequests = linkedMapOf<String, EditEntity>()
+    private val adapter = BookSourceEditAdapter { entity ->
+        val requestId = java.util.UUID.randomUUID().toString()
+        if (
+            WebCodeDialog.show(
+                supportFragmentManager,
+                entity.value.orEmpty(),
+                requestId = requestId,
+                title = entity.hint
             )
-        )
+        ) {
+            webEditRequests[requestId] = entity
+        }
+    }
+    private val fieldMap = linkedMapOf<String, EditEntity>()
+    private val entities: ArrayList<EditEntity> = ArrayList()
+    private var task: AutoTaskRule? = null
+    private var originTask: AutoTaskRule? = null
+    private val softKeyboardTool by lazy {
+        KeyboardToolPop(this, lifecycleScope, binding.root, this)
     }
 
-    private fun debugTask() {
-        val rule = buildRule() ?: return
-        viewModel.save(rule) {
-            origin = it.copy()
-            editorState = it.toEditorState()
-            startActivity(AutoTaskDebugActivity.startIntent(this, it.id))
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
+        softKeyboardTool.attachToWindow(window)
+        initView()
+        viewModel.initData(intent) {
+            task = it
+            upView(it)
         }
     }
 
-    private fun buildDraft(): AutoTaskRule {
-        return (origin ?: viewModel.task.value ?: AutoTaskRule()).copy(
-            name = editorState.name.text,
-            cron = editorState.cron.text,
-            comment = editorState.comment.text,
-            script = editorState.script.text,
-            header = editorState.header.text,
-            jsLib = editorState.jsLib.text,
-            concurrentRate = editorState.concurrentRate.text,
-            loginUrl = editorState.loginUrl.text,
-            loginUi = editorState.loginUi.text,
-            loginCheckJs = editorState.loginCheckJs.text,
-            enable = editorState.enabled,
-            enabledCookieJar = editorState.cookieJar
-        )
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.auto_task_edit, menu)
+        return super.onCompatCreateOptionsMenu(menu)
     }
 
-    private fun pasteSource() {
-        val text = getClipText()?.trim().orEmpty()
-        if (text.isBlank()) {
-            toastOnUi(R.string.empty)
-            return
+    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
+        val loginUrl = getFieldValue("loginUrl")
+        menu.findItem(R.id.menu_login)?.let {
+            it.isVisible = true
+            it.isEnabled = loginUrl.isNotBlank()
         }
-        runCatching { GSON.fromJsonObject<AutoTaskRule>(text).getOrThrow() }
-            .onSuccess { imported ->
-                editorState = imported.toEditorState()
+        return super.onMenuOpened(featureId, menu)
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_save -> {
+                val rule = buildTask() ?: return true
+                viewModel.save(rule) {
+                    originTask = rule.copy()
+                    setResult(RESULT_OK)
+                    finish()
+                }
             }
-            .onFailure { toastOnUi(it.localizedMessage.orEmpty()) }
-    }
-
-    private fun openLogin() {
-        val rule = buildRule() ?: return
-        if (rule.loginUrl.isNullOrBlank() && rule.loginUi.isNullOrBlank()) {
-            toastOnUi(R.string.source_no_login)
-            return
-        }
-        viewModel.save(rule) {
-            origin = it.copy()
-            editorState = it.toEditorState()
-            startActivity<SourceLoginActivity> {
-                val sourceKey = AutoTask.sourceKey(it.id)
-                putExtra("type", AutoTask.SOURCE_TYPE)
-                putExtra("key", sourceKey)
-                putExtra("taskId", it.id)
-                putExtra(AutoTask.EXTRA_TASK_ID, it.id)
-                putExtra(AutoTask.EXTRA_SOURCE_KEY, sourceKey)
+            R.id.menu_debug_task -> {
+                val rule = buildTask() ?: return true
+                viewModel.save(rule) {
+                    originTask = rule.copy()
+                    startActivity(AutoTaskDebugActivity.startIntent(this, rule.id))
+                }
             }
+            R.id.menu_login -> openLogin()
+            R.id.menu_copy_source -> sendToClip(GSON.toJson(buildTaskDraft()))
+            R.id.menu_paste_source -> viewModel.pasteSource { upView(it) }
+            R.id.menu_help -> showHelpDialog()
         }
+        return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun openCodeEditor(field: AutoTaskEditorField) {
-        val value = editorValue(field)
-        val cacheKey = "auto_task_editor_${System.nanoTime()}"
-        CacheManager.putMemory(cacheKey, value.text)
-        editingField = field
-        editingCacheKey = cacheKey
-        val intent = Intent(this, CodeEditActivity::class.java).apply {
-            putExtra("cacheKey", cacheKey)
-            putExtra("writable", true)
-            putExtra("title", getString(field.labelRes))
-            putExtra("languageName", field.languageName)
-            putExtra("cursorPosition", value.selection.start)
+    private fun initView() {
+        binding.recyclerView.setEdgeEffectColor(primaryColor)
+        binding.recyclerView.layoutManager = NoChildScrollLinearLayoutManager(this)
+        binding.recyclerView.adapter = adapter
+        binding.recyclerView.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
+            val navigationBarHeight = windowInsets.navigationBarHeight
+            val imeHeight = windowInsets.imeHeight
+            view.bottomPadding = if (imeHeight == 0) navigationBarHeight else 0
+            softKeyboardTool.initialPadding = imeHeight
+            windowInsets
         }
-        codeEditorLauncher.launch(intent)
+        binding.fieldNav.attachToRecyclerView(binding.recyclerView)
     }
 
-    private fun editorValue(field: AutoTaskEditorField): TextFieldValue {
-        return when (field) {
-            AutoTaskEditorField.COMMENT -> editorState.comment
-            AutoTaskEditorField.SCRIPT -> editorState.script
-            AutoTaskEditorField.HEADER -> editorState.header
-            AutoTaskEditorField.JS_LIB -> editorState.jsLib
-            AutoTaskEditorField.LOGIN_UI -> editorState.loginUi
-            AutoTaskEditorField.LOGIN_CHECK_JS -> editorState.loginCheckJs
-        }
+    private fun upView(rule: AutoTaskRule) {
+        originTask = rule.copy()
+        binding.cbEnable.isChecked = rule.enable
+        binding.cbCookie.isChecked = rule.enabledCookieJar
+        fieldMap.clear()
+        entities.clear()
+        addField("name", rule.name, R.string.name)
+        addField("cron", rule.cron?.ifBlank { AutoTask.DEFAULT_CRON }, R.string.auto_task_cron)
+        addField("comment", rule.comment, R.string.auto_task_comment)
+        addField("script", rule.script, R.string.auto_task_script)
+        addField("header", rule.header, R.string.auto_task_header)
+        addField("jsLib", rule.jsLib, R.string.auto_task_jslib)
+        addField("concurrentRate", rule.concurrentRate, R.string.auto_task_concurrent_rate)
+        addField("loginUrl", rule.loginUrl, R.string.login_url)
+        addField("loginUi", rule.loginUi, R.string.login_ui)
+        addField("loginCheckJs", rule.loginCheckJs, R.string.login_check_js)
+        adapter.editEntities = entities
+        binding.fieldNav.setLabels(entities.map { it.hint.replace(Regex("[（(].+?[）)]"), "").trim() })
     }
 
-    private fun updateEditorField(field: AutoTaskEditorField, value: TextFieldValue) {
-        editorState = when (field) {
-            AutoTaskEditorField.COMMENT -> editorState.copy(comment = value)
-            AutoTaskEditorField.SCRIPT -> editorState.copy(script = value)
-            AutoTaskEditorField.HEADER -> editorState.copy(header = value)
-            AutoTaskEditorField.JS_LIB -> editorState.copy(jsLib = value)
-            AutoTaskEditorField.LOGIN_UI -> editorState.copy(loginUi = value)
-            AutoTaskEditorField.LOGIN_CHECK_JS -> editorState.copy(loginCheckJs = value)
+    private fun addField(key: String, value: String?, hintRes: Int) {
+        val entity = EditEntity(key, value, hintRes)
+        fieldMap[key] = entity
+        entities.add(entity)
+    }
+
+    private fun getFieldValue(key: String): String {
+        return fieldMap[key]?.value?.trim().orEmpty()
+    }
+
+    private fun buildTask(): AutoTaskRule? {
+        val name = getFieldValue("name")
+        if (name.isBlank()) {
+            toastOnUi(getString(R.string.auto_task_name_required))
+            return null
         }
+        val cron = getFieldValue("cron").ifBlank { AutoTask.DEFAULT_CRON }
+        if (CronSchedule.parse(cron) == null) {
+            toastOnUi(getString(R.string.auto_task_cron_invalid))
+            return null
+        }
+        val script = getFieldValue("script")
+        if (script.isBlank()) {
+            toastOnUi(getString(R.string.auto_task_script_empty))
+            return null
+        }
+        val rule = task ?: AutoTaskRule()
+        rule.name = name
+        rule.cron = cron
+        rule.comment = getFieldValue("comment").ifBlank { null }
+        rule.script = script
+        rule.header = getFieldValue("header").ifBlank { null }
+        rule.jsLib = getFieldValue("jsLib").ifBlank { null }
+        rule.concurrentRate = getFieldValue("concurrentRate").ifBlank { null }
+        rule.loginUrl = getFieldValue("loginUrl").ifBlank { null }
+        rule.loginUi = getFieldValue("loginUi").ifBlank { null }
+        rule.loginCheckJs = getFieldValue("loginCheckJs").ifBlank { null }
+        rule.enable = binding.cbEnable.isChecked
+        rule.enabledCookieJar = binding.cbCookie.isChecked
+        task = rule
+        return rule
+    }
+
+    private fun buildTaskDraft(): AutoTaskRule {
+        val base = originTask ?: task ?: AutoTaskRule()
+        return base.copy(
+            name = getFieldValue("name"),
+            cron = getFieldValue("cron").ifBlank { AutoTask.DEFAULT_CRON },
+            comment = getFieldValue("comment").ifBlank { null },
+            script = getFieldValue("script"),
+            header = getFieldValue("header").ifBlank { null },
+            jsLib = getFieldValue("jsLib").ifBlank { null },
+            concurrentRate = getFieldValue("concurrentRate").ifBlank { null },
+            loginUrl = getFieldValue("loginUrl").ifBlank { null },
+            loginUi = getFieldValue("loginUi").ifBlank { null },
+            loginCheckJs = getFieldValue("loginCheckJs").ifBlank { null },
+            enable = binding.cbEnable.isChecked,
+            enabledCookieJar = binding.cbCookie.isChecked
+        )
     }
 
     override fun finish() {
-        if (finishAfterSave) {
-            super.finish()
-            return
-        }
-        val current = buildDraft()
-        if (origin != null && current != origin) {
-            showComposeConfirmDialog(
-                title = getString(R.string.exit),
-                message = getString(R.string.exit_no_save),
-                positiveText = getString(R.string.yes),
-                negativeText = getString(R.string.no),
-                onPositive = { super.finish() }
-            )
+        val base = originTask ?: task ?: AutoTaskRule()
+        val current = buildTaskDraft()
+        if (current != base) {
+            alert(R.string.exit) {
+                setMessage(R.string.exit_no_save)
+                positiveButton(R.string.yes)
+                negativeButton(R.string.no) {
+                    super.finish()
+                }
+            }
         } else {
             super.finish()
         }
     }
 
-    private fun AutoTaskRule.toEditorState() = AutoTaskEditorState(
-        name = androidx.compose.ui.text.input.TextFieldValue(name),
-        cron = androidx.compose.ui.text.input.TextFieldValue(cron.orEmpty()),
-        comment = androidx.compose.ui.text.input.TextFieldValue(comment.orEmpty()),
-        script = androidx.compose.ui.text.input.TextFieldValue(script),
-        header = androidx.compose.ui.text.input.TextFieldValue(header.orEmpty()),
-        jsLib = androidx.compose.ui.text.input.TextFieldValue(jsLib.orEmpty()),
-        concurrentRate = androidx.compose.ui.text.input.TextFieldValue(concurrentRate.orEmpty()),
-        loginUrl = androidx.compose.ui.text.input.TextFieldValue(loginUrl.orEmpty()),
-        loginUi = androidx.compose.ui.text.input.TextFieldValue(loginUi.orEmpty()),
-        loginCheckJs = androidx.compose.ui.text.input.TextFieldValue(loginCheckJs.orEmpty()),
-        enabled = enable,
-        cookieJar = enabledCookieJar
-    )
+    private fun openLogin() {
+        val rule = buildTask() ?: return
+        val loginUrl = rule.loginUrl.orEmpty()
+        if (loginUrl.isBlank()) {
+            toastOnUi(getString(R.string.source_no_login))
+            return
+        }
+        viewModel.save(rule) {
+            startActivity<SourceLoginActivity> {
+                putExtra("type", "autoTask")
+                putExtra("key", rule.id)
+            }
+        }
+    }
 
-    companion object {
-        private const val EXTRA_TASK_ID = "id"
+    private fun showHelpDialog() {
+        showHelp("autoTaskHelp")
+    }
+
+    override fun helpActions(): List<SelectItem<String>> {
+        return arrayListOf()
+    }
+
+    override fun onHelpActionSelect(action: String) {
+    }
+
+    override fun sendText(text: String) {
+        if (text.isBlank()) return
+        val view = window?.decorView?.findFocus()
+        if (view is EditText) {
+            val start = view.selectionStart
+            val end = view.selectionEnd
+            val edit = view.editableText
+            if (start < 0 || start >= edit.length) {
+                edit.append(text)
+            } else if (start > end) {
+                edit.replace(end, start, text)
+            } else {
+                edit.replace(start, end, text)
+            }
+        }
+    }
+
+    override fun onUndoClicked() {
+    }
+
+    override fun onRedoClicked() {
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        softKeyboardTool.dismiss()
+    }
+
+    override fun onCodeSave(code: String, requestId: String?) {
+        val entity = requestId?.let { webEditRequests.remove(it) } ?: return
+        entity.value = code
+        val index = entities.indexOf(entity)
+        if (index >= 0) {
+            adapter.notifyItemChanged(index)
+        }
     }
 }

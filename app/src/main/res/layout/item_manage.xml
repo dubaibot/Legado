@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    管理页统一 item 组件(R1c):标题槽(cb_name 复选框 / tv_name 纯文本,二选一)+副标题槽(tv_subtitle,默认 gone)
+    +开关+编辑+更多。消费方在 getViewBinding 里按需切换槽位可见性。
+    结构特殊者保留独立布局:item_book_source(校验状态族)、item_explore_manage(副标题避让开关+开关全高居中)。
+-->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root_card"
+    style="@style/Style.ItemManageCard"
+    app:skin_background="surfaceContainerLow">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/content_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:paddingStart="@dimen/space_l"
+        android:paddingEnd="@dimen/space_m"
+        android:paddingVertical="6dp">
+
+        <io.legado.app.lib.theme.view.ThemeCheckBox
+            android:id="@+id/cb_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:paddingStart="5dp"
+            android:scrollbars="none"
+            android:singleLine="true"
+            app:skin_textColor="onSurface"
+            android:textColor="@color/primaryText"
+            app:layout_constraintBottom_toTopOf="@id/tv_subtitle"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toLeftOf="@id/swt_enabled"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="RtlSymmetry,TouchTargetSizeCheck"
+            tools:text="名称" />
+
+        <TextView
+            android:id="@+id/tv_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:paddingStart="5dp"
+            android:singleLine="true"
+            app:skin_textColor="onSurface"
+            android:textColor="@color/primaryText"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/tv_subtitle"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toLeftOf="@id/swt_enabled"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="RtlSymmetry"
+            tools:text="名称" />
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/swt_enabled"
+            android:name="@string/enable"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="6dp"
+            android:layout_marginRight="6dp"
+            app:layout_constraintBottom_toTopOf="@id/tv_subtitle"
+            app:layout_constraintRight_toLeftOf="@id/iv_edit"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="RtlSymmetry,TouchTargetSizeCheck" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/iv_edit"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/edit"
+            android:padding="6dp"
+            android:src="@drawable/ic_edit"
+            app:skin_tint="onSurface"
+            android:tint="@color/primaryText"
+            app:layout_constraintBottom_toTopOf="@id/tv_subtitle"
+            app:layout_constraintRight_toLeftOf="@id/iv_menu_more"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/iv_menu_more"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/more_menu"
+            android:padding="6dp"
+            android:src="@drawable/ic_more_vert"
+            app:skin_tint="onSurface"
+            android:tint="@color/primaryText"
+            app:layout_constraintBottom_toTopOf="@id/tv_subtitle"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="RtlHardcoded" />
+
+        <TextView
+            android:id="@+id/tv_subtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="@dimen/text_caption"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            tools:text="副标题"
+            tools:visibility="visible" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>

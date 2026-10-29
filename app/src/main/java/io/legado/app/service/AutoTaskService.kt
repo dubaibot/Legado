@@ -6,184 +6,84 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.AppConfig
 import io.legado.app.model.AutoTask
 import io.legado.app.model.AutoTaskRule
-import io.legado.app.model.AutoTaskRunStatus
-import io.legado.app.model.AutoTaskSchedule
+import io.legado.app.model.AutoTaskProtocol
+import io.legado.app.help.http.TaskCookieContext
 import io.legado.app.utils.CronSchedule
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.putPrefBoolean
-import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.startService
-import kotlinx.coroutines.CancellationException
+import io.legado.app.utils.servicePendingIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Single owner of automatic-task scheduling.
- *
- * API 35 and newer use one exact/inexact alarm per next occurrence. Older
- * releases keep one data-sync foreground service and sleep until the next
- * occurrence. Both paths use the same due-task and execution code, so behavior
- * does not diverge by Android version.
- */
 class AutoTaskService : BaseService() {
 
     companion object {
         private const val ALARM_REQUEST_CODE = 100108
-        private const val IDLE_RECHECK_MS = 60_000L
-        private const val MIN_DELAY_MS = 1_000L
-        private const val FIRST_RUN_GRACE_MS = 5 * 60_000L
+        private const val DATA_SYNC_IDLE_CHECK_MS = 60_000L
+        private const val DATA_SYNC_MIN_DELAY_MS = 1_000L
 
-        @Volatile
-        var isRun: Boolean = false
+        var isRun = false
             private set
 
         fun start(context: Context) {
-            dispatch(context, IntentAction.start, foreground = true)
+            dispatchForeground(context, IntentAction.start)
         }
 
         fun stop(context: Context) {
-            context.startService<AutoTaskService> { action = IntentAction.stop }
+            context.startService<AutoTaskService> {
+                action = IntentAction.stop
+            }
         }
 
         fun refresh(context: Context) {
-            dispatch(context, IntentAction.refreshSchedule, foreground = true)
+            dispatchForeground(context, IntentAction.refreshSchedule)
         }
 
-        /** Runs one saved rule through the same coordinator used by cron. */
-        fun runNow(context: Context, taskId: String) {
-            if (taskId.isBlank()) return
-            val intent = Intent(context, AutoTaskService::class.java).apply {
-                action = IntentAction.runAutoTask
-                putExtra(EXTRA_TASK_ID, taskId)
-            }
-            context.startForegroundServiceCompat(intent)
-        }
-
-        /** Rebuilds the wake-up after boot, a clock change, or an app update. */
-        fun restoreSchedule(context: Context) {
-            if (!context.getPrefBoolean(PreferKey.autoTaskService)) {
-                cancelAlarm(context)
-                return
-            }
-            if (isAlarmMode()) {
-                scheduleAlarm(context, System.currentTimeMillis())
-            } else {
-                runCatching {
-                    dispatch(context, IntentAction.refreshSchedule, foreground = true)
-                }.onFailure { error ->
-                    AppLog.put("AutoTask restore failed\n${error.localizedMessage}", error)
-                }
-            }
-        }
-
-        private fun isAlarmMode(): Boolean =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
-
-        private fun scheduleAlarm(context: Context, now: Long) {
-            val next = AutoTask.all()
-                .asSequence()
-                .filter { it.enable }
-                .mapNotNull { rule ->
-                    CronSchedule.parse(rule.cron?.trim().orEmpty())?.nextTimeAfter(now)
-                }
-                .minOrNull()
-            if (next == null) {
-                cancelAlarm(context)
-                return
-            }
-            val triggerAt = next.coerceAtLeast(System.currentTimeMillis() + MIN_DELAY_MS)
-            val manager = context.getSystemService(AlarmManager::class.java) ?: return
-            val pendingIntent = buildAlarmPendingIntent(context)
-            runCatching {
-                when {
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                        manager.canScheduleExactAlarms() -> manager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent
-                    )
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> manager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent
-                    )
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT -> manager.setExact(
-                        AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent
-                    )
-                    else -> manager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-                }
-            }.onFailure { error ->
-                AppLog.put("AutoTask restore alarm failed\n${error.localizedMessage}", error)
-            }
-        }
-
-        private fun cancelAlarm(context: Context) {
-            context.getSystemService(AlarmManager::class.java)
-                ?.cancel(buildAlarmPendingIntent(context))
-        }
-
-        private fun buildAlarmPendingIntent(context: Context): PendingIntent {
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    PendingIntent.FLAG_IMMUTABLE
-                } else {
-                    0
-                }
-            return PendingIntent.getService(
-                context,
-                ALARM_REQUEST_CODE,
-                Intent(context, AutoTaskService::class.java).apply {
-                    action = IntentAction.refreshSchedule
-                },
-                flags
-            )
-        }
-
-        private const val EXTRA_TASK_ID = "autoTaskId"
-
-        private fun dispatch(context: Context, action: String, foreground: Boolean) {
+        private fun dispatchForeground(
+            context: Context,
+            action: String
+        ) {
             val intent = Intent(context, AutoTaskService::class.java).apply {
                 this.action = action
             }
-            if (foreground) {
-                context.startForegroundServiceCompat(intent)
-            } else {
-                context.startService(intent)
-            }
+            context.startForegroundServiceCompat(intent)
         }
     }
 
-    private val taskLock = Mutex()
-    private val runInProgress = AtomicBoolean(false)
-    private var oneShotJob: Job? = null
-    private var loopJob: Job? = null
-    private var notificationText: String = ""
+    private var notificationContent = appCtx.getString(R.string.service_starting)
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
-    private val executionCoordinator by lazy {
-        AutoTask.executionCoordinator(this)
-    }
+    private val notificationStateLock = Any()
+    private val activeTaskNames = LinkedHashMap<String, String>()
+    private val taskLock = Mutex()
+    private var dataSyncLoopJob: Job? = null
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(this, AppConst.channelIdWeb)
@@ -191,7 +91,7 @@ class AutoTaskService : BaseService() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.auto_task_service))
-            .setContentText(notificationText.ifBlank { getString(R.string.service_starting) })
+            .setContentText(notificationContent)
             .addAction(
                 R.drawable.ic_stop_black_24dp,
                 getString(R.string.cancel),
@@ -202,319 +102,431 @@ class AutoTaskService : BaseService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == IntentAction.stop) {
-            disableAndStop()
-            return START_NOT_STICKY
-        }
-
-        super.onStartCommand(intent, flags, startId)
-        val manualTaskId = intent?.takeIf { it.action == IntentAction.runAutoTask }
-            ?.getStringExtra(EXTRA_TASK_ID)
-        if (!getPrefBoolean(PreferKey.autoTaskService) && manualTaskId.isNullOrBlank()) {
+            putPrefBoolean(PreferKey.autoTaskService, false)
+            dataSyncLoopJob?.cancel()
+            dataSyncLoopJob = null
             cancelNextAlarm()
-            stopSelfResult(startId)
+            stopSelf()
             return START_NOT_STICKY
         }
 
-        if (useAlarmMode()) {
-            launchOneShot(startId, manualTaskId = manualTaskId)
-        } else {
-            ensureLegacyLoop()
-            // Run immediately for an explicit start/refresh. The loop itself
-            // remains the only long-lived scheduler on pre-35 devices.
-            if (manualTaskId != null || intent?.action == IntentAction.start ||
-                intent?.action == IntentAction.refreshSchedule || intent == null
-            ) {
-                launchOneShot(startId, stopAfter = false, manualTaskId = manualTaskId)
-            }
+        val result = super.onStartCommand(intent, flags, startId)
+        if (result == START_NOT_STICKY) {
+            return result
         }
-        return START_NOT_STICKY
+        if (useAlarmFgsMode()) {
+            runDueAndReschedule(startId)
+        } else {
+            if (!getPrefBoolean(PreferKey.autoTaskService)) {
+                stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
+            cancelNextAlarm()
+            runDueNoReschedule()
+            ensureDataSyncLoopRunning()
+        }
+        return result
     }
 
     override fun onDestroy() {
-        oneShotJob?.cancel()
-        loopJob?.cancel()
-        oneShotJob = null
-        loopJob = null
         isRun = false
-        runInProgress.set(false)
-        notificationManager.cancel(NotificationId.AutoTaskService)
-        postServiceEvent()
+        dataSyncLoopJob?.cancel()
+        dataSyncLoopJob = null
         super.onDestroy()
+        notificationManager.cancel(NotificationId.AutoTaskService)
     }
 
-    override fun startForegroundNotification() {
-        val notification = notificationBuilder.build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // DATA_SYNC has no ~3 min SHORT_SERVICE platform limit, allowing
-            // long-running scripts (e.g. multi-post retry loops with rate-limit
-            // waits). AlarmManager alarms set with setExactAndAllowWhileIdle /
-            // setAndAllowWhileIdle are permitted background start sources for
-            // DATA_SYNC on Android 15+, so the alarm chain remains intact.
-            val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            startForeground(
-                NotificationId.AutoTaskService,
-                notification,
-                serviceType
-            )
-        } else {
-            startForeground(NotificationId.AutoTaskService, notification)
+    private fun runDueAndReschedule(startId: Int) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (!getPrefBoolean(PreferKey.autoTaskService)) {
+                cancelNextAlarm()
+                stopSelfResult(startId)
+                return@launch
+            }
+            taskLock.withLock {
+                isRun = true
+                try {
+                    // 提前排好下一次 cron 闹钟，避免本轮服务意外结束后定时链中断。
+                    scheduleNextRunFromRules()
+                    processDueTasks()
+                } finally {
+                    isRun = false
+                }
+            }
+            stopSelfResult(startId)
         }
     }
 
-    private fun launchOneShot(
-        startId: Int,
-        stopAfter: Boolean = useAlarmMode(),
-        manualTaskId: String? = null
-    ) {
-        oneShotJob = lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                taskLock.withLock {
-                    if (!getPrefBoolean(PreferKey.autoTaskService) && manualTaskId.isNullOrBlank()) {
-                        return@withLock
-                    }
-                    if (useAlarmMode() && manualTaskId.isNullOrBlank() &&
-                        getPrefBoolean(PreferKey.autoTaskService)
-                    ) {
-                        // Schedule before automatic execution so a service
-                        // restart cannot lose the next wake-up. A manual run
-                        // with the global switch off must remain one-shot.
-                        // DATA_SYNC has no platform time limit, but scheduling
-                        // before the task ensures the chain survives any restart.
-                        scheduleNextFutureAlarm(System.currentTimeMillis())
-                    }
-                    if (!manualTaskId.isNullOrBlank()) {
-                        AutoTask.get(manualTaskId)?.let { runTask(it) }
-                    } else {
-                        processDueTasks()
-                    }
+    private fun runDueNoReschedule() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (!getPrefBoolean(PreferKey.autoTaskService)) {
+                stopSelf()
+                return@launch
+            }
+            taskLock.withLock {
+                isRun = true
+                try {
+                    processDueTasks()
+                } finally {
+                    isRun = false
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Throwable) {
-                AppLog.put("AutoTask scheduler failed\n${error.localizedMessage}", error)
-            } finally {
-                if (stopAfter && useAlarmMode()) stopSelfResult(startId)
-                oneShotJob = null
             }
         }
     }
 
-    private fun ensureLegacyLoop() {
-        if (loopJob?.isActive == true) return
-        loopJob = lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                while (isActive && getPrefBoolean(PreferKey.autoTaskService)) {
-                    taskLock.withLock { processDueTasks() }
-                    val delayMs = nextDelayMs()
-                    delay(delayMs)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Throwable) {
-                AppLog.put("AutoTask loop failed\n${error.localizedMessage}", error)
-            } finally {
-                loopJob = null
+    private fun ensureDataSyncLoopRunning() {
+        if (dataSyncLoopJob?.isActive == true) return
+        if (!hasEnabledRule()) {
+            stopSelf()
+            return
+        }
+        dataSyncLoopJob = lifecycleScope.launch(Dispatchers.IO) {
+            AppLog.put("AutoTask dataSync loop started")
+            while (isActive && !useAlarmFgsMode()) {
                 if (!getPrefBoolean(PreferKey.autoTaskService)) {
-                    stopSelf()
+                    break
+                }
+                val rules = AutoTask.getRules()
+                if (!hasEnabledRule(rules)) {
+                    break
+                }
+                val delayMs = computeDataSyncDelayMs(rules)
+                delay(delayMs)
+                if (!getPrefBoolean(PreferKey.autoTaskService)) {
+                    break
+                }
+                taskLock.withLock {
+                    isRun = true
+                    try {
+                        processDueTasks()
+                    } finally {
+                        isRun = false
+                    }
                 }
             }
+            AppLog.put("AutoTask dataSync loop stopped")
+            dataSyncLoopJob = null
+            if (!getPrefBoolean(PreferKey.autoTaskService) || !hasEnabledRule()) {
+                stopSelf()
+            }
         }
+    }
+
+    private fun computeDataSyncDelayMs(rules: List<AutoTaskRule>): Long {
+        val nextRunAt = computeNextRunAt(rules) ?: return DATA_SYNC_IDLE_CHECK_MS
+        val delayMs = nextRunAt - System.currentTimeMillis()
+        return delayMs.coerceAtLeast(DATA_SYNC_MIN_DELAY_MS)
     }
 
     private suspend fun processDueTasks() {
-        val rules = AutoTask.all()
+        val rules = AutoTask.getRules()
         if (rules.isEmpty()) {
-            updateNotification(getString(R.string.auto_task_no_task))
-            if (useAlarmMode()) cancelNextAlarm()
+            setNotificationContent(getString(R.string.auto_task_no_task))
+            if (useAlarmFgsMode()) {
+                cancelNextAlarm()
+            }
             return
         }
         val enabled = rules.filter { it.enable }
         if (enabled.isEmpty()) {
-            updateNotification(getString(R.string.auto_task_no_enabled))
-            if (useAlarmMode()) cancelNextAlarm()
+            setNotificationContent(getString(R.string.auto_task_no_enabled))
+            if (useAlarmFgsMode()) {
+                cancelNextAlarm()
+            }
             return
         }
 
-        var ran = false
+        val dueTasks = mutableListOf<AutoTaskRule>()
         val now = System.currentTimeMillis()
-        enabled.forEach { rule ->
-            val expression = rule.cron?.trim().orEmpty()
-            val schedule = CronSchedule.parse(expression)
-            if (schedule == null) {
-                markCronError(rule)
-                return@forEach
-            }
-            val next = AutoTaskSchedule.nextFor(
-                rule = rule,
-                nowEpochMs = now,
-                firstRunGraceMs = FIRST_RUN_GRACE_MS
-            )
-            if (next != null && next <= now) {
-                ran = true
-                runTask(rule)
+        for (task in enabled) {
+            currentCoroutineContext().ensureActive()
+            val due = AutoTaskBatchPolicy.isDue(task.cron, task.lastRunAt, now)
+            if (due == null) {
+                updateCronError(task, getString(R.string.auto_task_cron_invalid))
+            } else if (due) {
+                dueTasks += task
             }
         }
-        if (!ran) updateNotification(getString(R.string.auto_task_running_state))
-    }
 
-    private suspend fun runTask(rule: AutoTaskRule) {
-        if (!runInProgress.compareAndSet(false, true)) return
-        isRun = true
-        postServiceEvent()
-        updateNotification(getString(R.string.auto_task_running, rule.name))
-        val startedAt = System.currentTimeMillis()
-        val logLines = ArrayList<String>()
-        try {
-            val result = executionCoordinator.run(
-                rule = rule,
-                timeoutMs = 10 * 60_000L,
-                logger = { line ->
-                    if (logLines.size < 64) logLines += line
-                    AppLog.put("AutoTask[${rule.id}] ${rule.name}: $line")
-                }
-            )
-            val finishedAt = result.finishedAt.coerceAtLeast(startedAt)
-            val detail = result.detail ?: result.summaries.joinToString(" | ")
-            val error = result.error
-            val lastLog = if (result.status == AutoTaskRunStatus.SUCCESS ||
-                result.status == AutoTaskRunStatus.NO_ACTION
-            ) {
-                AutoTask.buildLastLog(logLines, detail, result.durationMs, finishedAt)
-            } else {
-                AutoTask.buildErrorLog(
-                    error ?: result.status.name,
-                    null,
-                    finishedAt
-                )
-            }
-            AutoTask.updateRuntime(rule.id) {
-                it.copy(
-                    lastRunAt = finishedAt,
-                    lastResult = detail.take(4_000),
-                    lastError = error,
-                    lastLog = lastLog
-                )
-            }
-            if (error.isNullOrBlank()) {
-                updateNotification(getString(R.string.auto_task_last_run, timeFormat.format(Date(finishedAt))))
-            } else {
-                updateNotification(getString(R.string.auto_task_failed, error))
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Throwable) {
-            val finishedAt = System.currentTimeMillis()
-            val message = error.localizedMessage ?: error.toString()
-            AutoTask.updateRuntime(rule.id) {
-                it.copy(
-                    lastRunAt = finishedAt,
-                    lastError = message,
-                    lastLog = AutoTask.buildErrorLog(message, error, finishedAt)
-                )
-            }
-            updateNotification(getString(R.string.auto_task_failed, message))
-            AppLog.put("AutoTask[${rule.id}] ${rule.name} failed: $message", error)
-        } finally {
-            isRun = false
-            runInProgress.set(false)
-            postServiceEvent()
+        if (dueTasks.isEmpty()) {
+            setNotificationContent(getString(R.string.auto_task_running_state))
+            return
+        }
+
+        // Reuse the user's update/search thread limit for scheduled tasks as well.
+        val maxConcurrency = AppConfig.threadCount.coerceAtLeast(1)
+        AutoTaskBatchRunner.run(dueTasks, maxConcurrency) { task ->
+            currentCoroutineContext().ensureActive()
+            runTask(task)
         }
     }
 
-    private fun markCronError(rule: AutoTaskRule) {
-        val message = getString(R.string.auto_task_cron_invalid)
-        if (rule.lastError == message) return
-        val now = System.currentTimeMillis()
-        AutoTask.updateRuntime(rule.id) {
-            it.copy(lastError = message, lastLog = AutoTask.buildErrorLog(message, null, now))
-        }
-    }
-
-    private fun nextDelayMs(): Long {
-        val now = System.currentTimeMillis()
-        val next = AutoTask.all()
-            .asSequence()
-            .filter { it.enable }
-            .mapNotNull { rule ->
-                CronSchedule.parse(rule.cron?.trim().orEmpty())?.nextTimeAfter(now)
-            }
-            .minOrNull()
-        return (next?.minus(now) ?: IDLE_RECHECK_MS).coerceAtLeast(MIN_DELAY_MS)
-    }
-
-    private fun scheduleNextFutureAlarm(now: Long) {
-        if (!useAlarmMode() || !getPrefBoolean(PreferKey.autoTaskService)) return
-        val next = AutoTask.all()
-            .asSequence()
-            .filter { it.enable }
-            .mapNotNull { rule ->
-                CronSchedule.parse(rule.cron?.trim().orEmpty())?.nextTimeAfter(now)
-            }
-            .minOrNull()
-        if (next == null) {
+    private fun scheduleNextRunFromRules() {
+        if (!useAlarmFgsMode()) return
+        val nextRunAt = computeNextAlarmAt(AutoTask.getRules(), System.currentTimeMillis())
+        if (nextRunAt == null) {
             cancelNextAlarm()
             return
         }
-        val triggerAt = next.coerceAtLeast(System.currentTimeMillis() + MIN_DELAY_MS)
-        val manager = getSystemService(AlarmManager::class.java) ?: return
+        scheduleNextAlarm(nextRunAt)
+    }
+
+    /**
+     * 计算下一次闹钟触发时间：取所有启用任务在 [fromTime] 之后最近的一次 cron 触发点。
+     *
+     * 对本批已处理完到期任务，以当前时刻为基准，排到下一个未来触发点。
+     */
+    private fun computeNextAlarmAt(rules: List<AutoTaskRule>, fromTime: Long): Long? {
+        val enabled = rules.filter { it.enable }
+        if (enabled.isEmpty()) return null
+        var nextRunAt: Long? = null
+        enabled.forEach { task ->
+            val cron = task.cron?.trim().orEmpty()
+            if (cron.isBlank()) return@forEach
+            val schedule = CronSchedule.parse(cron) ?: return@forEach
+            val next = schedule.nextTimeAfter(fromTime) ?: return@forEach
+            val current = nextRunAt
+            nextRunAt = if (current == null) next else minOf(current, next)
+        }
+        return nextRunAt
+    }
+
+    private fun computeNextRunAt(rules: List<AutoTaskRule>): Long? {
+        val enabled = rules.filter { it.enable }
+        if (enabled.isEmpty()) return null
+        val now = System.currentTimeMillis()
+        var nextRunAt: Long? = null
+        enabled.forEach { task ->
+            val cron = task.cron?.trim().orEmpty()
+            if (cron.isBlank()) return@forEach
+            val schedule = CronSchedule.parse(cron) ?: return@forEach
+            val baseTime = AutoTaskBatchPolicy.resolveBaseTime(task.lastRunAt, now)
+            val next = schedule.nextTimeAfter(baseTime) ?: return@forEach
+            val current = nextRunAt
+            nextRunAt = if (current == null) next else minOf(current, next)
+        }
+        return nextRunAt
+    }
+
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    private fun scheduleNextAlarm(triggerAt: Long) {
+        if (!useAlarmFgsMode()) return
+        val alarmManager = getSystemService(AlarmManager::class.java) ?: return
+        val triggerAtMs = triggerAt.coerceAtLeast(System.currentTimeMillis() + 1000L)
         val pendingIntent = buildAlarmPendingIntent()
-        runCatching {
-            when {
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    manager.canScheduleExactAlarms() -> manager.setExactAndAllowWhileIdle(
+        kotlin.runCatching {
+            if (alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
-                    triggerAt,
+                    triggerAtMs,
                     pendingIntent
                 )
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> manager.setAndAllowWhileIdle(
+            } else {
+                alarmManager.setAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
-                    triggerAt,
+                    triggerAtMs,
                     pendingIntent
                 )
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT -> manager.setExact(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAt,
-                    pendingIntent
-                )
-                else -> manager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             }
-            AppLog.put("AutoTask next run at ${timeFormat.format(Date(triggerAt))}")
+            AppLog.put("AutoTask next run at ${formatTime(triggerAtMs)}")
         }.onFailure { error ->
-            AppLog.put("AutoTask schedule alarm failed\n${error.localizedMessage}", error)
+            AppLog.put("AutoTask schedule alarm failed", error)
         }
     }
 
     private fun cancelNextAlarm() {
-        getSystemService(AlarmManager::class.java)?.cancel(buildAlarmPendingIntent())
+        val alarmManager = getSystemService(AlarmManager::class.java) ?: return
+        alarmManager.cancel(buildAlarmPendingIntent())
+    }
+
+    /** Android 15 起用闹钟驱动 shortService 单次唤醒，而不是常驻循环。 */
+    private fun useAlarmFgsMode(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
+    }
+
+    private fun hasEnabledRule(rules: List<AutoTaskRule>): Boolean {
+        return rules.any { it.enable }
+    }
+
+    private fun hasEnabledRule(): Boolean {
+        return hasEnabledRule(AutoTask.getRules())
     }
 
     private fun buildAlarmPendingIntent(): PendingIntent {
-        return buildAlarmPendingIntent(this)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return PendingIntent.getService(
+            this,
+            ALARM_REQUEST_CODE,
+            Intent(this, AutoTaskService::class.java).apply {
+                action = IntentAction.refreshSchedule
+            },
+            flags
+        )
     }
 
-    private fun disableAndStop() {
-        putPrefBoolean(PreferKey.autoTaskService, false)
-        cancelNextAlarm()
-        oneShotJob?.cancel()
-        loopJob?.cancel()
-        oneShotJob = null
-        loopJob = null
-        stopSelf()
+    private suspend fun runTask(task: AutoTaskRule) {
+        markTaskStarted(task)
+        var completionStatus: String? = null
+        val startAt = System.currentTimeMillis()
+        try {
+            val script = normalizeScript(task.script)
+            if (script.isBlank()) {
+                currentCoroutineContext().ensureActive()
+                val now = System.currentTimeMillis()
+                val message = getString(R.string.auto_task_script_empty)
+                AutoTask.update(task.id) {
+                    it.copy(lastRunAt = now, lastError = message)
+                }
+                completionStatus = message
+                return
+            }
+
+            val source = AutoTask.buildSource(task)
+            val result = withContext(TaskCookieContext(task.id, task.enabledCookieJar)) {
+                source.evalJSInIsolatedScope(script, currentCoroutineContext())
+            }
+            val logLines = mutableListOf<String>()
+            AutoTaskProtocol.handle(result, this@AutoTaskService, task.name) { msg ->
+                AppLog.put("AutoTask[${task.id}] ${task.name}: $msg")
+                logLines.add(msg)
+            }
+            currentCoroutineContext().ensureActive()
+            val cost = System.currentTimeMillis() - startAt
+            val detail = result?.toString()?.take(200)
+            val msg = if (detail.isNullOrBlank()) {
+                "AutoTask[${task.id}] ${task.name} done (${cost}ms)."
+            } else {
+                "AutoTask[${task.id}] ${task.name} done (${cost}ms): $detail"
+            }
+            val lastRun = System.currentTimeMillis()
+            val lastLog = buildLastLog(logLines, detail, cost, lastRun)
+            currentCoroutineContext().ensureActive()
+            AutoTask.update(task.id) {
+                it.copy(
+                    lastRunAt = lastRun,
+                    lastResult = detail,
+                    lastError = null,
+                    lastLog = lastLog
+                )
+            }
+            completionStatus = getString(
+                R.string.auto_task_last_run,
+                formatTime(lastRun)
+            )
+            AppLog.put(msg)
+        } catch (error: Throwable) {
+            if (AutoTaskBatchPolicy.isCancellation(error)) {
+                AppLog.put("AutoTask[${task.id}] ${task.name} interrupted; completion not recorded")
+                // Re-throw service-scope cancellation, but treat a script-local cancellation as
+                // an interrupted task so this worker can continue with other due tasks.
+                currentCoroutineContext().ensureActive()
+                return
+            }
+            currentCoroutineContext().ensureActive()
+            val msg = error.localizedMessage ?: error.toString()
+            val lastRun = System.currentTimeMillis()
+            val lastLog = buildErrorLog(msg, error, lastRun)
+            AutoTask.update(task.id) {
+                it.copy(
+                    lastRunAt = lastRun,
+                    lastError = msg,
+                    lastLog = lastLog
+                )
+            }
+            completionStatus = getString(R.string.auto_task_failed, msg)
+            AppLog.put("AutoTask[${task.id}] ${task.name} failed: $msg", error)
+        } finally {
+            markTaskFinished(task.id, completionStatus)
+        }
     }
 
-    private fun useAlarmMode(): Boolean =
-        isAlarmMode()
-
-    private fun updateNotification(text: String) {
-        notificationText = text
-        notificationBuilder.setContentText(text)
-        notificationManager.notify(NotificationId.AutoTaskService, notificationBuilder.build())
+    private fun normalizeScript(script: String): String {
+        return AutoTask.normalizeScript(script)
     }
 
-    private fun postServiceEvent() {
-        // EventBus is deliberately best-effort; the Room Flow remains the
-        // source of truth for the management screen.
-        io.legado.app.utils.postEvent(EventBus.AUTO_TASK_SERVICE, isRun.toString())
+    private fun formatTime(time: Long): String = synchronized(timeFormat) {
+        timeFormat.format(Date(time))
+    }
+
+    private fun markTaskStarted(task: AutoTaskRule) {
+        synchronized(notificationStateLock) {
+            activeTaskNames[task.id] = task.name
+            notificationContent = runningTaskNotificationLocked()
+            upNotificationLocked()
+        }
+    }
+
+    private fun markTaskFinished(taskId: String, completionStatus: String?) {
+        synchronized(notificationStateLock) {
+            activeTaskNames.remove(taskId)
+            if (activeTaskNames.isNotEmpty()) {
+                notificationContent = runningTaskNotificationLocked()
+                upNotificationLocked()
+            } else if (completionStatus != null) {
+                notificationContent = completionStatus
+                upNotificationLocked()
+            }
+        }
+    }
+
+    private fun runningTaskNotificationLocked(): String {
+        return getString(
+            R.string.auto_task_running,
+            activeTaskNames.values.joinToString(", ")
+        )
+    }
+
+    private fun setNotificationContent(content: String) {
+        synchronized(notificationStateLock) {
+            notificationContent = content
+            upNotificationLocked()
+        }
+    }
+
+    private fun upNotificationLocked() {
+        runCatching {
+            notificationBuilder.setContentText(notificationContent)
+            notificationManager.notify(NotificationId.AutoTaskService, notificationBuilder.build())
+        }.onFailure { error ->
+            AppLog.put("AutoTask notification update failed", error)
+        }
+    }
+
+    private fun updateCronError(task: AutoTaskRule, message: String) {
+        if (task.lastError == message) return
+        AutoTask.update(task.id) {
+            val now = System.currentTimeMillis()
+            it.copy(lastError = message, lastLog = buildErrorLog(message, null, now))
+        }
+    }
+
+    private fun buildLastLog(
+        lines: List<String>,
+        detail: String?,
+        cost: Long,
+        runAt: Long
+    ): String = AutoTask.buildLastLog(lines, detail, cost, runAt)
+
+    private fun buildErrorLog(msg: String, error: Throwable?, runAt: Long): String =
+        AutoTask.buildErrorLog(msg, error, runAt)
+
+    override fun startForegroundNotification() {
+        synchronized(notificationStateLock) {
+            notificationBuilder.setContentText(notificationContent)
+            val notification = notificationBuilder.build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NotificationId.AutoTaskService,
+                    notification,
+                    if (useAlarmFgsMode()) {
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
+                    } else {
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    }
+                )
+            } else {
+                startForeground(NotificationId.AutoTaskService, notification)
+            }
+        }
     }
 }

@@ -148,6 +148,22 @@ object ReadAloud {
         }
     }
 
+    fun prevChapter(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.prev
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
+    fun nextChapter(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.next
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
     fun upTtsSpeechRate(context: Context) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, aloudClass)
@@ -161,6 +177,15 @@ object ReadAloud {
             val intent = Intent(context, aloudClass)
             intent.action = IntentAction.setTimer
             intent.putExtra("minute", minute)
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
+    fun setTimerByChapter(context: Context, chapter: Int) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.setTimerByChapter
+            intent.putExtra("chapter", chapter)
             context.startForegroundServiceCompat(intent)
         }
     }

@@ -1456,6 +1456,76 @@
         <string name="batch_auto_task_update">Batch schedule update</string>
         <string name="batch_auto_task_update_dialog_title">Batch schedule update (%1$d books)</string>
         <string name="auto_task_help_title">Scheduled task help</string>
+        <string name="auto_task_help_content"><![CDATA[
+# Cron format
+
+Cron uses 5 fields: **minute hour day month week**
+
+- `*` any value
+- `,` list
+- `-` range
+- `/` step
+
+Examples:
+- `*/5 * * * *` every 5 minutes
+- `0 9 * * *` every day at 09:00
+- `0 9 * * 1` every Monday at 09:00
+
+# Return protocol
+
+Script should return JSON (object or string):
+
+Supported actions (unique fields only):
+
+- `type: refreshToc`
+  - `bookUrl` (required)
+  - `notify` (object): `enable` `minCount` `title` `content`
+  - `cache` (object): `enable`
+- `type: notify`
+  - `title` `content`
+  - `level` (`high/error/fail/failed/low`)
+  - `id` (optional)
+
+```json
+{
+  "actions": [
+    {
+      "type": "refreshToc",
+      "bookUrl": "bookUrl from bookshelf",
+      "notify": {
+        "enable": true,
+        "minCount": 5,
+        "title": "Update: {book}",
+        "content": "New {newCount} chapters, latest: {chapter}"
+      },
+      "cache": {
+        "enable": true
+      }
+    },
+    {
+      "type": "notify",
+      "title": "Sign-in success",
+      "content": "Account A signed in at {time}",
+      "level": "high",
+      "id": 1
+    }
+  ]
+}
+```
+
+Placeholders:
+- `{book}` `{author}` `{newCount}` `{chapter}` `{time}` (refreshToc notify)
+- `{task}` `{time}` (notify)
+]]></string>
+        <string name="auto_task_group_basic">Basic</string>
+        <string name="auto_task_group_comment">Comment</string>
+        <string name="auto_task_group_script">Script</string>
+        <string name="auto_task_group_request">Request</string>
+        <string name="auto_task_group_login">Login</string>
+        <string name="code_edit">Code edit</string>
+        <string name="code_editor_busy">Code editor is in use, please try again later</string>
+        <string name="code_no_changes">No changes to save</string>
+        <string name="combining_text_placeholder">Content contains complex characters.</string>
         <string name="import_auto_task">Import scheduled tasks</string>
         <string name="auto_task_import_new">New</string>
         <string name="auto_task_import_update">Update</string>

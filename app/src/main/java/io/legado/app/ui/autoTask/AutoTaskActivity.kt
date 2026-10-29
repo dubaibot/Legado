@@ -1,328 +1,296 @@
 package io.legado.app.ui.autoTask
 
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import androidx.activity.viewModels
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.lifecycle.Lifecycle
+import androidx.appcompat.widget.PopupMenu
+import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivityAutoTaskBinding
+import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.ShibbolethShare
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.shibbolethButton
+import io.legado.app.lib.theme.toolbarTextColor
 import io.legado.app.model.AutoTask
 import io.legado.app.model.AutoTaskRule
-import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.ui.widget.compose.AppManagementAction
-import io.legado.app.ui.widget.compose.AppManagementMenuAction
-import io.legado.app.ui.widget.compose.AppManagementScaffold
-import io.legado.app.ui.widget.compose.showComposeConfirmDialog
-import io.legado.app.ui.widget.compose.showComposeTextInputDialog
-import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.login.SourceLoginActivity
-import io.legado.app.utils.startActivity
-import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.showHelp
+import io.legado.app.help.DirectLinkUpload
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.CronSchedule
+import io.legado.app.utils.Shibboleth
+import io.legado.app.utils.ShibbolethType
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.ACache
+import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.CronSchedule
+import io.legado.app.ui.widget.recycler.ItemTouchCallback
+import io.legado.app.ui.widget.recycler.setupManagePage
+import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.file.HandleFileContract
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-class AutoTaskActivity : VMBaseActivity<ActivityAutoTaskBinding, AutoTaskViewModel>() {
+class AutoTaskActivity : VMBaseActivity<ActivityAutoTaskBinding, AutoTaskViewModel>(),
+    AutoTaskAdapter.CallBack,
+    PopupMenu.OnMenuItemClickListener,
+    SelectActionBar.CallBack,
+    SearchView.OnQueryTextListener {
 
-    override val binding by viewBinding(ActivityAutoTaskBinding::inflate)
-    override val viewModel by viewModels<AutoTaskViewModel>()
-
-    private val rulesState = mutableStateListOf<AutoTaskRule>()
-    private val selectedIds = mutableStateOf<Set<String>>(emptySet())
-    private val searchQuery = mutableStateOf("")
-
-    private val importDoc = registerForActivityResult(HandleFileContract()) { result ->
-        result.uri?.let { uri -> showDialogFragment(ImportAutoTaskDialog(uri.toString())) }
+    override val viewModel: AutoTaskViewModel by viewModels()
+    override val binding: ActivityAutoTaskBinding by viewBinding(ActivityAutoTaskBinding::inflate)
+    private val adapter: AutoTaskAdapter by lazy { AutoTaskAdapter(this, this) }
+    private val searchView: SearchView by lazy {
+        binding.titleBar.findViewById(R.id.search_view)
     }
-
-    private val exportResult = registerForActivityResult(HandleFileContract()) { result ->
-        result.uri?.let { uri ->
-            showComposeConfirmDialog(
-                title = getString(R.string.export_success),
-                message = uri.toString(),
-                positiveText = getString(R.string.copy_text),
-                negativeText = getString(R.string.ok),
-                onPositive = { sendToClip(uri.toString()) },
-                onNegative = {}
-            )
+    private val itemTouchCallback by lazy { ItemTouchCallback(adapter) }
+    private val importRecordKey = "autoTaskRecordKey"
+    private var allRules: List<AutoTaskRule> = emptyList()
+    private val importDoc = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let { uri ->
+            showDialogFragment(ImportAutoTaskDialog(uri.toString()))
+        }
+    }
+    private val exportResult = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let { uri ->
+            val url = uri.toString()
+            alert(R.string.export_success) {
+                if (url.isAbsUrl()) {
+                    setMessage(DirectLinkUpload.getSummary())
+                }
+                if (Shibboleth.canEncode(url)) {
+                    shibbolethButton {
+                        ShibbolethShare.show(
+                            this@AutoTaskActivity,
+                            layoutInflater,
+                            url,
+                            ShibbolethType.AUTO_TASK,
+                        )
+                    }
+                }
+                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                    editView.hint = getString(R.string.path)
+                    editView.setText(url)
+                }
+                customView { alertBinding.root }
+                okButton {
+                    sendToClip(url)
+                }
+            }
         }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.composeRoot.setViewCompositionStrategy(
-            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-        )
-        binding.composeRoot.setContent {
-            AppManagementScaffold(
-                title = getString(R.string.auto_task_manage),
-                selectedCount = selectedIds.value.size,
-                totalCount = filteredRules().size,
-                searchQuery = searchQuery.value,
-                searchHint = getString(R.string.search),
-                onSearchChange = ::updateSearchQuery,
-                topActions = listOf(
-                    AppManagementAction(
-                        text = getString(R.string.auto_task_add),
-                        iconRes = R.drawable.ic_add,
-                        onClick = { startActivity<AutoTaskEditActivity>() }
-                    ),
-                    AppManagementAction(
-                        text = getString(R.string.more_menu),
-                        iconRes = R.drawable.ic_more_vert,
-                        menuActions = ::pageMenuActions
-                    )
-                ),
-                bottomActions = listOf(
-                    AppManagementAction(
-                        text = getString(R.string.enable_selection),
-                        onClick = { viewModel.updateEnabled(selectedIds.value, true) }
-                    ),
-                    AppManagementAction(
-                        text = getString(R.string.disable_selection),
-                        onClick = { viewModel.updateEnabled(selectedIds.value, false) }
-                    ),
-                    AppManagementAction(
-                        text = getString(R.string.auto_task_batch_cron),
-                        onClick = ::showBatchCronDialog
-                    ),
-                    AppManagementAction(
-                        text = getString(R.string.delete),
-                        danger = true,
-                        onClick = ::deleteSelected
-                    ),
-                    AppManagementAction(
-                        text = getString(R.string.export_selection),
-                        onClick = ::exportSelected
-                    )
-                ),
-                onBack = { finish() },
-                onSelectAll = { selectAll() },
-                onInvertSelection = ::invertSelection
-            ) {
-                AutoTaskScreen(
-                    rules = filteredRules(),
-                    emptyText = getString(
-                        if (rulesState.isEmpty()) {
-                            R.string.auto_task_no_task
-                        } else {
-                            R.string.auto_task_no_search_result
-                        }
-                    ),
-                    selectedIds = selectedIds.value,
-                    isSelectMode = selectedIds.value.isNotEmpty(),
-                    reorderEnabled = searchQuery.value.isBlank() && selectedIds.value.isEmpty(),
-                    onReorder = viewModel::reorder,
-                    onToggleSelection = ::toggleSelection,
-                    onToggleEnabled = { rule, enabled ->
-                        viewModel.toggleEnabled(rule.id, enabled)
-                    },
-                    onEdit = { rule ->
-                        startActivity<AutoTaskEditActivity> { putExtra(EXTRA_TASK_ID, rule.id) }
-                    },
-                    onLogin = ::openLogin,
-                    onRunNow = { rule -> viewModel.runNow(rule.id) },
-                    onShowLog = { rule -> showTaskLog(rule) },
-                    onDelete = ::confirmDelete
-                )
-            }
-        }
-        observeRules()
-        supportFragmentManager.setFragmentResultListener(
-            ImportAutoTaskDialog.RESULT_KEY,
-            this
-        ) { _, _ -> viewModel.refresh() }
+        initView()
+        initSearchView()
+        initSelectActionBar()
+        observeData()
+        bindImportResult()
         viewModel.refresh()
     }
 
-    private fun observeRules() {
+    override fun onResume() {
+        super.onResume()
+        viewModel.refresh()
+    }
+
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.auto_task, menu)
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_add -> startActivity(AutoTaskEditActivity.startIntent(this))
+            R.id.menu_import_local -> importDoc.launch {
+                mode = HandleFileContract.FILE
+                allowExtensions = arrayOf("txt", "json")
+            }
+            R.id.menu_import_onLine -> showImportDialog()
+            R.id.menu_log -> showDialogFragment<AppLogDialog>()
+        }
+        return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun initView() = binding.run {
+        itemTouchCallback.isCanDrag = true
+        recyclerView.setupManagePage(adapter, itemTouchCallback, adapter.dragSelectCallback)
+    }
+
+    private fun initSearchView() {
+        searchView.applyTint(toolbarTextColor)
+        searchView.queryHint = getString(R.string.search)
+        searchView.setOnQueryTextListener(this)
+    }
+
+    private fun initSelectActionBar() {
+        binding.selectActionBar.setMainActionText(R.string.delete)
+        binding.selectActionBar.inflateMenu(R.menu.auto_task_sel)
+        binding.selectActionBar.setOnMenuItemClickListener(this)
+        binding.selectActionBar.setCallBack(this)
+        upCountView()
+    }
+
+    private fun observeData() {
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.rulesFlow.collect { rules ->
-                    rulesState.clear()
-                    rulesState.addAll(rules)
-                    val ids = rules.mapTo(HashSet(), AutoTaskRule::id)
-                    selectedIds.value = selectedIds.value.filterTo(linkedSetOf()) { it in ids }
+            viewModel.rulesFlow.collectLatest {
+                allRules = it
+                applyFilter()
+            }
+        }
+    }
+
+    private fun applyFilter() {
+        val query = searchView.query?.toString()?.trim().orEmpty()
+        val filtered = if (query.isEmpty()) {
+            allRules
+        } else {
+            allRules.filter { it.name.contains(query, ignoreCase = true) }
+        }
+        adapter.setItems(filtered, adapter.diffItemCallBack)
+        invalidateOptionsMenu()
+        upCountView()
+    }
+
+    private fun bindImportResult() {
+        supportFragmentManager.setFragmentResultListener(
+            ImportAutoTaskDialog.RESULT_KEY,
+            this
+        ) { _, _ ->
+            viewModel.refresh()
+        }
+    }
+
+    private fun showImportDialog() {
+        val aCache = ACache.get(cacheDir = false)
+        val cacheUrls: MutableList<String> = aCache
+            .getAsString(importRecordKey)
+            ?.splitNotBlank(",")
+            ?.toMutableList() ?: mutableListOf()
+        alert(titleResource = R.string.import_on_line) {
+            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "url"
+                editView.setFilterValues(cacheUrls)
+                editView.delCallBack = {
+                    cacheUrls.remove(it)
+                    aCache.put(importRecordKey, cacheUrls.joinToString(","))
                 }
             }
-        }
-    }
-
-    private fun filteredRules(): List<AutoTaskRule> {
-        val query = searchQuery.value.trim()
-        if (query.isBlank()) return rulesState.toList()
-        return rulesState.filter { rule ->
-            rule.name.contains(query, ignoreCase = true) ||
-                rule.cron.orEmpty().contains(query, ignoreCase = true) ||
-                rule.lastError.orEmpty().contains(query, ignoreCase = true) ||
-                rule.comment.orEmpty().contains(query, ignoreCase = true)
-        }
-    }
-
-    private fun updateSearchQuery(query: String) {
-        searchQuery.value = query
-        selectedIds.value = emptySet()
-    }
-
-    private fun toggleSelection(rule: AutoTaskRule) {
-        selectedIds.value = selectedIds.value.toMutableSet().apply {
-            if (!add(rule.id)) remove(rule.id)
-        }
-    }
-
-    private fun selectAll() {
-        selectedIds.value = filteredRules().mapTo(linkedSetOf(), AutoTaskRule::id)
-    }
-
-    private fun invertSelection() {
-        val current = selectedIds.value
-        selectedIds.value = filteredRules()
-            .mapNotNullTo(linkedSetOf()) { rule -> rule.id.takeUnless { it in current } }
-    }
-
-    private fun deleteSelected() {
-        val ids = selectedIds.value.toList()
-        if (ids.isEmpty()) return
-        showComposeConfirmDialog(
-            title = getString(R.string.delete),
-            message = getString(R.string.sure_del),
-            positiveText = getString(R.string.ok),
-            negativeText = getString(R.string.cancel),
-            dangerPositive = true,
-            onPositive = {
-                viewModel.delete(ids)
-                selectedIds.value = emptySet()
+            customView { alertBinding.root }
+            okButton {
+                val text = alertBinding.editView.text?.toString()
+                text?.let {
+                    if (it.isAbsUrl() && !cacheUrls.contains(it)) {
+                        cacheUrls.add(0, it)
+                        aCache.put(importRecordKey, cacheUrls.joinToString(","))
+                    }
+                    showDialogFragment(ImportAutoTaskDialog(it))
+                }
             }
-        )
+            cancelButton()
+        }
     }
 
-    private fun confirmDelete(rule: AutoTaskRule) {
-        showComposeConfirmDialog(
-            title = getString(R.string.auto_task_delete),
-            message = rule.name.ifBlank { rule.id },
-            positiveText = getString(R.string.delete),
-            negativeText = getString(R.string.cancel),
-            dangerPositive = true,
-            onPositive = { viewModel.delete(listOf(rule.id)) }
-        )
+    // SearchView.OnQueryTextListener
+    override fun onQueryTextSubmit(query: String?): Boolean {
+        return false
+    }
+
+    override fun onQueryTextChange(newText: String?): Boolean {
+        applyFilter()
+        return false
     }
 
     private fun showBatchCronDialog() {
-        showComposeTextInputDialog(
-            title = getString(R.string.auto_task_batch_cron),
-            hint = getString(R.string.auto_task_cron),
-            initialValue = "",
-            positiveText = getString(R.string.ok),
-            negativeText = getString(R.string.cancel),
-            validateInput = { CronSchedule.parse(it.trim()) != null },
-            onPositive = { cron ->
-                if (CronSchedule.parse(cron.trim()) == null) {
+        val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.auto_task_cron)
+        }
+        alert(titleResource = R.string.auto_task_batch_cron) {
+            customView { alertBinding.root }
+            okButton {
+                val cron = alertBinding.editView.text?.toString()?.trim().orEmpty()
+                if (cron.isNotBlank() && CronSchedule.parse(cron) != null) {
+                    viewModel.updateCron(adapter.selection.map { it.id }, cron)
+                } else {
                     toastOnUi(R.string.auto_task_cron_invalid)
-                } else {
-                    viewModel.updateCron(selectedIds.value, cron.trim())
-                    selectedIds.value = emptySet()
                 }
             }
-        )
-    }
-
-    private fun showTaskLog(rule: AutoTaskRule) {
-        val content = rule.lastLog
-            ?.takeIf { it.isNotBlank() }
-            ?: rule.lastError
-            ?: getString(R.string.auto_task_not_run)
-        showDialogFragment(TextDialog(rule.name.ifBlank { rule.id }, content))
-    }
-
-    private fun openLogin(rule: AutoTaskRule) {
-        if (rule.loginUrl.isNullOrBlank() && rule.loginUi.isNullOrBlank()) {
-            toastOnUi(R.string.source_no_login)
-            return
-        }
-        startActivity<SourceLoginActivity> {
-            val sourceKey = AutoTask.sourceKey(rule.id)
-            putExtra("type", AutoTask.SOURCE_TYPE)
-            putExtra("key", sourceKey)
-            putExtra("taskId", rule.id)
-            putExtra(AutoTask.EXTRA_TASK_ID, rule.id)
-            putExtra(AutoTask.EXTRA_SOURCE_KEY, sourceKey)
+            cancelButton()
         }
     }
 
-    private fun pageMenuActions(): List<AppManagementMenuAction> = listOf(
-        AppManagementMenuAction(getString(R.string.import_local)) {
-            importDoc.launch {
-                mode = HandleFileContract.FILE
-                title = getString(R.string.import_auto_task)
-                allowExtensions = arrayOf("json", "txt")
-            }
-        },
-        AppManagementMenuAction(getString(R.string.import_on_line)) {
-            showOnlineImportDialog()
-        },
-        AppManagementMenuAction(getString(R.string.export_all)) {
-            exportRules(rulesState.toList(), "autoTask.json")
-        },
-        AppManagementMenuAction(getString(R.string.log)) {
-            val content = rulesState.joinToString("\n\n") { rule ->
-                val log = rule.lastLog ?: rule.lastError ?: getString(R.string.auto_task_not_run)
-                "${rule.name.ifBlank { rule.id }}\n$log"
-            }.ifBlank { getString(R.string.auto_task_no_task) }
-            showDialogFragment(TextDialog(getString(R.string.log), content))
-        },
-        AppManagementMenuAction(getString(R.string.help)) {
-            showHelp("autoTaskHelp")
-        }
-    )
+    // AutoTaskAdapter.CallBack
+    override fun edit(task: AutoTaskRule) {
+        startActivity(AutoTaskEditActivity.startIntent(this, task.id))
+    }
 
-    private fun showOnlineImportDialog() {
-        showComposeTextInputDialog(
-            title = getString(R.string.import_on_line),
-            hint = "https://...",
-            positiveText = getString(R.string.ok),
-            negativeText = getString(R.string.cancel),
-            validateInput = { it.trim().isAbsUrl() },
-            onPositive = { value ->
-                val url = value.trim()
-                if (url.isAbsUrl()) {
-                    showDialogFragment(ImportAutoTaskDialog(url))
-                } else {
-                    toastOnUi(R.string.wrong_format)
+    override fun delete(task: AutoTaskRule) {
+        alert(R.string.draw) {
+            setMessage(getString(R.string.auto_task_delete) + "\n" + task.name)
+            noButton()
+            yesButton { viewModel.delete(task) }
+        }
+    }
+
+    override fun toggle(task: AutoTaskRule, enabled: Boolean) {
+        viewModel.save(task.copy(enable = enabled))
+    }
+
+    override fun showLog(task: AutoTaskRule) {
+        showDialogFragment(AutoTaskLogDialog(task.id, task.name))
+    }
+
+    override fun upOrder(items: List<AutoTaskRule>) {
+        viewModel.saveOrder(items)
+    }
+
+    override fun upCountView() {
+        binding.selectActionBar.upCountView(adapter.selection.size, adapter.itemCount)
+    }
+
+    // SelectActionBar.CallBack
+    override fun selectAll(selectAll: Boolean) {
+        if (selectAll) {
+            adapter.selectAll()
+        } else {
+            adapter.revertSelection()
+        }
+    }
+
+    override fun revertSelection() {
+        adapter.revertSelection()
+    }
+
+    override fun onClickSelectBarMainAction() {
+        if (adapter.selection.isEmpty()) return
+        alert(R.string.draw, R.string.sure_del) {
+            yesButton { viewModel.delete(adapter.selection.map { it.id }) }
+            noButton()
+        }
+    }
+
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        when (item?.itemId) {
+            R.id.menu_enable_selection -> viewModel.updateEnabled(adapter.selection.map { it.id }, true)
+            R.id.menu_disable_selection -> viewModel.updateEnabled(adapter.selection.map { it.id }, false)
+            R.id.menu_export_selection -> viewModel.exportSelection(adapter.selection.map { it.id }) { file ->
+                exportResult.launch {
+                    mode = HandleFileContract.EXPORT
+                    fileData = HandleFileContract.FileData(
+                        "autoTaskSelection.json",
+                        file,
+                        "application/json"
+                    )
                 }
             }
-        )
-    }
-
-    private fun exportSelected() {
-        val selected = rulesState.filter { it.id in selectedIds.value }
-        exportRules(selected, "autoTaskSelection.json")
-    }
-
-    private fun exportRules(rules: List<AutoTaskRule>, fileName: String) {
-        if (rules.isEmpty()) {
-            toastOnUi(R.string.auto_task_import_select_none)
-            return
+            R.id.menu_batch_cron -> showBatchCronDialog()
         }
-        exportResult.launch {
-            mode = HandleFileContract.EXPORT
-            fileData = HandleFileContract.FileData(
-                fileName,
-                io.legado.app.model.AutoTaskImport.exportJson(rules)
-                    .toByteArray(Charsets.UTF_8),
-                "application/json"
-            )
-        }
-    }
-
-    companion object {
-        private const val EXTRA_TASK_ID = "id"
+        return true
     }
 }

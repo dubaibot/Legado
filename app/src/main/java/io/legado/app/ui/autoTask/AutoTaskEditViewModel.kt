@@ -1,37 +1,62 @@
 package io.legado.app.ui.autoTask
 
 import android.app.Application
-import androidx.lifecycle.viewModelScope
+import android.content.Intent
 import io.legado.app.base.BaseViewModel
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.AutoTask
 import io.legado.app.model.AutoTaskRule
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.getClipText
+import io.legado.app.utils.isJsonArray
+import io.legado.app.utils.isJsonObject
+import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
-class AutoTaskEditViewModel(application: Application) : BaseViewModel(application) {
+class AutoTaskEditViewModel(app: Application) : BaseViewModel(app) {
 
-    private val _task = MutableStateFlow<AutoTaskRule?>(null)
-    val task = _task.asStateFlow()
+    var task: AutoTaskRule? = null
 
-    fun load(id: String?) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _task.value = AutoTask.get(id.orEmpty()) ?: AutoTaskRule()
+    fun initData(intent: Intent, finally: (AutoTaskRule) -> Unit) {
+        execute {
+            val id = intent.getStringExtra("id")
+            task = AutoTask.getRules().firstOrNull { it.id == id } ?: AutoTaskRule()
+        }.onFinally {
+            task?.let { finally(it) }
         }
     }
 
-    fun save(rule: AutoTaskRule, onSuccess: (AutoTaskRule) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching { AutoTask.upsert(rule) }
-                .onSuccess { saved ->
-                    withContext(Dispatchers.Main.immediate) { onSuccess(saved) }
+    fun save(rule: AutoTaskRule, success: () -> Unit) {
+        execute {
+            AutoTask.upsert(rule)
+        }.onSuccess {
+            success()
+        }.onError {
+            context.toastOnUi("save error, ${it.localizedMessage}")
+        }
+    }
+
+    fun pasteSource(onSuccess: (AutoTaskRule) -> Unit) {
+        execute {
+            val text = context.getClipText()
+            if (text.isNullOrBlank()) {
+                throw NoStackTraceException("剪贴板为空")
+            }
+            when {
+                text.isJsonObject() -> {
+                    GSON.fromJsonObject<AutoTaskRule>(text).getOrThrow()
                 }
-                .onFailure { error ->
-                    context.toastOnUi(error.localizedMessage.orEmpty())
+                text.isJsonArray() -> {
+                    throw NoStackTraceException("剪贴板包含多个任务，请使用导入功能")
                 }
+                else -> throw NoStackTraceException("剪贴板内容格式不正确")
+            }
+        }.onSuccess {
+            onSuccess(it)
+        }.onError {
+            context.toastOnUi(it.localizedMessage ?: "Error")
+            it.printOnDebug()
         }
     }
 }

@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Update
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.RssSource
+import io.legado.app.data.entities.RssSourceLite
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.Dispatchers.IO
@@ -33,11 +34,17 @@ interface RssSourceDao {
     @get:Query("SELECT * FROM rssSources where enabled = 1 order by customOrder")
     val allEnabled: List<RssSource>
 
+    @get:Query("SELECT sourceUrl, sourceName, sourceGroup, rulePubDate FROM rssSources ORDER BY customOrder")
+    val allLite: List<RssSourceLite>
+
     @get:Query("select count(sourceUrl) from rssSources")
     val size: Int
 
     @Query("SELECT * FROM rssSources order by customOrder")
     fun flowAll(): Flow<List<RssSource>>
+
+    @Query("SELECT sourceUrl, sourceName, sourceGroup, rulePubDate FROM rssSources ORDER BY customOrder")
+    fun flowAllLite(): Flow<List<RssSourceLite>>
 
     @Query(
         """SELECT * FROM rssSources

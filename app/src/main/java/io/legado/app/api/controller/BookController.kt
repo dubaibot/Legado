@@ -26,7 +26,10 @@ import io.legado.app.utils.cnCompare
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
@@ -120,6 +123,11 @@ object BookController {
      * 更新目录
      */
     fun refreshToc(parameters: Map<String, List<String>>): ReturnData {
+        return runBlocking { refreshTocAwait(parameters) }
+    }
+
+    /** 可取消的挂起入口，供生命周期任务直接传递其协程上下文。 */
+    suspend fun refreshTocAwait(parameters: Map<String, List<String>>): ReturnData {
         val returnData = ReturnData()
         try {
             val bookUrl = parameters["url"]?.firstOrNull()
@@ -128,26 +136,23 @@ object BookController {
             }
             val book = appDb.bookDao.getBook(bookUrl)
                 ?: return returnData.setErrorMsg("未在数据库找到对应书籍，请先添加")
-            if (book.isLocal) {
-                val toc = LocalBook.getChapterList(book)
-                appDb.bookChapterDao.delByBook(book.bookUrl)
-                appDb.bookChapterDao.insert(*toc.toTypedArray())
-                appDb.bookDao.update(book)
-                return returnData.setData(toc)
+            val toc = if (book.isLocal) {
+                LocalBook.getChapterList(book)
             } else {
                 val bookSource = appDb.bookSourceDao.getBookSource(book.origin)
                     ?: return returnData.setErrorMsg("未找到对应书源,请换源")
-                val toc = runBlocking {
-                    if (book.tocUrl.isBlank()) {
-                        WebBook.getBookInfoAwait(bookSource, book)
-                    }
-                    WebBook.getChapterListAwait(bookSource, book).getOrThrow()
+                if (book.tocUrl.isBlank()) {
+                    WebBook.getBookInfoAwait(bookSource, book)
                 }
-                appDb.bookChapterDao.delByBook(book.bookUrl)
-                appDb.bookChapterDao.insert(*toc.toTypedArray())
-                appDb.bookDao.update(book)
-                return returnData.setData(toc)
+                WebBook.getChapterListAwait(bookSource, book).getOrThrow()
             }
+            currentCoroutineContext().ensureActive()
+            appDb.bookChapterDao.delByBook(book.bookUrl)
+            appDb.bookChapterDao.insert(*toc.toTypedArray())
+            appDb.bookDao.update(book)
+            return returnData.setData(toc)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             return returnData.setErrorMsg(e.localizedMessage ?: "refresh toc error")
         }

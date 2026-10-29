@@ -21,6 +21,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.dialog.TextDialog
 
 inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
@@ -75,11 +76,23 @@ val WindowManager.windowSize: DisplayMetrics
 
 @Suppress("DEPRECATION")
 fun Activity.fullScreen() {
+    val immNav = AppConfig.immNavigationBar
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        window.setDecorFitsSystemWindows(true)
+        // 沉浸式导航栏：使用 edge-to-edge 模式，让 decorView 背景延伸到导航栏下方，
+        // 否则 setDecorFitsSystemWindows(true) 会让系统在导航栏区域绘制不透明背景色，
+        // 导致纯色主题下透明导航栏实际显示的是系统背景色而非应用背景色。
+        window.setDecorFitsSystemWindows(!immNav)
     }
-    window.decorView.systemUiVisibility =
-        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+    var flag = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+    if (immNav) {
+        flag = flag or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+    }
+    window.decorView.systemUiVisibility = flag
+    if (immNav && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // 禁用系统对比度强制，防止系统在透明导航栏上叠加半透明遮罩
+        window.isNavigationBarContrastEnforced = false
+        window.isStatusBarContrastEnforced = false
+    }
     window.clearFlags(
         WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
                 or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION
@@ -142,6 +155,9 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
 
 /**
  * 设置导航栏颜色
+ *
+ * @param color 用于判断导航栏图标明暗的主题色（非实际绘制色）
+ * @param transparent 为 true 时将导航栏设为完全透明，[color] 仅用于控制图标明暗
  */
 @Suppress("DEPRECATION")
 fun Activity.setNavigationBarColorAuto(@ColorInt color: Int, transparent: Boolean = false) {
@@ -246,9 +262,9 @@ val Activity.navigationBarGravity: Int
     }
 
 /**
- * 显示目录help下的帮助文档
+ * 显示目录help下的帮助文档，像书源教程、订阅教程、正则教程
  */
 fun AppCompatActivity.showHelp(fileName: String) {
     val mdText = String(assets.open("web/help/md/${fileName}.md").readBytes())
-    showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
+    showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD, fileName))
 }

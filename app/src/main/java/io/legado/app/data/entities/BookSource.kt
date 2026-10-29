@@ -4,6 +4,7 @@ import android.os.Parcelable
 import android.text.TextUtils
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
@@ -62,6 +63,9 @@ data class BookSource(
     // 启用okhttp CookieJAr 自动保存每次请求的cookie
     @ColumnInfo(defaultValue = "0")
     override var enabledCookieJar: Boolean? = true,
+    // Cookie 隔离作用域 key
+    @Ignore
+    override var cookieScopeKey: String? = null,
     // 并发率
     override var concurrentRate: String? = null,
     // 请求头
@@ -116,6 +120,9 @@ data class BookSource(
     var customButton: Boolean = false, //由书源控制的自定义按钮
     @ColumnInfo(defaultValue = "0")
     var nextPageLazyLoad: Boolean = false, //下一页懒加载
+    // 首页模块定义JSON
+    @ColumnInfo(defaultValue = "''")
+    var homepageModules: String? = null
 ) : Parcelable, BaseSource {
 
     override fun getTag(): String {

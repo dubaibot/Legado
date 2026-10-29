@@ -688,15 +688,6 @@
             android:name=".service.DlnaCastService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
-        <receiver
-            android:name=".service.AutoTaskBootReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
-
         <!-- 定时任务页面 -->
         <activity
             android:name=".ui.autoTask.AutoTaskActivity"

@@ -79,6 +79,54 @@ object SharedJsScope {
         return scope
     }
 
+    /**
+     * Create an uncached library scope for isolated executions such as parallel scheduled tasks.
+     * The regular [getScope] cache deliberately shares globals; workers must not mutate one another's
+     * JavaScript library state.
+     */
+    fun createIsolatedScope(jsLib: String?, coroutineContext: CoroutineContext?): Scriptable? {
+        val scope = RhinoScriptEngine.run {
+            getRuntimeScope(ScriptBindings())
+        }
+        if (!jsLib.isNullOrBlank()) {
+            if (jsLib.isJsonObject()) {
+                val jsMap: Map<String, String> = GSON.fromJson(
+                    jsLib,
+                    TypeToken.getParameterized(
+                        Map::class.java,
+                        String::class.java,
+                        String::class.java
+                    ).type
+                )
+                jsMap.values.forEach { value ->
+                    if (value.isAbsUrl()) {
+                        val fileName = MD5Utils.md5Encode(value)
+                        var js = aCache.getAsString(fileName)
+                        if (js == null) {
+                            js = runBlocking {
+                                okHttpClient.newCallStrResponse {
+                                    url(value)
+                                }.body
+                            }
+                            if (js != null) {
+                                aCache.put(fileName, js)
+                            } else {
+                                throw NoStackTraceException("下载jsLib-${value}失败")
+                            }
+                        }
+                        RhinoScriptEngine.eval(js, scope, coroutineContext)
+                    }
+                }
+            } else {
+                RhinoScriptEngine.eval(jsLib, scope, coroutineContext)
+            }
+        }
+        if (scope is ScriptableObject) {
+            scope.preventExtensions()
+        }
+        return scope
+    }
+
     fun remove(jsLib: String?) {
         if (jsLib.isNullOrBlank()) {
             return

@@ -14,9 +14,12 @@ import io.legado.app.help.ConcurrentRateLimiter.Companion.updateConcurrentRate
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.crypto.SymmetricCryptoAndroid
+import io.legado.app.help.http.CookieBridge
 import io.legado.app.help.http.CookieStore
+import io.legado.app.help.http.TaskCookieStore
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.getShareScope
+import io.legado.app.model.SharedJsScope
 import io.legado.app.model.SharedJsScope.remove
 import io.legado.app.model.login.LoginUiV2
 import io.legado.app.utils.GSON
@@ -63,6 +66,11 @@ interface BaseSource : JsExtensions {
      * 启用cookieJar
      */
     var enabledCookieJar: Boolean?
+
+    /**
+     * Cookie 隔离作用域 key
+     */
+    val cookieScopeKey: String? get() = null
 
     /**
      * js库
@@ -448,6 +456,43 @@ interface BaseSource : JsExtensions {
         } else {
             bindings.apply {
                 prototype = sharedScope
+            }
+        }
+        return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)
+    }
+
+    /**
+     * Evaluate with a fresh JS library scope. Scheduled tasks use this entry point so parallel
+     * workers never mutate the cached scope shared by ordinary book-source requests.
+     */
+    @Throws(Exception::class)
+    fun evalJSInIsolatedScope(
+        jsStr: String,
+        coroutineContext: CoroutineContext = EmptyCoroutineContext,
+        bindingsConfig: ScriptBindings.() -> Unit = {}
+    ): Any? {
+        val bindings = buildScriptBindings { bindings ->
+            bindings["java"] = this
+            bindings["source"] = this
+            bindings["baseUrl"] = getKey()
+            val taskScope = cookieScopeKey
+                ?.takeIf { enabledCookieJar == true }
+                ?.let(CookieBridge::taskCookieScopeValue)
+            bindings["cookie"] = taskScope?.let {
+                TaskCookieStore(it, getKey())
+            } ?: CookieStore
+            bindings["cache"] = CacheManager
+            taskScope?.let {
+                bindings["taskCookieScope"] = it
+            }
+            bindings.apply(bindingsConfig)
+        }
+        val isolatedScope = SharedJsScope.createIsolatedScope(jsLib, coroutineContext)
+        val scope = if (isolatedScope == null) {
+            RhinoScriptEngine.getRuntimeScope(bindings)
+        } else {
+            bindings.apply {
+                prototype = isolatedScope
             }
         }
         return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)

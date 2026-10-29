@@ -40,6 +40,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
+import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.receiver.MediaButtonReceiver
@@ -100,6 +101,45 @@ abstract class BaseReadAloudService : BaseService(),
         var pendingChapterSwitchIndex: Int? = null
             private set
 
+        @JvmStatic
+        var chapterCount: Int = 0
+            private set
+
+        @Volatile
+        @JvmStatic
+        var lastTtsChapterIndex: Int = -1
+            private set
+
+        @Volatile
+        @JvmStatic
+        var activeChapterIndex: Int = -1
+            private set
+
+        @Volatile
+        @JvmStatic
+        var activeChapterSize: Int = 0
+            private set
+
+        @Volatile
+        @JvmStatic
+        var activeBookName: String? = null
+            private set
+
+        @Volatile
+        @JvmStatic
+        var activeBookAuthor: String? = null
+            private set
+
+        @Volatile
+        @JvmStatic
+        var activeChapterTitle: String? = null
+            private set
+
+        @Volatile
+        @JvmStatic
+        var activePreviewText: String? = null
+            private set
+
         fun isPlay(): Boolean {
             return isRun && !pause
         }
@@ -116,6 +156,23 @@ abstract class BaseReadAloudService : BaseService(),
 
         fun hasPendingChapterSwitch(): Boolean {
             return pendingChapterSwitchIndex != null
+        }
+
+        fun shouldIgnoreProgressSync(currentChapterIndex: Int, ttsChapterIndex: Int): Boolean {
+            val pendingIndex = pendingChapterSwitchIndex ?: return false
+            return when {
+                ttsChapterIndex == pendingIndex -> {
+                    pendingChapterSwitchIndex = null
+                    false
+                }
+
+                currentChapterIndex == pendingIndex -> true
+
+                else -> {
+                    pendingChapterSwitchIndex = null
+                    false
+                }
+            }
         }
 
         private const val TAG = "BaseReadAloudService"
@@ -223,6 +280,15 @@ abstract class BaseReadAloudService : BaseService(),
         }
         isRun = false
         pause = true
+        chapterCount = 0
+        lastTtsChapterIndex = -1
+        activeChapterIndex = -1
+        activeChapterSize = 0
+        activeBookName = null
+        activeBookAuthor = null
+        activeChapterTitle = null
+        activePreviewText = null
+        pendingChapterSwitchIndex = null
         abandonFocus()
         unregisterReceiver(broadcastReceiver)
         postEvent(EventBus.ALOUD_STATE, Status.STOP)
@@ -253,13 +319,35 @@ abstract class BaseReadAloudService : BaseService(),
             IntentAction.next -> nextChapter()
             IntentAction.addTimer -> addTimer()
             IntentAction.setTimer -> setTimer(intent.getIntExtra("minute", 0))
+            IntentAction.setTimerByChapter -> setTimerByChapter(intent.getIntExtra("chapter", 0))
             IntentAction.stop -> stopSelf()
         }
         return super.onStartCommand(intent, flags, startId)
     }
 
+    private fun captureSessionFromForeground() {
+        val book = ReadBook.book ?: return
+        activeBookUrl = book.bookUrl
+        activeBookName = book.name
+        activeBookAuthor = book.author
+        activeBookCover = BookCover.getDisplayCover(book)
+        activeChapterTitle = ReadBook.curTextChapter?.title ?: book.durChapterTitle
+        activeChapterIndex = book.durChapterIndex
+        activeChapterSize = ReadBook.simulatedChapterSize
+        activePreviewText = null
+    }
+
+    private fun updateActivePreviewText() {
+        activePreviewText = contentList.getOrNull(nowSpeak)
+            ?.replace("\n", "")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: activeChapterTitle
+    }
+
     private fun newReadAloud(play: Boolean, pageIndex: Int, startPos: Int) {
         execute(executeContext = IO) {
+            captureSessionFromForeground()
             this@BaseReadAloudService.pageIndex = pageIndex
             textChapter = ReadBook.curTextChapter
             val textChapter = textChapter ?: return@execute
@@ -295,6 +383,7 @@ abstract class BaseReadAloudService : BaseService(),
                 }
             }
             paragraphStartPos = pos
+            updateActivePreviewText()
             launch(Main) {
                 if (play) play() else pageChanged = true
             }
@@ -355,6 +444,9 @@ abstract class BaseReadAloudService : BaseService(),
     abstract fun upSpeechRate(reset: Boolean = false)
 
     fun upTtsProgress(progress: Int) {
+        val chapterIndex = textChapter?.chapter?.index ?: activeChapterIndex
+        activeChapterIndex = chapterIndex
+        lastTtsChapterIndex = chapterIndex
         postEvent(EventBus.TTS_PROGRESS, progress)
     }
 
@@ -411,6 +503,13 @@ abstract class BaseReadAloudService : BaseService(),
 
     private fun setTimer(minute: Int) {
         timeMinute = minute
+        chapterCount = 0
+        doDs()
+    }
+
+    private fun setTimerByChapter(chapter: Int) {
+        chapterCount = chapter
+        timeMinute = 0
         doDs()
     }
 
@@ -727,9 +826,30 @@ abstract class BaseReadAloudService : BaseService(),
         ReadBook.upReadTime()
         AppLog.putDebug("${ReadBook.curTextChapter?.chapter?.title} 朗读结束跳转下一章并朗读")
         resumeReadAloudInternal()
+        if (chapterCount > 0) {
+            chapterCount--
+            postEvent(EventBus.READ_ALOUD_DS, timeMinute)
+            upReadAloudNotification()
+            if (chapterCount == 0) {
+                stopReadAloud()
+                return
+            }
+        }
         if (!ReadBook.moveToNextChapter(true)) {
             stopSelf()
         }
+    }
+
+    private fun stopReadAloud() {
+        pause = true
+        needResumeOnAudioFocusGain = false
+        needResumeOnCallStateIdle = false
+        activeChapterIndex = -1
+        activeChapterSize = 0
+        pendingChapterSwitchIndex = null
+        playStop()
+        postEvent(EventBus.ALOUD_STATE, Status.STOP)
+        stopSelf()
     }
 
     private fun initPhoneStateListener() {

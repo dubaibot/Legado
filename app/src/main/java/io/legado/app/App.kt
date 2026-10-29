@@ -44,8 +44,12 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.http.CookieBridge
+import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.Cronet
 import io.legado.app.help.http.ObsoleteUrlFactory
+import io.legado.app.help.http.TaskCookieContext
+import io.legado.app.help.http.TaskCookieStore
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
@@ -96,6 +100,15 @@ class App : Application() {
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(appCtx) }
             initRhino()
+            //接线 CookieBridge 用于定时任务 Cookie 隔离
+            CookieBridge.store = CookieStore
+            CookieBridge.taskScopeProvider = TaskCookieContext::currentHeaderValue
+            CookieBridge.taskSourceKeyProvider = {
+                TaskCookieContext.currentTaskKey()?.let { "auto_task:$it" }
+            }
+            CookieBridge.taskCookieStoreProvider = { scope, sourceKey ->
+                TaskCookieStore(scope, sourceKey)
+            }
             //初始化封面
             BookCover.toString()
             //清除过期数据

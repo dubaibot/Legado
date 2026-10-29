@@ -15,7 +15,9 @@ import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.ui.widget.text.EditEntity
 
-class BookSourceEditAdapter : RecyclerView.Adapter<BookSourceEditAdapter.MyViewHolder>() {
+class BookSourceEditAdapter(
+    private val onUnsafeTextEdit: ((EditEntity) -> Unit)? = null
+) : RecyclerView.Adapter<BookSourceEditAdapter.MyViewHolder>() {
 
     val editEntityMaxLine = AppConfig.sourceEditMaxLine
 

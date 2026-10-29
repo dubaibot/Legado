@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 97,
-    "identityHash": "3b8b319bc9337193af5e2d2880606eb4",
+    "identityHash": "916e926530f0d00e81ec530f7becf684",
     "entities": [
       {
         "tableName": "books",
@@ -2102,7 +2102,7 @@
       },
       {
         "tableName": "auto_task_rules",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `enable` INTEGER NOT NULL DEFAULT 1, `cron` TEXT, `loginUrl` TEXT, `loginUi` TEXT, `loginCheckJs` TEXT, `comment` TEXT, `script` TEXT NOT NULL, `header` TEXT, `jsLib` TEXT, `concurrentRate` TEXT, `enabledCookieJar` INTEGER NOT NULL DEFAULT 1, `lastRunAt` INTEGER NOT NULL DEFAULT 0, `lastResult` TEXT, `lastError` TEXT, `lastLog` TEXT, `sortOrder` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `enable` INTEGER NOT NULL, `cron` TEXT, `loginUrl` TEXT, `loginUi` TEXT, `loginCheckJs` TEXT, `comment` TEXT, `script` TEXT NOT NULL, `header` TEXT, `jsLib` TEXT, `concurrentRate` TEXT, `enabledCookieJar` INTEGER NOT NULL, `lastRunAt` INTEGER NOT NULL, `lastResult` TEXT, `lastError` TEXT, `lastLog` TEXT, `sortOrder` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -2120,8 +2120,7 @@
             "fieldPath": "enable",
             "columnName": "enable",
             "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "1"
+            "notNull": true
           },
           {
             "fieldPath": "cron",
@@ -2173,15 +2172,13 @@
             "fieldPath": "enabledCookieJar",
             "columnName": "enabledCookieJar",
             "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "1"
+            "notNull": true
           },
           {
             "fieldPath": "lastRunAt",
             "columnName": "lastRunAt",
             "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
+            "notNull": true
           },
           {
             "fieldPath": "lastResult",
@@ -4838,7 +4835,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3b8b319bc9337193af5e2d2880606eb4')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '916e926530f0d00e81ec530f7becf684')"
     ]
   }
 }

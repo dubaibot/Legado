@@ -2,206 +2,150 @@ package io.legado.app.ui.autoTask
 
 import android.app.Application
 import androidx.core.net.toUri
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
+import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.lib.cronet.CronetInterceptor
+import io.legado.app.help.http.text
 import io.legado.app.model.AutoTask
-import io.legado.app.model.AutoTaskImport
 import io.legado.app.model.AutoTaskRule
-import io.legado.app.ui.association.readLimitedImportTextWithGzip
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.isJsonArray
+import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isUri
-import io.legado.app.utils.readBytes
-import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import io.legado.app.utils.readText
+import splitties.init.appCtx
 
-data class ImportAutoTaskItem(
-    val rule: AutoTaskRule,
-    val existing: AutoTaskRule?,
-    val state: AutoTaskImport.State,
-    val selected: Boolean
-)
+class ImportAutoTaskViewModel(app: Application) : BaseViewModel(app) {
 
-sealed interface ImportAutoTaskState {
-    data object Loading : ImportAutoTaskState
-    data class Ready(val items: List<ImportAutoTaskItem>) : ImportAutoTaskState
-    data class Saving(val items: List<ImportAutoTaskItem>) : ImportAutoTaskState
-    data object Imported : ImportAutoTaskState
-    data class Error(val message: String) : ImportAutoTaskState
-}
+    val errorLiveData = MutableLiveData<String>()
+    val successLiveData = MutableLiveData<Int>()
 
-class ImportAutoTaskViewModel(application: Application) : BaseViewModel(application) {
+    val allTasks = arrayListOf<AutoTaskRule>()
+    val checkTasks = arrayListOf<AutoTaskRule?>()
+    val selectStatus = arrayListOf<Boolean>()
 
-    // This endpoint returns an invalid identity representation when Cronet
-    // strips an explicitly negotiated encoding. Keep the workaround local to
-    // auto-task imports instead of changing the application's network policy.
-    private val importHttpClient by lazy {
-        okHttpClient.newBuilder().apply {
-            interceptors().removeAll { it is CronetInterceptor }
-        }.build()
+    val isSelectAll: Boolean
+        get() {
+            selectStatus.forEach {
+                if (!it) {
+                    return false
+                }
+            }
+            return true
+        }
+
+    val selectCount: Int
+        get() {
+            var count = 0
+            selectStatus.forEach {
+                if (it) {
+                    count++
+                }
+            }
+            return count
+        }
+
+    fun importSelect(finally: () -> Unit) {
+        execute {
+            val selectTasks = arrayListOf<AutoTaskRule>()
+            selectStatus.forEachIndexed { index, b ->
+                if (b) {
+                    selectTasks.add(allTasks[index])
+                }
+            }
+            AutoTask.upsert(selectTasks)
+        }.onFinally {
+            finally.invoke()
+        }
     }
 
-    private val _state = MutableStateFlow<ImportAutoTaskState>(ImportAutoTaskState.Loading)
-    val state = _state.asStateFlow()
-
-    private var loadJob: Job? = null
-    private var localSnapshot: List<AutoTaskRule> = emptyList()
-    private var loadGeneration = 0L
-
-    fun load(source: String?) {
-        val value = source?.trim().orEmpty()
-        loadJob?.cancel()
-        val generation = ++loadGeneration
-        if (value.isBlank()) {
-            _state.value = ImportAutoTaskState.Error(context.getString(R.string.wrong_format))
+    fun importSource(text: String?) {
+        val sourceText = text?.trim().orEmpty()
+        if (sourceText.isBlank()) {
+            errorLiveData.postValue("ImportError:${context.getString(R.string.wrong_format)}")
             return
         }
-        _state.value = ImportAutoTaskState.Loading
-        loadJob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val text = readSource(value)
-                val imported = AutoTaskImport.parse(text).getOrThrow()
-                val local = AutoTask.all()
-                localSnapshot = local
-                val compared = AutoTaskImport.compare(imported, local)
-                val items = compared.map { entry ->
-                    ImportAutoTaskItem(
-                        rule = entry.rule,
-                        existing = entry.existing,
-                        state = entry.state,
-                        selected = entry.state != AutoTaskImport.State.EXISTING
-                    )
-                }
-                if (generation == loadGeneration) {
-                    _state.value = ImportAutoTaskState.Ready(items)
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                if (generation == loadGeneration) {
-                    _state.value = ImportAutoTaskState.Error(
-                        error.localizedMessage?.takeIf { it.isNotBlank() }
-                            ?: context.getString(R.string.wrong_format)
-                    )
+        allTasks.clear()
+        checkTasks.clear()
+        selectStatus.clear()
+        execute {
+            importSourceAwait(sourceText)
+        }.onError {
+            errorLiveData.postValue("ImportError:${it.localizedMessage}")
+            AppLog.put("ImportError:${it.localizedMessage}", it)
+        }.onSuccess {
+            comparisonSource()
+        }
+    }
+
+    fun updateTaskAt(index: Int, task: AutoTaskRule) {
+        if (index < 0 || index >= allTasks.size) return
+        allTasks[index] = task
+        val localTask = AutoTask.getRules().firstOrNull { it.id == task.id }
+        if (index < checkTasks.size) {
+            checkTasks[index] = localTask
+        }
+        if (index < selectStatus.size) {
+            selectStatus[index] = localTask == null || task != localTask
+        }
+    }
+
+    private suspend fun importSourceAwait(text: String) {
+        when {
+            text.isJsonObject() -> {
+                GSON.fromJsonObject<AutoTaskRule>(text).getOrThrow().let {
+                    allTasks.add(it)
                 }
             }
-        }
-    }
 
-    fun toggle(index: Int, checked: Boolean) {
-        updateReady { items ->
-            if (index !in items.indices) items else items.toMutableList().apply {
-                this[index] = this[index].copy(selected = checked)
-            }
-        }
-    }
-
-    fun toggleAll() {
-        updateReady { items ->
-            val selectAll = items.any { !it.selected }
-            items.map { it.copy(selected = selectAll) }
-        }
-    }
-
-    fun updateRuleFromJson(index: Int, code: String): Boolean {
-        val ready = _state.value as? ImportAutoTaskState.Ready ?: return false
-        val parsed = AutoTaskImport.parse(code).getOrElse { error ->
-            context.toastOnUi(error.localizedMessage ?: context.getString(R.string.wrong_format))
-            return false
-        }
-        if (parsed.size != 1) {
-            context.toastOnUi(R.string.wrong_format)
-            return false
-        }
-        if (index !in ready.items.indices) return false
-        val duplicate = ready.items.withIndex()
-            .filter { (itemIndex, _) -> itemIndex != index }
-            .any { (_, item) -> item.rule.id == parsed.single().id }
-        if (duplicate) {
-            context.toastOnUi(R.string.auto_task_import_duplicate_id)
-            return false
-        }
-        val entry = AutoTaskImport.compare(parsed, localSnapshot).single()
-        val current = ready.items[index]
-        val replacement = ImportAutoTaskItem(
-            rule = entry.rule,
-            existing = entry.existing,
-            state = entry.state,
-            // Editing an already selected row should not unexpectedly deselect it.
-            selected = current.selected || entry.state != AutoTaskImport.State.EXISTING
-        )
-        _state.value = ImportAutoTaskState.Ready(
-            ready.items.toMutableList().apply { this[index] = replacement }
-        )
-        return true
-    }
-
-    fun importSelected(
-        onSuccess: () -> Unit,
-        onError: (Throwable) -> Unit
-    ) {
-        val ready = _state.value as? ImportAutoTaskState.Ready ?: return
-        val selected = ready.items.filter { it.selected }.map { it.rule }
-        if (selected.isEmpty()) {
-            context.toastOnUi(R.string.auto_task_import_select_none)
-            return
-        }
-        _state.value = ImportAutoTaskState.Saving(ready.items)
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching { AutoTask.upsert(selected) }
-                .onSuccess {
-                    _state.value = ImportAutoTaskState.Imported
-                    withContext(Dispatchers.Main.immediate) { onSuccess() }
+            text.isJsonArray() -> GSON.fromJsonArray<AutoTaskRule>(text).getOrThrow()
+                .let { items ->
+                    allTasks.addAll(items)
                 }
-                .onFailure { error ->
-                    _state.value = ImportAutoTaskState.Ready(ready.items)
-                    withContext(Dispatchers.Main.immediate) { onError(error) }
-                }
+
+            text.isAbsUrl() -> {
+                importSourceUrl(text)
+            }
+
+            text.isUri() -> {
+                importSourceAwait(text.toUri().readText(appCtx))
+            }
+
+            else -> throw NoStackTraceException(context.getString(R.string.wrong_format))
         }
     }
 
-    override fun onCleared() {
-        loadJob?.cancel()
-        super.onCleared()
+    private suspend fun importSourceUrl(url: String) {
+        okHttpClient.newCallResponseBody {
+            if (url.endsWith("#requestWithoutUA")) {
+                url(url.substringBeforeLast("#requestWithoutUA"))
+                header(AppConst.UA_NAME, "null")
+            } else {
+                url(url)
+            }
+        }.decompressed().text().let {
+            importSourceAwait(it)
+        }
     }
 
-    private fun updateReady(transform: (List<ImportAutoTaskItem>) -> List<ImportAutoTaskItem>) {
-        val ready = _state.value as? ImportAutoTaskState.Ready ?: return
-        _state.value = ImportAutoTaskState.Ready(transform(ready.items))
-    }
-
-    private suspend fun readSource(source: String): String {
-        return when {
-            source.isAbsUrl() -> {
-                importHttpClient.newCallResponseBody {
-                    // This endpoint serves an invalid identity representation;
-                    // explicitly negotiate gzip and let the local import reader
-                    // handle either an encoded or already-decoded response.
-                    header("Accept-Encoding", "gzip")
-                    if (source.endsWith("#requestWithoutUA")) {
-                        url(source.substringBeforeLast("#requestWithoutUA"))
-                        header(AppConst.UA_NAME, "null")
-                    } else {
-                        url(source)
-                    }
-                }.use { body -> body.readLimitedImportTextWithGzip(AutoTaskImport.MAX_IMPORT_BYTES) }
+    private fun comparisonSource() {
+        execute {
+            val localMap = AutoTask.getRules().associateBy { it.id }
+            allTasks.forEach {
+                val local = localMap[it.id]
+                checkTasks.add(local)
+                selectStatus.add(local == null || it != local)
             }
-            source.isUri() -> {
-                source.toUri()
-                    .readBytes(context, AutoTaskImport.MAX_IMPORT_BYTES)
-                    .toString(Charsets.UTF_8)
-            }
-            else -> source
+            successLiveData.postValue(allTasks.size)
         }
     }
 }
