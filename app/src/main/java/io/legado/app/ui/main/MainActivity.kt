@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import io.legado.app.utils.ColorUtils
 import androidx.activity.addCallback
 import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
 import androidx.core.view.get
 import androidx.core.view.postDelayed
 import androidx.fragment.app.Fragment
@@ -256,6 +257,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             bottomNavigationView.setBackgroundResource(R.drawable.bg_eink_border_top)
         }
         // 内容延伸到系统导航栏下方，让液态玻璃底栏向下覆盖导航栏区域
+        // setDecorFitsSystemWindows(false) 让内容绘制到导航栏后方，玻璃壳才能向下覆盖
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.decorView.systemUiVisibility =
             window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         bottomNavigationView.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
