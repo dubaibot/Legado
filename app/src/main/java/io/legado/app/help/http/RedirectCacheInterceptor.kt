@@ -1,19 +1,14 @@
 package io.legado.app.help.http
 
 import androidx.annotation.Keep
-import android.util.LruCache
 import io.legado.app.constant.AppLog
 import okhttp3.Interceptor
 import okhttp3.Response
 
 /**
- * P1-5: 302 重定向缓存拦截器（2026-07-31，V3 修订 2026-07-31）
+ * P1-5: 302 重定向缓存拦截器（2026-07-31，V3 修订 2026-07-31，V4 修订 2026-10-29）
  *
  * 作用：缓存重定向映射（原 URL → finalUrl），避免同一 URL 重复重定向往返延迟。
- *
- * 成熟方案参考：
- * - Chrome RedirectHistoryCache：浏览器缓存重定向映射，相同 URL 直接跳转 finalUrl
- * - OkHttp 内部 retryAndFollowUpInterceptor：默认每次请求都重新跟随重定向，无跨请求缓存
  *
  * V3 修订（FR-1）：
  * - 原实现用 response.header("Location") 仅获取第一层重定向且永远不成立
@@ -21,8 +16,14 @@ import okhttp3.Response
  * - V3 改用 response.request.url 获取跟随所有重定向后的最终URL
  * - 支持多层重定向（A→B→C 缓存 A→C 映射，非仅第一层）
  *
+ * V4 修订（仅缓存 GET）：
+ * - POST 的 302 跳转目标与请求体相关（如论坛发帖成功 → 跳转到本次新帖页面），
+ *   跨请求复用映射会把后续 POST 改写到上一次的跳转目标，请求落到错误页面
+ *   （实测：定时任务连发 3 帖只真正发出 1 帖，其余被改写到首帖 viewthread 页面）
+ * - 缓存命中改写只对 GET 安全；非 GET 请求直接放行，不查缓存也不写缓存
+ *
  * 实现策略：
- * - LruCache 500 条 + TTL 10 分钟（平衡命中率与 finalUrl 时效性）
+ * - 缓存 500 条 + TTL 10 分钟（平衡命中率与 finalUrl 时效性）
  * - 缓存 key 带 Referer/Cookie 维度（防盗链场景 finalUrl 可能随 header 变化）
  * - 命中时改写请求 URL 为 finalUrl，跳过重定向往返
  * - 比较 request.url 与 response.request.url，不同则缓存映射
@@ -37,11 +38,24 @@ object RedirectCacheInterceptor : Interceptor {
     /** 缓存条目：finalUrl + 过期时间戳 */
     private data class RedirectEntry(val finalUrl: String, val expireAt: Long)
 
-    /** LruCache 500 条（按 LRU 策略淘汰最久未访问的条目） */
-    private val cache = LruCache<String, RedirectEntry>(MAX_CACHE_SIZE)
+    /** LruCache 500 条（按 LRU 策略淘汰最久未访问的条目）；改用 java.util.LinkedHashMap 以便纯 JVM 单元测试 */
+    private val cache = object : java.util.LinkedHashMap<String, RedirectEntry>(
+        MAX_CACHE_SIZE, 0.75f, true  // accessOrder=true：最近访问的放末尾，淘汰最久未访问
+    ) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, RedirectEntry>?): Boolean {
+            return size > MAX_CACHE_SIZE
+        }
+    }
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+
+        // V4：仅 GET 请求参与重定向缓存。POST/PUT/DELETE 的 302 目标与请求体
+        // 强相关，复用旧映射会把后续请求改写到上一次的跳转目标（发帖连发事故）
+        if (request.method != "GET") {
+            return chain.proceed(request)
+        }
+
         val originalUrl = request.url.toString()
 
         // 构建缓存 key（URL + Referer 维度 + Cookie 维度前 8 字符）
@@ -57,7 +71,7 @@ object RedirectCacheInterceptor : Interceptor {
                     val newRequest = request.newBuilder()
                         .url(entry.finalUrl)
                         .build()
-                    AppLog.putDebug("RedirectCache: hit, skipping 302, cacheSize=${cache.size()}")
+                    AppLog.putDebug("RedirectCache: hit, skipping 302, cacheSize=${cache.size}")
                     return chain.proceed(newRequest)
                 } else {
                     // 过期：移除
@@ -78,7 +92,7 @@ object RedirectCacheInterceptor : Interceptor {
             synchronized(cache) {
                 cache.put(cacheKey, RedirectEntry(finalUrl, System.currentTimeMillis() + CACHE_TTL_MS))
             }
-            AppLog.putDebug("RedirectCache: cached redirect mapping, cacheSize=${cache.size()}")
+            AppLog.putDebug("RedirectCache: cached redirect mapping, cacheSize=${cache.size}")
         }
         return response
     }

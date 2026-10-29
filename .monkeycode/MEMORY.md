@@ -136,5 +136,16 @@ Entries discovered by the Agent during task execution should follow this format:
 - Context: 编辑 RssParserByRule.kt 导入区时 oldString 把 coroutineScope 误写成 coroutineContext，编辑仍然"成功"，实际破坏了 import
 - Category: Troubleshooting & Debugging
 - Instructions:
-  - edit 工具对 oldString 存在模糊匹配，oldString 与文件有差异时可能静默按近似内容替换
-  - 对 import 区等精细位置的编辑，编辑后必须立即回读验证关键行；出现"oldString 不完全一致却编辑成功"的情况优先怀疑模糊匹配
+- edit 工具对 oldString 存在模糊匹配，oldString 与文件有差异时可能静默按近似内容替换
+- 对 import 区等精细位置的编辑，编辑后必须立即回读验证关键行；出现"oldString 不完全一致却编辑成功"的情况优先怀疑模糊匹配
+
+[RedirectCacheInterceptor 仅缓存 GET 请求的重定向映射]
+- Date: 2026-10-29
+- Context: 排查定时任务发帖「显示3次成功实际1帖」事故，定位到 RedirectCacheInterceptor 对 POST 也缓存 302 跳转
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - POST/PUT/DELETE 的 302 跳转目标与请求体强相关（论坛发帖→本次新帖页面），跨请求复用映射会把后续 POST 改写到上次跳转目标：定时任务连发 3 帖只真发 1 帖，其余被改写到首帖 viewthread 页，脚本拿到含成功标记的页面误判成功
+  - 修复形态：intercept() 开头 `if (request.method != "GET") return chain.proceed(request)`，非 GET 不查也不写缓存；已配回归测试 app/src/test RedirectCacheInterceptorTest
+  - 该拦截器是阅读D 特有修改（Legado_T 无），且只缓存 GET；排查网络类 bug 时优先对比 fork 差异而非引擎层
+  - 缓存容器用 java.util.LinkedHashMap(accessOrder) 而非 android.util.LruCache，纯 JVM 单测可测
+  - 单测注意：AppLog.putDebug 依赖 Android 框架（DebugLogScope=SupervisorJob+Dispatchers.IO），纯 JVM 单测避开走 putDebug 的路径
