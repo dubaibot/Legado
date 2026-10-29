@@ -103,6 +103,7 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/tv_footer_left"
             style="@style/Widget.App.Button.Text"
+            android:theme="@style/ThemeOverlay.App.MaterialWidget"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:visibility="gone"
@@ -120,6 +121,7 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/tv_cancel"
                 style="@style/Widget.App.Button.Text"
+                android:theme="@style/ThemeOverlay.App.MaterialWidget"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/cancel"
@@ -129,6 +131,7 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/tv_ok"
                 style="@style/Widget.App.Button.Tonal"
+                android:theme="@style/ThemeOverlay.App.MaterialWidget"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="@dimen/space_s"

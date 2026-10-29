@@ -27,6 +27,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import org.xmlpull.v1.XmlPullParserException
 import splitties.init.appCtx
 import java.util.Locale
 
@@ -65,7 +66,19 @@ object RssParserByRule {
         if (ruleArticles.isNullOrBlank()) {
             Debug.log(sourceUrl, "⇒列表规则为空, 使用默认规则解析", category = DebugCategory.RSS)
             AppLog.putDebugWithTag(AppLog.TAG_RSS, "RSS使用默认规则解析 sourceHash=${rssSource.sourceUrl.hashCode()}", level = AppLog.Level.INFO)
-            val result = RssParserDefault.parseXML(sortName, processedBody, sourceUrl)
+            val result = try {
+                RssParserDefault.parseXML(sortName, processedBody, sourceUrl)
+            } catch (e: XmlPullParserException) {
+                // 源返回的内容不是合法RSS XML(如JSON接口),给出可读的修复指引而非原始解析器异常
+                val trimmed = processedBody.trimStart()
+                val hint = if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                    "返回内容为JSON,请在RSS源中配置列表规则(ruleArticles)后用JSON规则解析,或更换标准RSS地址"
+                } else {
+                    "返回内容无法按标准RSS XML解析,请检查源地址是否正确"
+                }
+                recorder.failed(RssExecutionStep.PARSE_LIST, "非标准RSS XML: ${e.message?.take(80)}")
+                throw NoStackTraceException("RSS源解析失败: $hint\n内容开头: ${trimmed.take(50).replace("\n", " ")}")
+            }
             if (result.first.isNotEmpty()) {
                 recorder.success(
                     RssExecutionStep.PARSE_LIST,

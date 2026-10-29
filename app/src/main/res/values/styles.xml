@@ -270,4 +270,13 @@
 
     <style name="Widget.App.Button.Tonal" parent="Widget.Material3.Button.TonalButton" />
     <style name="Widget.App.Button.Text" parent="Widget.Material3.Button.TextButton" />
+
+    <!-- Material 控件局部主题:Base.AppTheme 为 AppCompat 系,MaterialCardView/MaterialButton
+         构造时校验 isMaterialTheme 会直接崩溃。用 android:theme 挂到这些控件上,
+         仅作用单棵子树,不改变全局主题外观。 -->
+    <style name="ThemeOverlay.App.MaterialWidget" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primaryDark</item>
+        <item name="colorAccent">@color/accent</item>
+    </style>
 </resources>

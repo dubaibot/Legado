@@ -50,8 +50,8 @@ Entries discovered by the Agent during task execution should follow this format:
   - 切完必须断言：`/**` 与 `*/` 数量相等、`{` 与 `}` 数量相等、不含同名重复声明（如 getMediaUrls/MediaRequest 在 m 已有）
   - 不同签名的同名函数是合法重载（如 max 的 isMediaUrlCached(cache,url,cacheDir) 3 参与 m 的 isMediaUrlCached(url) 1 参），引用方按实参个数解析，两者需同时存在
   - 审计脚本对接收者扩展声明（`fun <T> Receiver.sym`、`fun <VB> Fragment.viewBinding`）需用 `fun\s+[\w<>\s,]*\.sym` 宽松匹配；R/databinding/BuildConfig/代码生成类直接白名单，否则全量误报
-- import 闭包审计对「成员导入」（object/伴生对象/嵌套类型/`const val`，如 `AppConst.UA_NAME`、`CookieManager.mergeCookies`、`AnalyzeUrl.Companion.getMediaItem`）会因「按 import 路径找文件」失败而误报：先按「去掉最后一段后的 .kt 文件存在」判定成员导入，rx 备选里补 `const val`；更可靠的兜底是直接对被引用包目录 grep 符号声明
-- 字符串存在性检查必须扫全部 res（如 `http_ip` 在 non_translat.xml，WebSigma 的 WebService 在用），只扫 values/strings.xml 会误报
+  - import 闭包审计对「成员导入」（object/伴生对象/嵌套类型/`const val`，如 `AppConst.UA_NAME`、`CookieManager.mergeCookies`、`AnalyzeUrl.Companion.getMediaItem`）会因「按 import 路径找文件」失败而误报：先按「去掉最后一段后的 .kt 文件存在」判定成员导入，rx 备选里补 `const val`；更可靠的兜底是直接对被引用包目录 grep 符号声明
+  - 字符串存在性检查必须扫全部 res（如 `http_ip` 在 non_translat.xml，WebSigma 的 WebService 在用），只扫 values/strings.xml 会误报
   - 删除枚举/注册表条目时逐条按行前缀删（每条目单行成对）；禁用「进入 skip 后等 endswith 复位」的状态机——SPEAK_ENGINE( 前缀同时命中进入分支并 continue，复位永不执行，曾吞掉 BaseContentSearchDialog 600 行尾部
   - 每次脚本改写文件后立刻断言花括号/KDoc 平衡 + 文件行数与预期一致，并在关键锚点（createDialog/SourceFieldItem 等）抽查存在性
 
@@ -129,4 +129,22 @@ Entries discovered by the Agent during task execution should follow this format:
   - 环境默认无 java/sdkmanager，需先装 JDK 17（apt openjdk-17-jdk-headless，位于 /usr/lib/jvm/java-17-openjdk-amd64）与 Android cmdline-tools（装到 /opt/android-sdk，sdkmanager 装 platforms;android-36、build-tools;35.0.0/36.0.0、platform-tools），并写 local.properties `sdk.dir=/opt/android-sdk`
   - debug 构建走 ~/.android/debug.keystore（Android Debug 签名，包名 com.myreaderD.reader.debug），与 release 的 myreader 密钥不同
   - Maven Central 偶发 TLS 中断（Remote host terminated the handshake），重试即可，已下载依赖缓存于 ~/.gradle/caches
-  - 构建必须用 background_terminal_create（峰值内存约 4.9GB），禁止前台直接跑
+
+[移植 M3 分支 UI 到 AppCompat 主题项目的崩溃与修复模式]
+- Date: 2026-10-29
+- Context: Legado_T 自动任务页移植后崩溃：MaterialCardView 构造时 ThemeEnforcement 校验 isMaterialTheme 失败（本项目 Base.AppTheme parent 仍是 Theme.AppCompat.DayNight.NoActionBar，而 Legado_T 已整体升级 Theme.Material3）
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 强校验控件（在 AppCompat 主题下必崩）：MaterialCardView、MaterialButton；宽松控件（可正常运行）：FloatingActionButton、TabLayout、TextInputLayout（DEF 样式走 Design 家族）、MaterialSwitch
+  - 修复模式：values/styles.xml 定义 `ThemeOverlay.App.MaterialWidget`（parent=Theme.Material3.DayNight + colorPrimary/colorAccent 覆盖为 app 色板），在每个 Material 控件标签上加 `android:theme="@style/ThemeOverlay.App.MaterialWidget"`，只作用单棵子树不动全局主题
+  - android:theme 会传播到子视图（LayoutInflater 子节点用 parent.getContext()），布局级修复对全部消费方生效
+  - 从 Legado_T 再移植布局时，凡见 MaterialCardView/MaterialButton 必须挂此 overlay；项目已修：item_manage.xml、dialog_recycler_view_adaptive.xml、dialog_ai_purify_confirm.xml
+  - 全量排查方法：`rg -ln "com.google.android.material.(card|button)" app/src/main/res/layout*`，layout-land 等变体目录也要扫
+
+[edit 工具模糊匹配风险]
+- Date: 2026-10-29
+- Context: 编辑 RssParserByRule.kt 导入区时 oldString 把 coroutineScope 误写成 coroutineContext，编辑仍然"成功"，实际破坏了 import
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - edit 工具对 oldString 存在模糊匹配，oldString 与文件有差异时可能静默按近似内容替换
+  - 对 import 区等精细位置的编辑，编辑后必须立即回读验证关键行；出现"oldString 不完全一致却编辑成功"的情况优先怀疑模糊匹配

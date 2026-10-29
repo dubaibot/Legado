@@ -89,6 +89,7 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_retry"
             style="@style/Widget.Material3.Button.TextButton"
+            android:theme="@style/ThemeOverlay.App.MaterialWidget"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/ai_purify_retry" />
@@ -96,12 +97,14 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_cancel"
             style="@style/Widget.Material3.Button.TextButton"
+            android:theme="@style/ThemeOverlay.App.MaterialWidget"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/cancel" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_apply"
+            android:theme="@style/ThemeOverlay.App.MaterialWidget"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/ai_purify_apply" />
