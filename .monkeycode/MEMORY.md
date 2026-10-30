@@ -148,4 +148,16 @@ Entries discovered by the Agent during task execution should follow this format:
   - 修复形态：intercept() 开头 `if (request.method != "GET") return chain.proceed(request)`，非 GET 不查也不写缓存；已配回归测试 app/src/test RedirectCacheInterceptorTest
   - 该拦截器是阅读D 特有修改（Legado_T 无），且只缓存 GET；排查网络类 bug 时优先对比 fork 差异而非引擎层
   - 缓存容器用 java.util.LinkedHashMap(accessOrder) 而非 android.util.LruCache，纯 JVM 单测可测
-  - 单测注意：AppLog.putDebug 依赖 Android 框架（DebugLogScope=SupervisorJob+Dispatchers.IO），纯 JVM 单测避开走 putDebug 的路径
+   - 单测注意：AppLog.putDebug 依赖 Android 框架（DebugLogScope=SupervisorJob+Dispatchers.IO），纯 JVM 单测避开走 putDebug 的路径
+
+[底栏渲染链路与顶栏高度系统]
+- Date: 2026-10-30
+- Context: 用户反馈「默认悬浮底栏看起来是常规底栏样式」+「顶栏能不能改窄」
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 底栏渲染链路：MainActivity.applyBottomNavigationShell() → NavigationBarConfig.activeConfig() → loadConfigs() → 内置 createDefaultDay/Night()，AppConfig.bottomBarLayoutMode 仅 MainLayoutPresetConfig.apply() 写入但渲染代码从不读取，是死偏好
+  - 底栏默认样式由 NavigationBarConfig.createDefaultDay/Night() 硬编码决定（原 LAYOUT_STANDARD+EFFECT_SOLID+opacity 30），已改为 LAYOUT_FLOATING+EFFECT_GLASS+opacity 76 匹配 AppConfig 默认偏好
+  - 效果模式：EFFECT_GLASS（液态玻璃，需 StableLiquidGlassView 采样）/ EFFECT_FROSTED（磨砂）/ EFFECT_SOLID（纯色）；布局模式：LAYOUT_FLOATING（圆角 24dp）/ LAYOUT_STANDARD（无圆角）/ LAYOUT_SIDEBAR
+  - 顶栏高度系统：View 侧 TitleBar(AppBarLayout→Toolbar) 默认 minHeight 56dp（Widget.AppCompat.Toolbar→?attr/actionBarSize）；Compose 侧 HomepageScreen Row height(56.dp)、AppDimens.topBarHeight=56.dp
+  - 顶栏收窄：Toolbar XML 加 android:minHeight="48dp"（view_title_bar.xml + view_title_bar_dark.xml）；HomepageScreen.kt height(56.dp)→height(48.dp)；Dimensions.kt topBarHeight 56.dp→48.dp；字体图标不变（ToolbarTitle 20sp 保留）
+  - GlassTopAppBar.kt 有 barHeight: Dp? 参数（null 时默认 64.dp），管理族传入 48dp 档启用自绘紧凑布局；MainTopBarView 和 AppPageTopBar 无硬编码高度
