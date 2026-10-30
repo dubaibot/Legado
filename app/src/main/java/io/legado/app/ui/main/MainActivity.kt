@@ -1003,15 +1003,16 @@ class MainActivity :
     // ── 底栏导航栏配置 Shell 实现 ──
 
     /**
-     * 计算底栏占用的总高度（导航栏高度 + 底部边距），
-     * 用于设置 Fragment 内容的底部内边距，防止底栏遮挡内容。
+     * 计算底栏占用的总高度，用于设置 Fragment 内容的底部内边距。
+     * 悬浮模式（bottomMargin > 0）下底栏为浮动胶囊，内容可滚动到底栏后方，
+     * 因此只返回 bottomMargin；标准/侧栏模式返回 navHeight + bottomMargin。
      */
     fun mainContentBottomPadding(): Int {
         val bottomNav = binding.bottomNavigationGlass
         val layoutParams = bottomNav.layoutParams as? FrameLayout.LayoutParams
         val navHeight = bottomNav.height.takeIf { it > 0 } ?: bottomNav.minimumHeight
         val bottomMargin = layoutParams?.bottomMargin ?: 0
-        return navHeight + bottomMargin
+        return if (bottomMargin > 0) bottomMargin else navHeight + bottomMargin
     }
 
     /**

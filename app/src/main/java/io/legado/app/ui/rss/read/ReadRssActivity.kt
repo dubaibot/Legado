@@ -48,12 +48,12 @@ import io.legado.app.help.http.text
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.applyTopBarConfig
+import io.legado.app.ui.widget.applyTopBarWallpaper
 import io.legado.app.ui.widget.topBarContentColor
 import io.legado.app.ui.rss.favorites.RssFavoritesDialog
 import io.legado.app.utils.ACache
@@ -193,6 +193,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.applyTopBarConfig()
+        binding.titleBar.applyTopBarWallpaper()
         pooledWebView = WebViewPool.acquire(this)
         currentWebView = pooledWebView.realWebView
         binding.webViewContainer.addView(currentWebView)
@@ -574,6 +575,8 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             starMenuItem?.setTitle(R.string.out_favorites)
         }
         starMenuItem?.icon?.setTintMutate(binding.titleBar.topBarContentColor())
+        // starthtml 场景无文章，TTS 菜单也不应显示
+        ttsMenuItem?.isVisible = viewModel.rssArticle != null
     }
 
     private fun upTtsMenu(isPlaying: Boolean) {
@@ -585,7 +588,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 ttsMenuItem?.setIcon(R.drawable.ic_volume_up)
                 ttsMenuItem?.setTitle(R.string.read_aloud)
             }
-            ttsMenuItem?.icon?.setTintMutate(primaryTextColor)
+            ttsMenuItem?.icon?.setTintMutate(binding.titleBar.topBarContentColor())
         }
     }
 

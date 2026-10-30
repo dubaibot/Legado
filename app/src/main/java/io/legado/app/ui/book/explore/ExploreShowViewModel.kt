@@ -563,6 +563,60 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         }
     }
 
+    /** 任意层级存在判断:kind+option在树中任一层出现即为true */
+    fun existsAtAnyLevel(kind: ExploreKind, option: String?): Boolean {
+        val probe = kind.toCatNode(option)
+        return existsAtLevel(1, probe) || existsAtLevel(2, probe) || existsAtLevel(3, probe)
+    }
+
+    /** 任意层级toggle:存在则从所在层移除,不存在则挂到根层 */
+    fun toggleAtAnyLevel(kind: ExploreKind, option: String?) {
+        val probe = kind.toCatNode(option)
+        if (existsAtLevel(1, probe)) {
+            removeFromLevel(1, probe)
+        } else if (existsAtLevel(2, probe)) {
+            removeFromLevel(2, probe)
+        } else if (existsAtLevel(3, probe)) {
+            removeFromLevel(3, probe)
+        } else {
+            addToLevel(1, probe, null)
+        }
+    }
+
+    /** 任意层级移除:从所在层删除,当前定位引用被删时同步清空 */
+    fun removeFromAnyLevel(kind: ExploreKind, option: String?) {
+        val probe = kind.toCatNode(option)
+        if (existsAtLevel(1, probe)) {
+            removeFromLevel(1, probe)
+        } else if (existsAtLevel(2, probe)) {
+            removeFromLevel(2, probe)
+        } else if (existsAtLevel(3, probe)) {
+            removeFromLevel(3, probe)
+        }
+    }
+
+    /** 任意层级节点直接移除:传入ExploreCatNode,无需查找ExploreKind */
+    fun removeNodeAtAnyLevel(node: ExploreCatNode) {
+        if (existsAtLevel(1, node)) {
+            removeFromLevel(1, node)
+        } else if (existsAtLevel(2, node)) {
+            removeFromLevel(2, node)
+        } else if (existsAtLevel(3, node)) {
+            removeFromLevel(3, node)
+        }
+    }
+
+    /** 任意层级节点查找:用于长按查看引用信息 */
+    fun nodeAtAnyLevel(kind: ExploreKind, option: String?): ExploreCatNode? {
+        val probe = kind.toCatNode(option)
+        return tree.firstOrNull { probe.sameRefAs(it) }
+            ?: tree.asSequence().flatMap { it.children }.firstOrNull { probe.sameRefAs(it) }
+            ?: tree.asSequence()
+                .flatMap { it.children }
+                .flatMap { it.children }
+                .firstOrNull { probe.sameRefAs(it) }
+    }
+
     /** 弹窗:层级成员toggle,存在则移除,否则挂到parent下 */
     fun toggleAtLevel(level: Int, kind: ExploreKind, option: String?, parent: ExploreCatNode?) {
         val probe = kind.toCatNode(option)
