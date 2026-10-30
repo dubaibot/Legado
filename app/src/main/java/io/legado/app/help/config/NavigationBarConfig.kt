@@ -212,9 +212,9 @@ data class NavigationBarConfig(
             name = appCtx.getString(R.string.nav_bar_default_day_name),
             isNight = false,
             isBuiltin = true,
-            layoutMode = LAYOUT_STANDARD,
-            effectMode = EFFECT_SOLID,
-            opacity = 30,
+            layoutMode = LAYOUT_FLOATING,
+            effectMode = EFFECT_GLASS,
+            opacity = 76,
             updatedAt = 0L,
         )
 
@@ -223,9 +223,9 @@ data class NavigationBarConfig(
             name = appCtx.getString(R.string.nav_bar_default_night_name),
             isNight = true,
             isBuiltin = true,
-            layoutMode = LAYOUT_STANDARD,
-            effectMode = EFFECT_SOLID,
-            opacity = 30,
+            layoutMode = LAYOUT_FLOATING,
+            effectMode = EFFECT_GLASS,
+            opacity = 76,
             updatedAt = 0L,
         )
 
