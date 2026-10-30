@@ -1195,6 +1195,8 @@ class MainActivity :
         bottomNavigationView.background = Color.TRANSPARENT.toDrawable()
         val liquid = usesRealtimeGlassShell(config)
         applyBottomNavigationGlassOutline(bottomNavigationGlass, if (floating) 24f.dpToPx() else 0f)
+        applyBottomNavigationGlassOutline(bottomNavigationGlassView, if (floating) 24f.dpToPx() else 0f)
+        applyBottomNavigationGlassOutline(bottomNavigationShellOverlay, if (floating) 24f.dpToPx() else 0f)
         if (liquid) {
             // 玻璃/磨砂效果：保留液态玻璃视图，即使不透明度为 0 也能反映页面滑动的折射/模糊效果
             bottomNavigationGlassView.visible()

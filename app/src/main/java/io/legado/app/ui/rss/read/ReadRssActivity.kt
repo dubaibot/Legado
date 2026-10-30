@@ -53,6 +53,8 @@ import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.applyTopBarConfig
+import io.legado.app.ui.widget.topBarContentColor
 import io.legado.app.ui.rss.favorites.RssFavoritesDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
@@ -190,6 +192,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.titleBar.applyTopBarConfig()
         pooledWebView = WebViewPool.acquire(this)
         currentWebView = pooledWebView.realWebView
         binding.webViewContainer.addView(currentWebView)
@@ -570,7 +573,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             starMenuItem?.setIcon(R.drawable.ic_star_border)
             starMenuItem?.setTitle(R.string.out_favorites)
         }
-        starMenuItem?.icon?.setTintMutate(primaryTextColor)
+        starMenuItem?.icon?.setTintMutate(binding.titleBar.topBarContentColor())
     }
 
     private fun upTtsMenu(isPlaying: Boolean) {

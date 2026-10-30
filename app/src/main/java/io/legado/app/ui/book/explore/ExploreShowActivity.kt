@@ -69,11 +69,13 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         get() = binding.titleBar.toolbar.findViewById(R.id.tv_page)
     private val tvTitle: TextView?
         get() = binding.titleBar.toolbar.findViewById(R.id.tv_title)
-    private val tvSubtitle: TextView?
-        get() = binding.titleBar.toolbar.findViewById(R.id.tv_subtitle)
 
     private var searchMenuItem: MenuItem? = null
     private var categoryMenuItem: MenuItem? = null
+
+    companion object {
+        private const val MAX_TITLE_LENGTH = 20
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         onBackPressedDispatcher.addCallback(this) {
@@ -86,7 +88,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 source?.exploreStyle == 1 || intent.getBooleanExtra("newStyle", false)
             )
             if (titleInited) {
-                tvTitle?.text = source?.bookSourceName ?: intent.getStringExtra("exploreName")
+                tvTitle?.text = (source?.bookSourceName
+                    ?: intent.getStringExtra("exploreName"))?.take(MAX_TITLE_LENGTH)
             }
             //source异步加载完成,补刷搜索按钮可见性
             searchMenuItem?.isVisible = !source?.searchUrl.isNullOrBlank()
@@ -146,9 +149,8 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         titleInited = true
         tvPage?.text = getString(R.string.menu_page, 1)
         tvPage?.setOnClickListener { changePage() }
-        tvTitle?.text = viewModel.sourceData.value?.bookSourceName
-            ?: intent.getStringExtra("exploreName")
-        updateSubtitle()
+        tvTitle?.text = (viewModel.sourceData.value?.bookSourceName
+            ?: intent.getStringExtra("exploreName"))?.take(MAX_TITLE_LENGTH)
         binding.titleBar.setColorFilter(primaryTextColor)
     }
 
@@ -157,17 +159,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             CategoryEditDialogFragment().show(supportFragmentManager, "categoryEdit")
         }
         return super.onCompatOptionsItemSelected(item)
-    }
-
-    /** 副标题显示当前分类名,无分类时隐藏 */
-    private fun updateSubtitle() {
-        val subtitle = viewModel.currentL3?.name
-            ?: viewModel.currentL2?.name
-            ?: viewModel.currentL1?.name
-        tvSubtitle?.let {
-            it.isVisible = subtitle != null
-            it.text = subtitle
-        }
     }
 
     /**
@@ -369,9 +360,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             }
         }
         selectedView?.let { ensureChipVisible(scrollView, it) }
-        if (titleInited) {
-            updateSubtitle()
-        }
     }
 
     /** 高亮chip滚动到可见 */

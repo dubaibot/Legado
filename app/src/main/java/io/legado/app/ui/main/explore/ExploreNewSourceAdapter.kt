@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ItemExploreSourceBinding
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.startActivity
 
 /**
@@ -31,7 +32,12 @@ class ExploreNewSourceAdapter(context: Context, private val callBack: CallBack) 
     ) {
         val displayName = getDisplayName(item)
         binding.tvName.text = displayName
-        binding.tvIcon.text = displayName.firstOrNull()?.toString() ?: ""
+        val firstChar = displayName.firstOrNull()
+        binding.tvIcon.text = if (firstChar != null && firstChar.isLetterOrDigit()) {
+            firstChar.toString()
+        } else {
+            "书"
+        }
         binding.tvIcon.background = createIconBackground(item.bookSourceUrl)
     }
 
@@ -84,8 +90,9 @@ class ExploreNewSourceAdapter(context: Context, private val callBack: CallBack) 
             (key.hashCode() and Int.MAX_VALUE) % iconColors.size
         ]
         return GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
+            shape = GradientDrawable.RECTANGLE
             setColor(color)
+            setCornerRadius(12f.dpToPx())
         }
     }
 
