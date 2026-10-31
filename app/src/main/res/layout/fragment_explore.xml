@@ -20,7 +20,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:scrollbars="none"
-        android:background="@color/background"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/title_bar"
         app:layout_constraintStart_toStartOf="parent"
@@ -43,6 +42,7 @@
         android:id="@+id/rv_find"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@+id/hsv_quick_group"
         app:layout_constraintBottom_toBottomOf="parent"
         tools:listitem="@layout/item_find_book" />
@@ -51,6 +51,7 @@
         android:id="@+id/rv_grid"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:clipToPadding="false"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@+id/hsv_quick_group"
         app:layout_constraintBottom_toBottomOf="parent"

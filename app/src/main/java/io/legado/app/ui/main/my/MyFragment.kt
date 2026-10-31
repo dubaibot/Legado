@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.core.view.ViewCompat
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.base.BaseFragment
@@ -73,7 +74,12 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     override fun updateMainBottomPadding(bottomPadding: Int) {
         bottomPaddingPx = bottomPadding
         (childFragmentManager.findFragmentByTag("prefFragment") as? MyPreferenceFragment)
-            ?.listView?.setPadding(0, 0, 0, bottomPadding)
+            ?.listView?.let { lv ->
+                lv.setPadding(0, 0, 0, bottomPadding)
+                // 基类 applyNavigationBarPadding 的 insets 监听器会用系统导航栏高度
+                // 覆盖底部留白，这里替换为无操作监听器，保留底栏完整高度
+                ViewCompat.setOnApplyWindowInsetsListener(lv) { _, insets -> insets }
+            }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
@@ -137,6 +143,10 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
             super.onViewCreated(view, savedInstanceState)
             listView.setEdgeEffectColor(primaryColor)
+            // 父 Fragment 在 onFragmentCreated 时 listView 尚未创建，这里补应用底栏留白
+            (parentFragment as? MyFragment)?.updateMainBottomPadding(
+                (activity as? MainActivity)?.mainContentBottomPadding() ?: 0
+            )
         }
 
         override fun onResume() {
