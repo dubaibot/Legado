@@ -358,7 +358,7 @@ fun HomepageScreen(
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = viewModel::onRefresh,
                                  onBookClick = { book ->
-                                     onBookClick(book)
+                                     onBookClick(book.name, book.author, book.bookUrl, book.origin, book.coverUrl)
                                  },
                 onBookLongClick = { book ->
                     selectedBook = book

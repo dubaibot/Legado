@@ -33,6 +33,9 @@ org.htmlunit.corejs.javascript.** { *; }
 ### 以下内容是更新rhino1.7.14.jar后IDE提示添加的
 -dontwarn java.beans.**
 -dontwarn javax.script.**
+### htmlunit-core-js 5.x 引入 Swing debugger GUI，Android 无 javax.swing/java.awt
+-dontwarn javax.swing.**
+-dontwarn java.awt.**
 ### 以下内容是更新rhino1.8.0.jar后IDE提示添加的
 -dontwarn jdk.dynalink.CallSiteDescriptor
 -dontwarn jdk.dynalink.DynamicLinker
