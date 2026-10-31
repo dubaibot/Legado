@@ -100,6 +100,7 @@ import io.legado.app.ui.main.homepage.modules.GridModule
 import io.legado.app.ui.main.homepage.modules.GridRankingModule
 import io.legado.app.ui.main.homepage.modules.HomepageBookCover
 import io.legado.app.ui.main.homepage.modules.HomepageModuleSkeleton
+import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.rss.read.ReadRssActivity
 import io.legado.app.ui.main.homepage.modules.RankingModule
 import io.legado.app.ui.main.homepage.modules.WaterfallItem
@@ -113,6 +114,7 @@ import io.legado.app.ui.widget.components.BookBottomSheet
 import io.legado.app.ui.widget.components.card.GlassCard
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
+import io.legado.app.utils.startActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
@@ -195,6 +197,13 @@ fun HomepageScreen(
             onDeleteCustomSet = viewModel::deleteCustomSet,
             onAssignModuleToCustomSet = viewModel::assignModuleToCustomSet,
         )
+    }
+
+    // 最近阅读点击直接进阅读
+    val onReadNow: (SearchBook) -> Unit = { book ->
+        context.startActivity<ReadBookActivity> {
+            putExtra("bookUrl", book.bookUrl)
+        }
     }
 
     // contentWindowInsets = WindowInsets(0)：不消费系统导航栏 inset，
@@ -357,10 +366,11 @@ fun HomepageScreen(
                 context = context,
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = viewModel::onRefresh,
-                                 onBookClick = { book ->
-                                     onBookClick(book.name, book.author, book.bookUrl, book.origin, book.coverUrl)
-                                 },
-                onBookLongClick = { book ->
+                                  onBookClick = { book ->
+                                      onBookClick(book.name, book.author, book.bookUrl, book.origin, book.coverUrl)
+                                  },
+                                  onReadNow = onReadNow,
+                                  onBookLongClick = { book ->
                     selectedBook = book
                     selectedBookShelfState = viewModel.getCurrentBookShelfState(book)
                     showBookSheet = true
@@ -394,9 +404,7 @@ fun HomepageScreen(
                         item {
                             RecentBooksSection(
                                 books = uiState.recentBooks,
-                                onBookClick = { book ->
-                                    viewModel.onBookClick(book)
-                                },
+                                onReadNow = onReadNow,
                                 onBookLongClick = { book ->
                                     selectedBook = book
                                     selectedBookShelfState = viewModel.getCurrentBookShelfState(book)
@@ -517,6 +525,7 @@ private fun SourceTabLayout(
     isRefreshing: Boolean,
     onRefresh: (String?) -> Unit,
     onBookClick: (SearchBook) -> Unit,
+    onReadNow: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
 ) {
     // 使用管理状态中的集列表作为Tab来源，确保顺序与排序同步
@@ -569,7 +578,7 @@ private fun SourceTabLayout(
             // 最近阅读区域
             RecentBooksSection(
                 books = recentBooks,
-                onBookClick = onBookClick,
+                onReadNow = onReadNow,
                 onBookLongClick = onBookLongClick,
             )
             // 可滚动的 Tab 栏（自定义实现，高度36dp，底部下划线指示器）
@@ -702,60 +711,35 @@ private fun SourceTabLayout(
 @Composable
 private fun RecentBooksSection(
     books: List<HomepageBookItemUi>,
-    onBookClick: (SearchBook) -> Unit,
+    onReadNow: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
 ) {
     if (books.isEmpty()) return
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.recent_reading),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-        ) {
-            itemsIndexed(books, key = { index, item -> "${item.book.bookUrl}:$index" }) { _, item ->
-                val book = item.book
-                Column(
-                    modifier = Modifier
-                        .width(100.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .combinedClickable(
-                            onClick = { onBookClick(book) },
-                            onLongClick = { onBookLongClick(book) },
-                        ),
-                ) {
-                    HomepageBookCover(
-                        name = book.name,
-                        author = book.author,
-                        coverUrl = book.coverUrl,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(5f / 7f),
-                        cornerRadius = 0.dp,
-                        identity = book.bookUrl,
-                    )
-                    Text(
-                        text = book.name,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
-                    )
-                }
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        itemsIndexed(books, key = { index, item -> "${item.book.bookUrl}:$index" }) { _, item ->
+            val book = item.book
+            Box(
+                modifier = Modifier
+                    .width(100.dp)
+                    .aspectRatio(5f / 7f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .combinedClickable(
+                        onClick = { onReadNow(book) },
+                        onLongClick = { onBookLongClick(book) },
+                    ),
+            ) {
+                HomepageBookCover(
+                    name = book.name,
+                    author = book.author,
+                    coverUrl = book.coverUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    cornerRadius = 0.dp,
+                    identity = book.bookUrl,
+                )
             }
         }
     }

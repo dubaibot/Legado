@@ -62,6 +62,7 @@ object BackupSelectorConfig {
         BackupItem("httpTTS", "httpTTS.json", "TTS配置", "数据库", "🔊"),
         BackupItem("keyboardAssists", "keyboardAssists.json", "键盘辅助", "数据库", "⌨️"),
         BackupItem("dictRule", "dictRule.json", "词典规则", "数据库", "📖"),
+        BackupItem("autoTask", "autoTask.json", "自动任务", "数据库", "⏰"),
         BackupItem("servers", "servers.json", "服务器配置", "数据库", "🖥️"),
         BackupItem("runtimeSourceCache", "runtimeSourceCache.json", "书源运行数据", "数据库", "⚡"),
         BackupItem("readConfig", "readConfig.json", "阅读样式配置", "配置", "🎨"),

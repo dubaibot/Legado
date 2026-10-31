@@ -51,6 +51,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.model.VideoPlay.VIDEO_PREF_NAME
 import io.legado.app.model.BookCover
+import io.legado.app.model.AutoTaskRule
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.data.repository.CoverGalleryRepository
 import io.legado.app.data.repository.ReadRecordRepository
@@ -396,6 +397,15 @@ object Restore {
             appDb.dictRuleDao.deleteAll()
             fileToListT<DictRule>(path, "dictRule.json")?.let {
                 appDb.dictRuleDao.insert(*it.toTypedArray())
+            }
+        }
+
+        // 恢复自动任务
+        if ("autoTask.json" in selectedSet) {
+            progress("autoTask.json")
+            appDb.autoTaskRuleDao.deleteAll()
+            fileToListT<AutoTaskRule>(path, "autoTask.json")?.let {
+                appDb.autoTaskRuleDao.insert(*it.toTypedArray())
             }
         }
 
@@ -772,6 +782,13 @@ object Restore {
         appDb.dictRuleDao.deleteAll()
         fileToListT<DictRule>(path, "dictRule.json")?.let {
             appDb.dictRuleDao.insert(*it.toTypedArray())
+        }
+
+        // 恢复自动任务
+        progress("autoTask.json")
+        appDb.autoTaskRuleDao.deleteAll()
+        fileToListT<AutoTaskRule>(path, "autoTask.json")?.let {
+            appDb.autoTaskRuleDao.insert(*it.toTypedArray())
         }
 
         // 恢复键盘辅助（先删除再插入，保证与备份数据一致）

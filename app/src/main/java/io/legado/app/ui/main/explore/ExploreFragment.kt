@@ -81,6 +81,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var groupsMenu: SubMenu? = null
     private var lastQuickGroup: String? = null
 
+    private var bottomPaddingPx: Int = 0
+
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
         initSearchView()
@@ -92,12 +94,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     override fun updateMainBottomPadding(bottomPadding: Int) {
-        binding.root.setPadding(
-            binding.root.paddingLeft,
-            binding.root.paddingTop,
-            binding.root.paddingRight,
-            bottomPadding
-        )
+        bottomPaddingPx = bottomPadding
+        binding.rvFind.setPadding(0, 0, 0, bottomPadding)
+        binding.rvGrid.setPadding(0, 0, 0, bottomPadding)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {

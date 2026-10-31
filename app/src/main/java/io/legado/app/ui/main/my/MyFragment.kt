@@ -58,6 +58,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     override val position: Int? get() = arguments?.getInt("position")
 
     private val binding by viewBinding(FragmentMyConfigBinding::bind)
+    private var bottomPaddingPx: Int = 0
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -70,12 +71,9 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     }
 
     override fun updateMainBottomPadding(bottomPadding: Int) {
-        binding.root.setPadding(
-            binding.root.paddingLeft,
-            binding.root.paddingTop,
-            binding.root.paddingRight,
-            bottomPadding
-        )
+        bottomPaddingPx = bottomPadding
+        (childFragmentManager.findFragmentByTag("prefFragment") as? MyPreferenceFragment)
+            ?.listView?.setPadding(0, 0, 0, bottomPadding)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {

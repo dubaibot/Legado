@@ -75,6 +75,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
     private var rssFlowJob: Job? = null
     private val groups = linkedSetOf<String>()
     private var groupsMenu: SubMenu? = null
+    private var bottomPaddingPx: Int = 0
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -86,12 +87,8 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
     }
 
     override fun updateMainBottomPadding(bottomPadding: Int) {
-        binding.root.setPadding(
-            binding.root.paddingLeft,
-            binding.root.paddingTop,
-            binding.root.paddingRight,
-            bottomPadding
-        )
+        bottomPaddingPx = bottomPadding
+        binding.recyclerView.setPadding(0, 0, 0, bottomPadding)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {

@@ -17,6 +17,7 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.BookCover
 import io.legado.app.data.entities.ReadRecord
+import io.legado.app.model.AutoTaskRule
 import io.legado.app.help.storage.BackupSelectorConfig
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
@@ -160,6 +161,7 @@ object Backup {
             "httpTTS.json",
             "keyboardAssists.json",
             "dictRule.json",
+            "autoTask.json",
             "servers.json",
             DirectLinkUpload.ruleFileName,
             ReadBookConfig.configFileName,
@@ -587,6 +589,9 @@ object Backup {
         }
         if (selectedFiles.contains("dictRule.json")) {
             writeListToJson(appDb.dictRuleDao.all, "dictRule.json", backupPath, onProgress)
+        }
+        if (selectedFiles.contains("autoTask.json")) {
+            writeListToJson(appDb.autoTaskRuleDao.all(), "autoTask.json", backupPath, onProgress)
         }
         if (selectedFiles.contains(CoverGalleryRepository.backupDirName)) {
             onProgress?.invoke(BackupInfoHelper.getDisplayName(CoverGalleryRepository.backupDirName))

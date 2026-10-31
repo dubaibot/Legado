@@ -27,14 +27,11 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
         android:layout_weight="1"
+        android:ellipsize="end"
         android:gravity="center"
         android:maxLines="1"
         android:textAppearance="@style/ToolbarTitle"
         android:textColor="@color/primaryText"
         tools:text="书源名" />
-
-    <Space
-        android:layout_width="96dp"
-        android:layout_height="1dp" />
 
 </LinearLayout>

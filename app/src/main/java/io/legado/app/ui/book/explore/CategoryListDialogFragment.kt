@@ -83,8 +83,8 @@ class CategoryListDialogFragment : BaseDialogFragment(R.layout.dialog_category_l
         val source = viewModel.sourceData.value
         val canLogin = source != null
                 && (!source.loginUrl.isNullOrBlank() || !source.loginUi.isNullOrBlank())
-        binding.llEntries.isVisible = hasFilter || canLogin
-        binding.tvFilterSettings.isVisible = hasFilter
+        binding.llEntries.isVisible = true
+        binding.tvFilterSettings.isVisible = true
         binding.tvSourceLogin.isVisible = canLogin
     }
 

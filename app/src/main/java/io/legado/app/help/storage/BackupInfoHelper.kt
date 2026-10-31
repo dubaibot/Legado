@@ -106,6 +106,7 @@ object BackupInfoHelper {
         "httpTTS.json" to "TTS 配置",
         "keyboardAssists.json" to "键盘辅助",
         "dictRule.json" to "词典规则",
+        "autoTask.json" to "自动任务",
         "servers.json" to "服务器配置",
         "runtimeSourceCache.json" to "书源运行数据",
         "book_cache" to "书籍缓存",
@@ -183,6 +184,7 @@ object BackupInfoHelper {
             DbItemDef("httpTTS.json", { appDb.httpTTSDao.count }, 500L),
             DbItemDef("keyboardAssists.json", { appDb.keyboardAssistsDao.count }, 300L),
             DbItemDef("dictRule.json", { appDb.dictRuleDao.count }, 500L),
+            DbItemDef("autoTask.json", { appDb.autoTaskRuleDao.count() }, 800L),
             DbItemDef("servers.json", { appDb.serverDao.count }, 300L),
             DbItemDef("homepage.json", { appDb.homepageModuleDao.count + appDb.homepageCustomSetDao.count }, 300L)
         )
@@ -412,6 +414,7 @@ object BackupInfoHelper {
             "httpTTS" -> appDb.httpTTSDao.count
             "keyboardAssists" -> appDb.keyboardAssistsDao.count
             "dictRule" -> appDb.dictRuleDao.count
+            "autoTask" -> appDb.autoTaskRuleDao.count()
             "servers" -> appDb.serverDao.count
             "homepage" -> appDb.homepageModuleDao.count + appDb.homepageCustomSetDao.count
             "runtimeSourceCache" -> appDb.cacheDao.getRuntimeSourceCacheCount(System.currentTimeMillis())

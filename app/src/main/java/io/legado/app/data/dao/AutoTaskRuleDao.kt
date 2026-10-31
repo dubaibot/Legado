@@ -26,6 +26,12 @@ interface AutoTaskRuleDao {
     @Update
     fun update(vararg rule: AutoTaskRule)
 
+    @Query("delete from auto_task_rules")
+    fun deleteAll()
+
+    @Query("select count(*) from auto_task_rules")
+    fun count(): Int
+
     @Query("delete from auto_task_rules where id = :id")
     fun delete(id: String)
 
