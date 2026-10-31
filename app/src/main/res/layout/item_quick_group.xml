@@ -9,7 +9,7 @@
     android:paddingEnd="12dp"
     android:paddingTop="6dp"
     android:paddingBottom="6dp"
-    android:background="@drawable/bg_quick_group"
+    android:background="@drawable/bg_quick_group_accent"
     android:textSize="13sp"
     android:textColor="@color/quick_group_text"
     android:singleLine="true"

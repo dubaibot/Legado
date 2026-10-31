@@ -208,12 +208,12 @@ fun resolveTopBarContentColor(
     if (solid != null) {
         // 背景越亮文字越深：亮背景(>0.5)用深色文字，暗背景用浅色文字。
         // 与 MenuExtensions.getMenuColor 透明导航栏分支的取色约定保持一致。
-        return context.getPrimaryTextColor(ColorUtils.calculateLuminance(solid) > 0.5)
+        return context.getPrimaryTextColor(ColorUtils.calculateLuminance(solid) > 0.25)
     }
     if (topBarTheme != Theme.Auto) {
         return MenuExtensions.getMenuColor(context, topBarTheme)
     }
-    return context.getPrimaryTextColor(windowBackgroundLuminance(context) > 0.5f)
+    return context.getPrimaryTextColor(windowBackgroundLuminance(context) > 0.25f)
 }
 
 /**

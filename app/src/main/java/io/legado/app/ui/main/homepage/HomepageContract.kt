@@ -36,6 +36,7 @@ data class HomepageBookItemUi(
  * @property isManageMode 是否处于管理模式
  * @property isRefreshing 是否正在刷新
  * @property manageState 管理模式状态
+ * @property recentBooks 最近阅读书籍列表
  */
 @Stable
 data class HomepageUiState(
@@ -43,6 +44,7 @@ data class HomepageUiState(
     val isManageMode: Boolean = false,
     val isRefreshing: Boolean = false,
     val manageState: HomepageManageUiState = HomepageManageUiState(),
+    val recentBooks: List<HomepageBookItemUi> = emptyList(),
 )
 
 /**

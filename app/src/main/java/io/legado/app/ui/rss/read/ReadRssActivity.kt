@@ -566,7 +566,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     private fun upStarMenu() {
-        starMenuItem?.isVisible = viewModel.rssArticle != null
+        starMenuItem?.isVisible = true
         if (viewModel.rssStar != null) {
             starMenuItem?.setIcon(R.drawable.ic_star)
             starMenuItem?.setTitle(R.string.in_favorites)
@@ -575,7 +575,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             starMenuItem?.setTitle(R.string.out_favorites)
         }
         starMenuItem?.icon?.setTintMutate(binding.titleBar.topBarContentColor())
-        // starthtml 场景无文章，TTS 菜单也不应显示
+        // starthtml 场景无文章，TTS 菜单不应显示
         ttsMenuItem?.isVisible = viewModel.rssArticle != null
     }
 

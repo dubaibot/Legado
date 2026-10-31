@@ -9,6 +9,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,7 +30,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -67,6 +72,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -92,6 +98,7 @@ import io.legado.app.ui.main.homepage.modules.ButtonGroupModule
 import io.legado.app.ui.main.homepage.modules.CardModule
 import io.legado.app.ui.main.homepage.modules.GridModule
 import io.legado.app.ui.main.homepage.modules.GridRankingModule
+import io.legado.app.ui.main.homepage.modules.HomepageBookCover
 import io.legado.app.ui.main.homepage.modules.HomepageModuleSkeleton
 import io.legado.app.ui.rss.read.ReadRssActivity
 import io.legado.app.ui.main.homepage.modules.RankingModule
@@ -343,12 +350,16 @@ fun HomepageScreen(
             SourceTabLayout(
                 modules = uiState.modules,
                 sets = uiState.manageState.sets,
+                recentBooks = uiState.recentBooks,
                 paddingValues = paddingValues,
                 bottomPaddingPx = bottomPaddingPx,
                 viewModel = viewModel,
                 context = context,
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = viewModel::onRefresh,
+                                 onBookClick = { book ->
+                                     onBookClick(book)
+                                 },
                 onBookLongClick = { book ->
                     selectedBook = book
                     selectedBookShelfState = viewModel.getCurrentBookShelfState(book)
@@ -380,6 +391,19 @@ fun HomepageScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
+                        item {
+                            RecentBooksSection(
+                                books = uiState.recentBooks,
+                                onBookClick = { book ->
+                                    viewModel.onBookClick(book)
+                                },
+                                onBookLongClick = { book ->
+                                    selectedBook = book
+                                    selectedBookShelfState = viewModel.getCurrentBookShelfState(book)
+                                    showBookSheet = true
+                                },
+                            )
+                        }
                         items(sortedModules, key = { it.globalId }) { module ->
                             HomepageModuleItem(
                                 module = module,
@@ -485,12 +509,14 @@ fun HomepageScreen(
 private fun SourceTabLayout(
     modules: List<HomepageModuleUi>,
     sets: List<HomepageSourceManageUi>,
+    recentBooks: List<HomepageBookItemUi>,
     paddingValues: PaddingValues,
     bottomPaddingPx: Int,
     viewModel: HomepageViewModel,
     context: android.content.Context,
     isRefreshing: Boolean,
     onRefresh: (String?) -> Unit,
+    onBookClick: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
 ) {
     // 使用管理状态中的集列表作为Tab来源，确保顺序与排序同步
@@ -540,6 +566,12 @@ private fun SourceTabLayout(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (selectedSets.isEmpty()) return@Column
+            // 最近阅读区域
+            RecentBooksSection(
+                books = recentBooks,
+                onBookClick = onBookClick,
+                onBookLongClick = onBookLongClick,
+            )
             // 可滚动的 Tab 栏（自定义实现，高度36dp，底部下划线指示器）
             val tabScrollState = rememberScrollState()
             val accent = pageAccentColor()
@@ -639,7 +671,7 @@ private fun SourceTabLayout(
                                 module = module,
                                 viewModel = viewModel,
                                 onBookClick = { book ->
-                                    viewModel.onBookClick(book)
+                                    onBookClick(book)
                                 },
                                 onBookLongClick = onBookLongClick,
                                 onModuleHeaderClick = { title, sourceUrl, exploreUrl ->
@@ -662,6 +694,69 @@ private fun SourceTabLayout(
                         bottom = 16.dp + with(androidx.compose.ui.platform.LocalDensity.current) { bottomPaddingPx.toDp() },
                     ),
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RecentBooksSection(
+    books: List<HomepageBookItemUi>,
+    onBookClick: (SearchBook) -> Unit,
+    onBookLongClick: (SearchBook) -> Unit,
+) {
+    if (books.isEmpty()) return
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.recent_reading),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+        ) {
+            itemsIndexed(books, key = { index, item -> "${item.book.bookUrl}:$index" }) { _, item ->
+                val book = item.book
+                Column(
+                    modifier = Modifier
+                        .width(100.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .combinedClickable(
+                            onClick = { onBookClick(book) },
+                            onLongClick = { onBookLongClick(book) },
+                        ),
+                ) {
+                    HomepageBookCover(
+                        name = book.name,
+                        author = book.author,
+                        coverUrl = book.coverUrl,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(5f / 7f),
+                        cornerRadius = 0.dp,
+                        identity = book.bookUrl,
+                    )
+                    Text(
+                        text = book.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
+                    )
+                }
+            }
         }
     }
 }

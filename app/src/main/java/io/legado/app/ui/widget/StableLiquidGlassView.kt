@@ -3,10 +3,13 @@ package io.legado.app.ui.widget
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.util.AttributeSet
 import android.view.ViewGroup
@@ -27,9 +30,18 @@ class StableLiquidGlassView @JvmOverloads constructor(
     private var captureJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main)
 
+    private var blurRadius: Float = 24f * resources.displayMetrics.density
+    private var tintAlpha: Float = 0f
+    private var tintRed: Float = 0f
+    private var tintGreen: Float = 0f
+    private var tintBlue: Float = 0f
+    private var cornerRadius: Float = 0f
+
     fun beginBatchUpdate() {}
 
-    fun endBatchUpdate() {}
+    fun endBatchUpdate() {
+        applyBlurEffect()
+    }
 
     fun bind(source: ViewGroup?) {
         sourceView = source
@@ -43,23 +55,35 @@ class StableLiquidGlassView @JvmOverloads constructor(
 
     fun isReleased(): Boolean = sourceView == null
 
-    fun setCornerRadius(value: Float) {}
+    fun setCornerRadius(value: Float) {
+        cornerRadius = value
+    }
 
     fun setRefractionHeight(value: Float) {}
 
     fun setRefractionOffset(value: Float) {}
 
-    fun setTintAlpha(value: Float) {}
+    fun setTintAlpha(value: Float) {
+        tintAlpha = value
+    }
 
-    fun setTintColorRed(value: Float) {}
+    fun setTintColorRed(value: Float) {
+        tintRed = value
+    }
 
-    fun setTintColorGreen(value: Float) {}
+    fun setTintColorGreen(value: Float) {
+        tintGreen = value
+    }
 
-    fun setTintColorBlue(value: Float) {}
+    fun setTintColorBlue(value: Float) {
+        tintBlue = value
+    }
 
     fun setDispersion(value: Float) {}
 
-    fun setBlurRadius(value: Float) {}
+    fun setBlurRadius(value: Float) {
+        blurRadius = value
+    }
 
     fun setDraggableEnabled(enabled: Boolean) {}
 
@@ -68,6 +92,7 @@ class StableLiquidGlassView @JvmOverloads constructor(
     fun setTouchEffectEnabled(enabled: Boolean) {}
 
     fun refresh() {
+        applyBlurEffect()
         startCapture()
     }
 
@@ -84,8 +109,7 @@ class StableLiquidGlassView @JvmOverloads constructor(
 
     private fun applyBlurEffect() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        val density = resources.displayMetrics.density
-        val radius = 24f * density
+        val radius = blurRadius.coerceAtLeast(1f)
         setRenderEffect(RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP))
     }
 
@@ -108,6 +132,18 @@ class StableLiquidGlassView @JvmOverloads constructor(
             val canvas = Canvas(bitmap)
             canvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
             source.draw(canvas)
+            // 应用 tint 叠加色
+            if (tintAlpha > 0f) {
+                canvas.drawColor(
+                    Color.argb(
+                        (tintAlpha * 255).toInt().coerceIn(0, 255),
+                        (tintRed * 255).toInt().coerceIn(0, 255),
+                        (tintGreen * 255).toInt().coerceIn(0, 255),
+                        (tintBlue * 255).toInt().coerceIn(0, 255)
+                    ),
+                    PorterDuff.Mode.SRC_IN
+                )
+            }
             background = BitmapDrawable(resources, bitmap)
         }
     }

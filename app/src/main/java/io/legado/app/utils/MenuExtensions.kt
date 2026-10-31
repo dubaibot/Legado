@@ -150,7 +150,7 @@ object MenuExtensions {
         theme: Theme = Theme.Auto
     ): Int {
         if (context.transparentNavBar) {
-            val isBackgroundLight = ColorUtils.calculateLuminance(context.backgroundColor) > 0.5
+            val isBackgroundLight = ColorUtils.calculateLuminance(context.backgroundColor) > 0.25
             return context.getPrimaryTextColor(isBackgroundLight)
         }
         val primaryTextColor = context.primaryTextColor

@@ -90,7 +90,9 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
                 val ruleContent = rssSource?.ruleContent
                 val startHtml = intent.getStringExtra("startHtml")
                 val openUrl = intent.getStringExtra("openUrl")
+                // starthtml 启动页也查收藏（用 sourceUrl 作为 link）
                 if (startHtml != null) {
+                    rssStar = appDb.rssStarDao.get(origin, origin)
                     loadStartHtml(startHtml)
                 } else if (ruleContent.isNullOrBlank() || rssSource!!.singleUrl) {
                     loadUrl(openUrl, origin)
@@ -158,8 +160,11 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
         // 启动页源（有 startHtml）没有 rssArticle，需要重新加载启动页
         val startHtml = rssSource.startHtml
         if (startHtml != null && rssArticle == null) {
+            // 刷新后重新查询收藏状态，确保星标菜单正确显示
+            rssStar = appDb.rssStarDao.get(origin ?: rssSource.sourceUrl, rssSource.sourceUrl)
             loadStartHtml(startHtml)
             // 不调用 finish()，让 WebView 的 onProgressChanged 来隐藏进度条
+            upStarMenuData.postValue(true)
             return
         }
         val rssArticle = rssArticle ?: return finish.invoke()
@@ -188,6 +193,19 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
             } ?: rssArticle?.toStar()?.let {
                 appDb.rssStarDao.insert(it)
                 rssStar = it
+            } ?: rssSource?.let { source ->
+                // starthtml 启动页：用 sourceUrl 作为 link 创建收藏
+                val star = RssStar(
+                    origin = source.sourceUrl,
+                    sort = "",
+                    title = source.sourceName,
+                    starTime = System.currentTimeMillis(),
+                    link = source.sourceUrl,
+                    group = source.sourceGroup ?: "默认分组",
+                    type = 0
+                )
+                appDb.rssStarDao.insert(star)
+                rssStar = star
             }
         }.onSuccess {
             upStarMenuData.postValue(true)

@@ -10,7 +10,6 @@ import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.GridLayoutManager
@@ -26,9 +25,6 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.ExploreCatNode
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ActivityExploreShowBinding
-import io.legado.app.databinding.ViewLoadMoreBinding
-import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.TopBarConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -337,10 +333,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.l2Kinds(), viewModel.currentL2
     ) { viewModel.selectL2(it) }
 
-    /** 壁纸是否已配置：有壁纸时分组栏 chip 背景透明 */
-    private val hasTopBarWallpaper: Boolean
-        get() = TopBarConfig.currentWallpaperFile(this, AppConfig.isNightTheme) != null
-
     private fun upBar(
         scrollView: HorizontalScrollView,
         container: ViewGroup,
@@ -362,10 +354,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             val tv = layoutInflater.inflate(
                 R.layout.item_quick_group, container, false
             ) as TextView
-            if (hasTopBarWallpaper) {
-                tv.background =
-                    ContextCompat.getDrawable(this, R.drawable.bg_quick_group_transparent)
-            }
             tv.text = names[index]
             tv.isSelected = current == node
             tv.setTextColor(if (current == node) selectedColor else contentColor)
@@ -373,6 +361,10 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 if (onSelect(node)) {
                     clearAndReload()
                 }
+            }
+            tv.setOnLongClickListener {
+                CategoryListDialogFragment().show(supportFragmentManager, "categoryList")
+                true
             }
             container.addView(tv)
             if (tv.isSelected) {

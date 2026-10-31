@@ -94,6 +94,13 @@
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:icon="@drawable/ic_storage_black_24dp"
+            android:key="cacheManage"
+            android:summary="@string/storage_manage_summary"
+            android:title="@string/storage_manage"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory

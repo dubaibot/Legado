@@ -6,6 +6,7 @@ import android.text.Html
 import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourceExploreLite
 import io.legado.app.data.entities.RssArticle
@@ -377,17 +378,33 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomepageManageUiState())
 
+    /** 最近阅读书籍列表（取最近6条阅读记录，映射为书架中的书籍） */
+    private val recentBooksFlow = appDb.readRecordDao.getAllReadRecordsSortedByLastRead()
+        .mapLatest { records ->
+            records.take(6).mapNotNull { record ->
+                appDb.bookDao.getBook(record.bookName, record.bookAuthor)
+            }.map { book ->
+                HomepageBookItemUi(
+                    book = book.toSearchBook(),
+                    shelfState = BookshelfMatcher.getState(book.name, book.author, book.bookUrl)
+                )
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val uiState: StateFlow<HomepageUiState> = combine(
         displayModulesFlow,
         _isRefreshing,
         _isManageMode,
-        manageStateFlow
-    ) { modules, isRefreshing, isManageMode, manageState ->
+        manageStateFlow,
+        recentBooksFlow
+    ) { modules, isRefreshing, isManageMode, manageState, recentBooks ->
         HomepageUiState(
             modules = modules,
             isRefreshing = isRefreshing,
             isManageMode = isManageMode,
             manageState = manageState,
+            recentBooks = recentBooks,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomepageUiState())
 
