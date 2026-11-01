@@ -25,6 +25,15 @@ object PythonEnv {
     @Volatile
     private var python: Python? = null
 
+    /** 插件模块解析器：优先于标准导入查找插件 */
+    @Volatile
+    private var pluginResolver: ((String) -> PyObject?)? = null
+
+    /** 设置插件解析器，由 PyLoader 在 reload 后注册 */
+    fun setPluginResolver(resolver: (String) -> PyObject?) {
+        pluginResolver = resolver
+    }
+
     /** 启动 Python 解释器，幂等。返回是否成功。 */
     fun start(): Boolean {
         if (started) return true
@@ -50,8 +59,13 @@ object PythonEnv {
         return python
     }
 
-    /** 获取（或导入）模块，未启动返回 null。 */
+    /** 获取（或导入）模块，未启动返回 null。插件优先走 pluginResolver。 */
     fun module(name: String): PyObject? {
+        // 插件解析器优先
+        pluginResolver?.let { resolver ->
+            val plugin = resolver(name)
+            if (plugin != null) return plugin
+        }
         return try {
             get()?.getModule(name)
         } catch (e: Exception) {

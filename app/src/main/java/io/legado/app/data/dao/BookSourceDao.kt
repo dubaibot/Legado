@@ -182,6 +182,30 @@ interface BookSourceDao {
     )
     fun getEnabledByType(type: Int): List<BookSource>
 
+    @Query(
+        """select * from book_sources_part 
+        where enabled = 1 and engineType = :engineType order by customOrder asc"""
+    )
+    fun flowEnabledByEngineType(engineType: Int): Flow<List<BookSourcePart>>
+
+    @Query(
+        """select * from book_sources 
+        where enabled = 1 and engineType = :engineType order by customOrder asc"""
+    )
+    fun getEnabledByEngineType(engineType: Int): List<BookSource>
+
+    @Query(
+        """select * from book_sources_part 
+        where enabled = 1 and engineType = 0 order by customOrder asc"""
+    )
+    fun flowJsEnabledPart(): Flow<List<BookSourcePart>>
+
+    @Query(
+        """select * from book_sources_part 
+        where enabled = 1 and engineType = 1 order by customOrder asc"""
+    )
+    fun flowPyEnabledPart(): Flow<List<BookSourcePart>>
+
     @Query("select * from book_sources where enabled = 1 and bookSourceUrl = :baseUrl")
     fun getBookSourceAddBook(baseUrl: String): BookSource?
 

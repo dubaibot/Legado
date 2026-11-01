@@ -15,6 +15,7 @@ import com.google.gson.JsonSerializer
 import com.google.gson.annotations.SerializedName
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
+import io.legado.app.constant.EngineType
 import io.legado.app.data.entities.rule.BookInfoRule
 import io.legado.app.data.entities.rule.ContentRule
 import io.legado.app.data.entities.rule.ExploreRule
@@ -47,6 +48,10 @@ data class BookSource(
     // 类型，0 文本，1 音频, 2 图片, 3 文件（指的是类似知轩藏书只提供下载的网站）, 4 视频
     @BookSourceType.Type
     var bookSourceType: Int = 0,
+    // 引擎类型: 0=JS, 1=Py
+    @EngineType.Type
+    @ColumnInfo(defaultValue = "0")
+    var engineType: Int = 0,
     // 详情页url正则
     var bookUrlPattern: String? = null,
     // 手动排序编号
@@ -261,6 +266,7 @@ data class BookSource(
                 && equal(bookSourceUrl, source.bookSourceUrl)
                 && equal(bookSourceGroup, source.bookSourceGroup)
                 && bookSourceType == source.bookSourceType
+                && engineType == source.engineType
                 && equal(bookUrlPattern, source.bookUrlPattern)
                 && equal(bookSourceComment, source.bookSourceComment)
                 && customOrder == source.customOrder
@@ -296,6 +302,9 @@ data class BookSource(
             val jsonObject = INITIAL_GSON.toJsonTree(src).asJsonObject
             if (src.nextPageLazyLoad == false) {
                 jsonObject.remove("nextPageLazyLoad")
+            }
+            if (src.engineType == 0) {
+                jsonObject.remove("engineType")
             }
             jsonObject as JsonElement
         }

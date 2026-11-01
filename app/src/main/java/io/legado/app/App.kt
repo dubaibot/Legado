@@ -51,6 +51,9 @@ import io.legado.app.help.http.ObsoleteUrlFactory
 import io.legado.app.help.http.TaskCookieContext
 import io.legado.app.help.http.TaskCookieStore
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.python.HomeBridge
+import io.legado.app.help.python.PyBuiltinPlugins
+import io.legado.app.help.python.PyLoader
 import io.legado.app.help.python.PythonEnv
 import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
@@ -267,6 +270,21 @@ class App : Application() {
             LogUtils.d("PythonEnv", "smoke boom result: $boom (expected null)")
             PythonEnv.execAsync("print('chaquopy async exec ok')") { r ->
                 LogUtils.d("PythonEnv", "async exec result: $r")
+            }
+
+            // 加载已安装的 Python 插件
+            PyLoader.reload()
+            HomeBridge.refreshAllMeta()
+            LogUtils.d("PythonEnv", "plugins loaded: ${PyLoader.listInstalled().size}")
+
+            // 首次启动无插件时自动安装测试影视源
+            if (PyLoader.listInstalled().isEmpty()) {
+                PyLoader.install(
+                    "test_video",
+                    PyBuiltinPlugins.testVideoPlugin,
+                    PyBuiltinPlugins.testVideoMeta
+                )
+                LogUtils.d("PythonEnv", "test video plugin auto-installed")
             }
         } catch (e: Exception) {
             LogUtils.d("PythonEnv", "smoke error: ${e.message}")

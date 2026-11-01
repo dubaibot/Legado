@@ -12,7 +12,7 @@ import io.legado.app.utils.splitNotBlank
     (loginUrl is not null and trim(loginUrl) <> '') hasLoginUrl, lastUpdateTime, respondTime, weight, 
     (searchUrl is not null and trim(searchUrl) <> ''
      or mainJs is not null and trim(mainJs) <> '') hasSearchUrl,
-    (exploreUrl is not null and trim(exploreUrl) <> '') hasExploreUrl, eventListener, bookSourceType,
+    (exploreUrl is not null and trim(exploreUrl) <> '') hasExploreUrl, eventListener, bookSourceType, engineType,
     (mainJs is not null and trim(mainJs) <> '') hasJs, lastHost
     from book_sources""",
     viewName = "book_sources_part"
@@ -46,6 +46,8 @@ data class BookSourcePart(
     var eventListener: Boolean = false,
     // 书源类型
     var bookSourceType: Int = 0,
+    // 引擎类型: 0=JS, 1=Py
+    var engineType: Int = 0,
     // 是否为纯 JavaScript 单文件书源
     var hasJs: Boolean = false,
     // AnalyzeUrl解析后的真实域名(host),校验时回填,UI分组用此字段优先于源URL截取

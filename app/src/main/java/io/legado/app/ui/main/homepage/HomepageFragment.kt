@@ -7,12 +7,14 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import io.legado.app.data.appDb
+import io.legado.app.help.python.PyLoader
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.main.MainActivity
@@ -38,8 +40,13 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
      */
     private val viewModel: HomepageViewModel by activityViewModels()
 
+    private val pyViewModel: PyHomepageViewModel by activityViewModels()
+
     /** 底栏占用的底部高度（px），由 MainActivity 通知更新，用于 Compose 内容的底部 padding */
     private var bottomPaddingPx by mutableIntStateOf(0)
+
+    /** 是否显示 Python 首页（有已安装插件时默认显示） */
+    private var showPythonHome by mutableStateOf(false)
 
     constructor(position: Int) : this() {
         val bundle = Bundle()
@@ -60,14 +67,23 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
     ): View {
         // 初始化时获取当前底栏高度
         bottomPaddingPx = (activity as? MainActivity)?.mainContentBottomPadding() ?: 0
+        // 检测是否有已安装的 Python 插件
+        showPythonHome = PyLoader.listInstalled().isNotEmpty()
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 LegadoTheme {
-                    HomepageScreen(
-                        viewModel = viewModel,
-                        bottomPaddingPx = bottomPaddingPx,
-                        onBookClick = { name, author, bookUrl, origin, coverPath ->
+                    if (showPythonHome) {
+                        PyHomepageScreen(
+                            viewModel = pyViewModel,
+                            bottomPaddingPx = bottomPaddingPx,
+                            onRefreshClick = { pyViewModel.refreshPlugins() }
+                        )
+                    } else {
+                        HomepageScreen(
+                            viewModel = viewModel,
+                            bottomPaddingPx = bottomPaddingPx,
+                            onBookClick = { name, author, bookUrl, origin, coverPath ->
                             // RSS 订阅源文章 → 直接加载文章 URL（openUrl 路径，不依赖 DB 预存）
                             if (origin != null && appDb.rssSourceDao.has(origin)) {
                                 ReadRssActivity.start(
@@ -111,6 +127,7 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
                             startActivity(intent)
                         },
                     )
+                    }
                 }
             }
         }
