@@ -198,6 +198,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.showUnread, value)
         }
 
+    /** 首页自定义：开启后首页内容区显示原首页推荐模块（关闭时仅顶栏+py源内容/空白） */
+    var customHomepageEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.customHomepageEnabled, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.customHomepageEnabled, value)
+        }
+
+    /** 首页默认选中的 py 源 id（空 = 未选择） */
+    var pyHomePluginId: String
+        get() = appCtx.getPrefString(PreferKey.pyHomePluginId, "") ?: ""
+        set(value) {
+            appCtx.putPrefString(PreferKey.pyHomePluginId, value)
+        }
+
     var showLastUpdateTime: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showLastUpdateTime, false)
         set(value) {
