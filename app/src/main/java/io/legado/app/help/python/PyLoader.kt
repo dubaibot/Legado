@@ -1,6 +1,7 @@
 package io.legado.app.help.python
 
 import android.net.Uri
+import androidx.annotation.Keep
 import com.chaquo.python.PyObject
 import com.google.gson.Gson
 import io.legado.app.utils.LogUtils
@@ -27,6 +28,7 @@ object PyLoader {
     private val gson = Gson()
 
     /** 插件元信息 */
+    @Keep
     data class PyPluginMeta(
         val id: String = "",
         val name: String = "",
@@ -38,6 +40,7 @@ object PyLoader {
     )
 
     /** 插件完整信息（元信息 + 是否已加载） */
+    @Keep
     data class PyPlugin(
         val meta: PyPluginMeta,
         val loaded: Boolean,

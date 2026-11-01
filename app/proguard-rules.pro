@@ -173,6 +173,10 @@ cn.hutool.core.util.**{*;}
 ## 对外提供api
 -keep class io.legado.app.api.ReturnData{*;}
 
+# PyLoader：GSON 反射反序列化 PyPluginMeta/PyPlugin，R8 会剥离构造函数导致崩溃
+-keep class io.legado.app.help.python.PyLoader {*;}
+-keep class io.legado.app.help.python.PyLoader$* {*;}
+
 # Cronet
 -keepclassmembers class org.chromium.net.X509Util {
     *** sDefaultTrustManager;
