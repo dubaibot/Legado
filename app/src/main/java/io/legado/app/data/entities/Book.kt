@@ -172,6 +172,21 @@ data class Book(
 
     fun getDisplayIntro() = if (customIntro.isNullOrEmpty()) intro else customIntro
 
+    fun getDisplayIntroPlainText(): String {
+        val displayIntro = getDisplayIntro()?.trim() ?: return ""
+        return when {
+            displayIntro.startsWith("<useweb>") || displayIntro.startsWith("<usehtml>") -> {
+                val html = displayIntro.substringAfter('>')
+                io.legado.app.utils.HtmlFormatter.formatToPlainText(html)
+            }
+            displayIntro.startsWith("<md>") -> {
+                val md = displayIntro.removePrefix("<md>")
+                io.legado.app.utils.StringUtils.removeMdFormat(md)
+            }
+            else -> displayIntro
+        }
+    }
+
     //自定义简介有自动更新的需求时，可通过更新intro再调用upCustomIntro()完成
     @Suppress("unused")
     fun upCustomIntro() {

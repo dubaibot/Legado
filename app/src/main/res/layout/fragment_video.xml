@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    R3 沉浸式竖屏视频播放器 Fragment
+    设计文档 1.4 节布局规范 + ADR-8 多线路 UI 布局：
+    - 根布局 ConstraintLayout
+    - 播放器铺满 + 悬浮控件层叠加
+    - 左下角垂直：标题 → 线路选择器 → 集数选择器（横向滚动）→ 全屏按钮（居中）
+    - 右侧竖直：快退/静音/收藏/倍速/设置/快进
+    样式：48dp按钮 / 16dp间距 / #80000000半透明黑12dp圆角 / 14sp白色标题
+    用户需求：所有功能按钮图标统一白色（android:tint="#FFFFFF"）
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- 播放器视图（铺满屏幕） -->
+    <io.legado.app.help.gsyVideo.VideoPlayer
+        android:id="@+id/playerView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- video-sniff-403-and-rss-classic-fix Phase 2 (3.2)：WebView 降级播放器及切换按钮已删除
+         （WebViewVideoPlayer 为历史遗留摆设：Chromium forbidden header 规范静默忽略 Referer 注入，
+         连防盗链核心头都设不上；失败承接改由"降级链自愈 + 重试 + 系统浏览器"三通道承担） -->
+
+    <!-- 悬浮控件层（clickable=false，不拦截触摸事件） -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/controlsLayer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clickable="false"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- B1+ 修复：全屏模式下的悬浮返回按钮
+             根因：F1 真全屏修复中 titleBarNew.gone() 隐藏了整个 TitleBar 包括返回按钮，
+             导致全屏模式下返回按钮不可见、不可点击（日志证据：全屏9秒内无VideoBack日志触发）。
+             修复：添加独立的悬浮返回按钮，全屏时显示，参与 overlay controls 3秒自动隐藏。
+             非全屏时隐藏（由 titleBarNew 提供返回按钮）。
+             video-player-ux-fixes P5：padding 12→14dp，图标净尺寸 20dp 对齐 GlassTopAppBar R4 档。 -->
+        <ImageButton
+            android:id="@+id/btn_back_overlay"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_overlay_button"
+            android:contentDescription="@string/back"
+            android:src="@drawable/ic_back"
+            android:scaleType="centerInside"
+            android:padding="14dp"
+            android:tint="#FFFFFF"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- video-player-ux-fixes P4: 全屏态标题（左上角返回按钮右侧，垂直居中）
+             全屏时显示、左下角 tv_video_title 隐藏；退出全屏反向。
+             文本由 VideoFragment.setTitle() 统一双控件同步，随 overlay controls 3秒自动隐藏。 -->
+        <TextView
+            android:id="@+id/tv_title_fullscreen"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="48dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/text_14sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowRadius="4"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="@id/btn_back_overlay"
+            app:layout_constraintBottom_toBottomOf="@id/btn_back_overlay"
+            app:layout_constraintStart_toEndOf="@id/btn_back_overlay"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.0" />
+
+        <!-- 左下角区域：标题 + 线路选择器 + 集数选择器 + 全屏按钮
+             占满宽度减去右侧按钮区域，内容左对齐，全屏按钮水平居中 -->
+        <LinearLayout
+            android:id="@+id/left_bottom_container"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="56dp"
+            android:orientation="vertical"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/right_buttons">
+
+            <!-- 视频标题（14sp 白色 #80000000背景 12dp圆角 padding 12dp） -->
+            <TextView
+                android:id="@+id/tv_video_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/text_14sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_overlay_button"
+                android:padding="12dp" />
+
+            <!-- 线路选择器（多线路时显示，点击弹出线路列表） -->
+            <TextView
+                android:id="@+id/tv_route_selector"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/text_12sp"
+                android:background="@drawable/bg_overlay_button"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:visibility="gone" />
+
+            <!-- F181：沉浸式播放位置感知「第X集 · 共Y集」/「第X篇 · 共Y篇」
+                 （与传统布局信息区同源同值，复用 video_playlist_position_* 真值；无多集/多篇时 gone） -->
+            <TextView
+                android:id="@+id/tv_position_indicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/text_12sp"
+                android:background="@drawable/bg_overlay_button"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:visibility="gone" />
+
+            <!-- 集数选择器（横向滚动，多集时显示） -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_episodes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:overScrollMode="never"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <!-- F180：首次进入沉浸式播放的一次性手势引导卡（控件层之上；点击「知道了」后写偏好不再出现）
+             四条手势全部对应已有实现：双击暂停 / 长按倍速 / 左右滑 seek / 双指缩放全屏 -->
+        <LinearLayout
+            android:id="@+id/gesture_guide_card"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/bg_overlay_button"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <TextView
+                android:id="@+id/tv_guide_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/text_15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_guide_items"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:lineSpacingExtra="4dp"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/text_13sp" />
+
+            <TextView
+                android:id="@+id/btn_guide_confirm"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_overlay_button"
+                android:gravity="center"
+                android:minWidth="112dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/text_14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_guide_footnote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/text_11sp" />
+
+        </LinearLayout>
+
+        <!-- 右侧竖直功能按钮容器（48dp按钮 / 16dp间距）
+             U1 优化：全屏按钮移入此容器作为第一个按钮，随整体3秒自动隐藏+单击重新显示
+             用户需求：所有按钮图标统一白色（android:tint="#FFFFFF"） -->
+        <LinearLayout
+            android:id="@+id/right_buttons"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- 弹幕开关（沉浸式悬浮层补弹幕入口：与传统模式 GSY 控制条 toggle_danmaku 共用
+                 VideoPlay.danmakuShow 状态源）。默认 gone，由 VideoFragment.updateDanmakuButtonState
+                 按「本集是否有弹幕数据」决定显隐——无弹幕时与传统模式同样不展示入口 -->
+            <ImageButton
+                android:id="@+id/btn_danmaku"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_overlay_button"
+                android:contentDescription="@string/video_danmaku_off"
+                android:src="@drawable/ic_danmaku"
+                android:scaleType="centerInside"
+                android:padding="12dp"
+                android:tint="#FFFFFF"
+                android:visibility="gone" />
+
+            <!-- 全屏按钮（U1：从视频中下方迁移到右侧功能区，随整体显隐；
+                 bug①修复：默认 visible，由 updateFullscreenButtonVisibility 保持显示；随 right_buttons 3秒自动隐藏+单击显示） -->
+            <ImageButton
+                android:id="@+id/btn_fullscreen"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_overlay_button"
+                android:contentDescription="@string/full_screen"
+                android:src="@drawable/ic_fullscreen"
+                android:scaleType="centerInside"
+                android:padding="12dp"
+                android:tint="#FFFFFF" />
+
+            <!-- video-gesture-overhaul: 快退按钮已移除，改为左右滑动 seek（R2/R3） -->
+
+            <!-- 收藏按钮 -->
+            <ImageButton
+                android:id="@+id/btn_star"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_overlay_button"
+                android:contentDescription="@string/favorite"
+                android:src="@drawable/ic_star_border"
+                android:scaleType="centerInside"
+                android:padding="12dp"
+                android:tint="#FFFFFF" />
+
+            <!-- 设置按钮 -->
+            <ImageButton
+                android:id="@+id/btn_settings"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_overlay_button"
+                android:contentDescription="@string/setting"
+                android:src="@drawable/ic_settings"
+                android:scaleType="centerInside"
+                android:padding="12dp"
+                android:tint="#FFFFFF" />
+
+            <!-- 下载按钮（video-download-manager：全屏/收藏/设置旁，一键下载当前视频） -->
+            <ImageButton
+                android:id="@+id/btn_download"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_overlay_button"
+                android:contentDescription="@string/action_download"
+                android:src="@drawable/ic_download"
+                android:scaleType="centerInside"
+                android:padding="12dp"
+                android:tint="#FFFFFF" />
+
+            <!-- video-gesture-overhaul: 快进按钮已移除，改为左右滑动 seek（R2/R3） -->
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -7,7 +7,13 @@ data class RowUi(
     val chars: Array<String?>? = null,
     val default: String? = null,
     var viewName: String? = null,
-    val style: FlexChildStyle? = null
+    val style: FlexChildStyle? = null,
+    // 登录UI v2 扩展(状态协议):跨 JS 边界以 JSON 传递,见 model/login/LoginUiV2
+    val key: String? = null,
+    val hint: String? = null,
+    val value: String? = null,
+    val options: List<String>? = null,
+    val countdown: Int? = null,
 ) {
 
     @Suppress("ConstPropertyName")
@@ -15,6 +21,7 @@ data class RowUi(
 
         const val text = "text"
         const val password = "password"
+        const val label = "label"
         const val button = "button"
         const val toggle = "toggle"
         const val select = "select"

@@ -483,4 +483,25 @@ object StringUtils {
         return Triple(result, type, customWord)
     }
 
+    /**
+     * 移除 Markdown 格式标记，转为纯文本
+     * 用于书架列表等仅支持纯文本的场景
+     */
+    fun removeMdFormat(md: String): String {
+        if (md.isBlank()) return md
+        return md
+            .replace(Regex("!\\[.*?]\\(.*?\\)"), "")
+            .replace(Regex("\\[(.*?)]\\(.*?\\)"), "$1")
+            .replace(Regex("(?m)^#{1,6}\\s+"), "")
+            .replace(Regex("\\*{1,3}(.+?)\\*{1,3}"), "$1")
+            .replace(Regex("_{1,3}(.+?)_{1,3}"), "$1")
+            .replace(Regex("`{1,3}(.+?)`{1,3}"), "$1")
+            .replace(Regex("(?m)^>\\s?"), "")
+            .replace(Regex("(?m)^[-*+]\\s+"), "")
+            .replace(Regex("(?m)^\\d+\\.\\s+"), "")
+            .replace(Regex("(?m)^[-*_]{3,}\\s*$"), "")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
+    }
+
 }

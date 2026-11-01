@@ -109,4 +109,6 @@ object AppConst {
      */
     const val authority = BuildConfig.APPLICATION_ID + ".fileProvider"
 
+    const val channelIdCast = "channel_cast"
+
 }

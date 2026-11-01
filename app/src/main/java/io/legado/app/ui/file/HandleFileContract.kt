@@ -33,6 +33,7 @@ class HandleFileContract :
             intent.putExtra("title", it.title)
             intent.putExtra("allowExtensions", it.allowExtensions)
             intent.putJson("otherActions", it.otherActions)
+            intent.putExtra("onlyOtherActions", it.onlyOtherActions)
             it.fileData?.let { fileData ->
                 intent.putExtra("fileName", fileData.name)
                 intent.putExtra("fileKey", IntentData.put(fileData.data))
@@ -52,7 +53,22 @@ class HandleFileContract :
         } else {
             intent.data
         }
-        return Result(uri, requestCode, intent?.getStringExtra("value"))
+        val uris = if (resultCode == RESULT_OK && intent?.clipData != null) {
+            val clipData = intent.clipData!!
+            (0 until clipData.itemCount).mapNotNull { i ->
+                val itemUri = clipData.getItemAt(i).uri
+                if (RealPathUtil.getTreePath(itemUri)
+                        ?.startsWith(appCtx.externalFiles.parent!!) == true
+                ) {
+                    null
+                } else {
+                    itemUri
+                }
+            }
+        } else {
+            emptyList()
+        }
+        return Result(uri, requestCode, intent?.getStringExtra("value"), uris = uris)
     }
 
     companion object {
@@ -69,6 +85,7 @@ class HandleFileContract :
         var title: String? = null,
         var allowExtensions: Array<String> = arrayOf(),
         var otherActions: ArrayList<SelectItem<Int>>? = null,
+        var onlyOtherActions: Boolean = false,
         var fileData: FileData? = null,
         var requestCode: Int = 0,
         var value: String? = null
@@ -77,7 +94,9 @@ class HandleFileContract :
     data class Result(
         val uri: Uri?,
         val requestCode: Int,
-        val value: String?
+        val value: String?,
+        val clipboardJson: String? = null,
+        val uris: List<Uri> = emptyList()
     )
 
     data class FileData(

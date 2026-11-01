@@ -40,6 +40,26 @@ object AppContextWrapper {
         return fontScale
     }
 
+    fun getFontScale(context: Context, isNight: Boolean): Float {
+        val key = io.legado.app.lib.theme.ThemeRuntimeKeys.fontScale(isNight)
+        var fontScale = context.getPrefInt(key) / 10f
+        if (fontScale !in 0.8f..1.6f) {
+            fontScale = sysConfiguration.fontScale
+        }
+        return fontScale
+    }
+
+    /**
+     * View 层字号入口：从已修正的 configuration.uiMode night bit 推导日夜态后委托
+     * [getFontScale]。所有 Activity context 均经 [wrap] 修正 night bit，与全局配置同源
+     * （MainTopBarView/TopBarConfig 顶栏尺寸联动消费点）。
+     */
+    fun getFontScaleForContext(context: Context): Float {
+        val isNight = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        return getFontScale(context, isNight)
+    }
+
     /**
      * 当前系统语言
      */

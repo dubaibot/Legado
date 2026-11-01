@@ -242,3 +242,18 @@ class MapDeserializerDoubleAsIntFix :
     }
 
 }
+
+inline fun <reified T> Gson.fromJsonArrayOrObject(json: String?): Result<List<T>> {
+    return kotlin.runCatching {
+        if (json == null) {
+            throw JsonSyntaxException("解析字符串为空")
+        }
+        // 先剥掉前导空白与 UTF-8 BOM，避免带 BOM 的数组被误判为单对象
+        val content = json.trimStart().removePrefix("\uFEFF")
+        if (content.isJsonArray()) {
+            fromJsonArray<T>(content).getOrThrow()
+        } else {
+            listOf(fromJsonObject<T>(content).getOrThrow())
+        }
+    }
+}

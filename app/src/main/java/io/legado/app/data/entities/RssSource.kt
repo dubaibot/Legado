@@ -70,6 +70,10 @@ data class RssSource(
     var ruleLink: String? = null,
     /**正文规则**/
     var ruleContent: String? = null,
+    /**多线路规则：从详情页采集线路列表（线路名），仅type=2视频源使用，支持CSS/JSONPath/XPath/JS**/
+    var ruleRoutes: String? = null,
+    /**多集规则：从详情页采集集数列表（集数标题+播放页URL），仅type=2视频源使用，支持CSS/JSONPath/XPath/JS，支持{routeIndex}/{routeIndex+1}占位符**/
+    var ruleEpisodes: String? = null,
     /**正文url白名单**/
     var contentWhitelist: String? = null,
     /**正文url黑名单**/
@@ -112,7 +116,12 @@ data class RssSource(
     @ColumnInfo(defaultValue = "0")
     var cacheFirst: Boolean = false,
     /**搜索url**/
-    var searchUrl: String? = null
+    var searchUrl: String? = null,
+    /**解析并发数(0=使用全局配置)*/
+    @ColumnInfo(defaultValue = "0")
+    var parseConcurrency: Int = 0,
+    /**AnalyzeUrl解析后的真实域名(host),校验时回填,UI分组用此字段优先于源URL截取*/
+    var lastHost: String? = null
 ) : Parcelable, BaseSource {
 
     @JavascriptInterface
@@ -158,6 +167,8 @@ data class RssSource(
                 && equal(ruleDescription, source.ruleDescription)
                 && equal(ruleLink, source.ruleLink)
                 && equal(ruleContent, source.ruleContent)
+                && equal(ruleRoutes, source.ruleRoutes)
+                && equal(ruleEpisodes, source.ruleEpisodes)
                 && enableJs == source.enableJs
                 && loadWithBaseUrl == source.loadWithBaseUrl
                 && equal(variableComment, source.variableComment)
@@ -209,6 +220,17 @@ data class RssSource(
         } else {
             "${variableComment}\n$otherComment"
         }
+    }
+
+    /**
+     * 判断是否包含指定分组
+     * 参考 BookSource.hasGroup 实现
+     */
+    fun hasGroup(group: String): Boolean {
+        sourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.let {
+            return it.indexOf(group) != -1
+        }
+        return false
     }
 
 }

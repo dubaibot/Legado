@@ -2,15 +2,42 @@ package io.legado.app.model.rss
 
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.model.Debug
+import io.legado.app.model.debug.DebugCategory
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.IOException
 import java.io.StringReader
 
+/**
+ * RSS默认XML解析器
+ *
+ * 当订阅源没有定义列表规则时，使用标准XML Pull Parser解析RSS/Atom格式。
+ * 支持解析以下字段：
+ * - title: 文章标题
+ * - link: 文章链接
+ * - description: 文章描述
+ * - pubDate: 发布时间
+ * - media:thumbnail / enclosure: 图片
+ * - content:encoded: 文章内容
+ *
+ * 自动从描述或内容中提取img标签的src作为封面图片。
+ *
+ * @see RssParserByRule 规则解析器
+ */
 @Suppress("unused")
 object RssParserDefault {
 
+    /**
+     * 解析RSS XML内容
+     *
+     * @param sortName 分类名称
+     * @param xml XML内容
+     * @param sourceUrl 源URL
+     * @return 文章列表和下一页URL的Pair（默认解析器不返回下一页URL）
+     * @throws XmlPullParserException XML解析异常
+     * @throws IOException IO异常
+     */
     @Throws(XmlPullParserException::class, IOException::class)
     fun parseXML(
         sortName: String,
@@ -99,25 +126,27 @@ object RssParserDefault {
             eventType = xmlPullParser.next()
         }
         articleList.firstOrNull()?.let {
-            Debug.log(sourceUrl, "┌获取标题")
-            Debug.log(sourceUrl, "└${it.title}")
-            Debug.log(sourceUrl, "┌获取时间")
-            Debug.log(sourceUrl, "└${it.pubDate}")
-            Debug.log(sourceUrl, "┌获取描述")
-            Debug.log(sourceUrl, "└${it.description}")
-            Debug.log(sourceUrl, "┌获取图片url")
-            Debug.log(sourceUrl, "└${it.image}")
-            Debug.log(sourceUrl, "┌获取文章链接")
-            Debug.log(sourceUrl, "└${it.link}")
+            Debug.log(sourceUrl, "┌获取标题", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "└${it.title}", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "┌获取时间", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "└${it.pubDate}", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "┌获取描述", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "└${it.description}", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "┌获取图片url", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "└${it.image}", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "┌获取文章链接", category = DebugCategory.RSS)
+            Debug.log(sourceUrl, "└${it.link}", category = DebugCategory.RSS)
         }
         return Pair(articleList, null)
     }
 
     /**
-     * Finds the first img tag and get the src as featured image
+     * 从HTML内容中提取图片URL
      *
-     * @param input The content in which to search for the tag
-     * @return The url, if there is one
+     * 查找第一个img标签并提取其src属性值作为封面图片。
+     *
+     * @param input HTML内容
+     * @return 图片URL，如果未找到则返回null
      */
     private fun getImageUrl(input: String): String? {
 

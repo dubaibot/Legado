@@ -59,7 +59,7 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     inner class LogAdapter(context: Context) :
-        RecyclerAdapter<Triple<Long, String, Throwable?>, ItemAppLogBinding>(context) {
+        RecyclerAdapter<AppLog.LogEntry, ItemAppLogBinding>(context) {
 
         override fun getViewBinding(parent: ViewGroup): ItemAppLogBinding {
             return ItemAppLogBinding.inflate(inflater, parent, false)
@@ -68,17 +68,17 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         override fun convert(
             holder: ItemViewHolder,
             binding: ItemAppLogBinding,
-            item: Triple<Long, String, Throwable?>,
+            item: AppLog.LogEntry,
             payloads: MutableList<Any>
         ) {
-            binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.first))
-            binding.textMessage.text = item.second
+            binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.time))
+            binding.textMessage.text = item.message
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemAppLogBinding) {
             binding.root.onClick {
                 getItem(holder.layoutPosition)?.let { item ->
-                    item.third?.let {
+                    item.throwable?.let {
                         showDialogFragment(TextDialog("Log", it.stackTraceToString()))
                     }
                 }

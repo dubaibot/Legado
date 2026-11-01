@@ -1,0 +1,3287 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Legado Editor Pro</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --gutter-bg: #f5f5f5;
+      --gutter-text: #b0b0b0;
+      --text: #24292e;
+      --border: #e1e4e8;
+      --active-line: #f6f8fa;
+      --accent: #0366d6;
+      --accent-soft: rgba(3, 102, 214, 0.12);
+      --toolbar-bg: #f8f9fa;
+      --selection: #b3d7ff;
+      --panel-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+      color-scheme: light;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme]) {
+        --bg: #1e1e1e;
+        --gutter-bg: #252526;
+        --gutter-text: #858585;
+        --text: #d4d4d4;
+        --border: #3e3e42;
+        --active-line: #2d2d30;
+        --accent: #40a9ff;
+        --accent-soft: rgba(64, 169, 255, 0.18);
+        --toolbar-bg: #252526;
+        --selection: #264f78;
+        color-scheme: dark;
+      }
+    }
+
+    body[data-theme="light"] {
+      color-scheme: light;
+    }
+
+    body[data-theme="dark"] {
+      --bg: #1e1e1e;
+      --gutter-bg: #252526;
+      --gutter-text: #858585;
+      --text: #d4d4d4;
+      --border: #3e3e42;
+      --active-line: #2d2d30;
+      --accent: #40a9ff;
+      --accent-soft: rgba(64, 169, 255, 0.18);
+      --toolbar-bg: #252526;
+      --selection: #264f78;
+      color-scheme: dark;
+    }
+
+    body[data-theme="sepia"] {
+      --bg: #f7f2e7;
+      --gutter-bg: #efe6d6;
+      --gutter-text: #9b8f7a;
+      --text: #3d3528;
+      --border: #e0d6c5;
+      --active-line: #f0e7d6;
+      --accent: #9a6b32;
+      --accent-soft: rgba(154, 107, 50, 0.14);
+      --toolbar-bg: #efe6d6;
+      --selection: #d8c7ad;
+      color-scheme: light;
+    }
+
+    body[data-theme="nord"] {
+      --bg: #2e3440;
+      --gutter-bg: #3b4252;
+      --gutter-text: #8f9bb3;
+      --text: #eceff4;
+      --border: #434c5e;
+      --active-line: #3b4252;
+      --accent: #88c0d0;
+      --accent-soft: rgba(136, 192, 208, 0.18);
+      --toolbar-bg: #3b4252;
+      --selection: #4c566a;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: "Menlo", "Monaco", "Courier New", monospace;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      overscroll-behavior: none;
+    }
+
+    #toolbar {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      padding: 6px 8px;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0;
+    }
+
+    #toolbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    #toolbar::after {
+      content: "";
+      position: sticky;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 24px;
+      flex-shrink: 0;
+      background: linear-gradient(to right, transparent, var(--toolbar-bg) 70%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    #toolbar.overflowing::after {
+      opacity: 1;
+    }
+
+    .btn {
+      border: none;
+      background: transparent;
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .btn:active {
+      background: var(--accent-soft);
+    }
+
+    .btn.active {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .btn[disabled] {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .btn.btn-icon {
+      padding: 0;
+      width: 40px;
+      height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-gap {
+      margin-left: 8px;
+    }
+
+    #editor-container {
+      position: relative;
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #editor {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    /* 底部系统栏避让:宿主让 WebView 全出血到屏幕底,安全区高度经 setBottomInset 注入
+       --bottom-inset;垫进滚动内容与底部浮层,编辑器表面铺满屏幕,末行可滚到手势条上方 */
+    #editor .cm-content {
+      padding-bottom: calc(4px + var(--bottom-inset, 0px));
+    }
+
+    .cm-editor {
+      height: 100%;
+    }
+    /* 原生滚动条 WebView 内层容器不渲染,用覆盖指示条替代;
+       禁用原生占位避免双滚动条 */
+    .cm-scroller::-webkit-scrollbar {
+      display: none;
+    }
+    #scroll-indicator {
+      position: absolute;
+      top: 4px;
+      right: 2px;
+      width: 5px;
+      height: 40px;
+      border-radius: 3px;
+      background: var(--gutter-text);
+      opacity: 0;
+      transition: opacity 0.25s;
+      z-index: 24;
+      will-change: transform;
+      pointer-events: none;
+    }
+    #scroll-indicator.visible {
+      opacity: 0.55;
+    }
+    #scroll-indicator.dragging {
+      opacity: 0.9;
+      background: var(--accent);
+    }
+    /* 拖拽热区:视觉细条不好按,热区放宽到 24px;
+       与滚动指示条同层且低于 .cm-panels(25),搜索面板区域点击归面板 */
+    #scroll-indicator-hit {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 24px;
+      z-index: 24;
+      touch-action: none;
+      display: none;
+    }
+    #scroll-indicator-hit.enabled {
+      display: block;
+    }
+    .cm-panels {
+      background: var(--toolbar-bg) !important;
+      border-color: var(--border) !important;
+      z-index: 25 !important;
+    }
+    .cm-panel.cm-search {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 44px 6px 8px;
+      font-size: 12px;
+      position: relative;
+    }
+    .cm-panel.cm-search br { display: none; }
+    .cm-panel.cm-search input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0 2px 0 6px;
+      accent-color: var(--accent);
+    }
+    .cm-panel.cm-search label {
+      display: inline-flex;
+      align-items: center;
+      color: var(--gutter-text);
+      font-size: 11px;
+      user-select: none;
+    }
+    .cm-panel.cm-search [name="close"] {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      width: 30px;
+      height: 30px;
+      font-size: 18px;
+      line-height: 1;
+      color: var(--gutter-text) !important;
+      background: transparent !important;
+      border: none !important;
+    }
+    .cm-panels .cm-button {
+      background: transparent !important;
+      color: var(--text) !important;
+      border: none !important;
+      border-radius: 6px !important;
+      padding: 6px 10px !important;
+      margin: 0 !important;
+      background-image: none !important;
+      cursor: pointer;
+    }
+    .cm-panels .cm-button:active {
+      background: var(--accent-soft) !important;
+    }
+    .cm-panels .cm-textfield {
+      background: var(--bg) !important;
+      color: var(--text) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 6px !important;
+      padding: 4px 8px !important;
+      font-size: 13px !important;
+    }
+    .cm-panels .cm-textfield:focus {
+      border-color: var(--accent) !important;
+      outline: none !important;
+    }
+    .cm-searchMatch {
+      background: var(--accent-soft) !important;
+    }
+    .cm-searchMatch-selected {
+      background: var(--accent) !important;
+    }
+    .cm-searchMatch-selected * {
+      color: var(--bg) !important;
+    }
+
+    /* 浮层面板统一锚在 #editor-container 内(top:8px 即工具栏正下方),
+       不再按工具栏像素高度硬编码,工具栏加高/换行都不会错位 */
+    #format-options {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--panel-shadow);
+      padding: 10px 12px;
+      display: none;
+      z-index: 30;
+      font-size: 13px;
+      min-width: 150px;
+    }
+
+    #format-options.show {
+      display: block;
+    }
+
+    #format-options .opt-group-title {
+      font-size: 11px;
+      color: var(--gutter-text);
+      margin: 6px 0 4px;
+      padding-bottom: 2px;
+      border-bottom: 1px solid var(--border);
+      user-select: none;
+    }
+
+    #format-options .opt-group-title:first-child {
+      margin-top: 0;
+    }
+
+    #format-options .opt {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      padding: 3px 0;
+    }
+
+    #format-options input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+    }
+
+    #format-options select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 12px;
+    }
+
+    #toast {
+      position: absolute;
+      bottom: calc(20px + var(--bottom-inset, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      /* 须高于所有浮层面板(最高 50),否则日志等面板打开时操作反馈被完全遮挡 */
+      z-index: 60;
+    }
+
+    #toast.show {
+      opacity: 1;
+    }
+
+    #syntax-status {
+      padding: 4px 10px calc(4px + var(--bottom-inset, 0px));
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+      background: var(--toolbar-bg);
+      color: var(--gutter-text);
+      cursor: default;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: none;
+    }
+
+    #syntax-status.error {
+      color: #e06c75;
+      cursor: pointer;
+    }
+
+    #syntax-status.ok {
+      color: #98c379;
+    }
+
+    #syntax-status.paused {
+      color: #d19a66;
+    }
+
+    #log-panel {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: calc(8px + var(--bottom-inset, 0px));
+      max-height: 40%;
+      display: none;
+      flex-direction: column;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--panel-shadow);
+      z-index: 40;
+      overflow: hidden;
+    }
+
+    #log-panel.show {
+      display: flex;
+    }
+
+    #log-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      background: var(--toolbar-bg);
+      font-size: 12px;
+    }
+
+    #log-header .spacer {
+      flex: 1;
+    }
+
+    #log-body {
+      margin: 0;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow: auto;
+      flex: 1;
+    }
+
+    #curl-panel {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      top: 8px;
+      max-height: 60%;
+      display: none;
+      flex-direction: column;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--panel-shadow);
+      z-index: 45;
+      overflow: hidden;
+    }
+    #curl-panel.show {
+      display: flex;
+    }
+    #curl-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      background: var(--toolbar-bg);
+      font-size: 12px;
+    }
+    #curl-header .spacer {
+      flex: 1;
+    }
+    #curl-header select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 12px;
+    }
+    #curl-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      overflow: auto;
+      flex: 1;
+    }
+    .curl-text {
+      min-height: 80px;
+      flex: 1;
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      background: var(--bg);
+      color: var(--text);
+      resize: none;
+    }
+    #regex-panel {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      top: 8px;
+      max-height: 65%;
+      display: none;
+      flex-direction: column;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--panel-shadow);
+      z-index: 50;
+      overflow: hidden;
+    }
+    #regex-panel.show { display: flex; }
+    #regex-header {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px; border-bottom: 1px solid var(--border);
+      background: var(--toolbar-bg); font-size: 12px;
+    }
+    #regex-header .spacer { flex: 1; }
+    .regex-flag {
+      border: none; background: transparent;
+      color: var(--gutter-text); padding: 3px 7px; border-radius: 6px;
+      font-size: 12px; cursor: pointer; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .regex-flag.on {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+    #regex-body {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 8px; overflow: auto; flex: 1;
+    }
+    #regex-body label { font-size: 12px; color: var(--gutter-text); }
+    .regex-row {
+      display: flex; gap: 6px; align-items: flex-start;
+    }
+    .regex-row .regex-input { flex: 1; }
+    .regex-flags-inline {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+      padding-top: 4px; flex-shrink: 0;
+    }
+    .regex-input {
+      width: 100%; border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 10px; font-size: 13px; line-height: 1.4;
+      background: var(--bg); color: var(--text);
+      font-family: inherit; resize: vertical;
+    }
+    #regex-pattern { min-height: 32px; }
+    #regex-sample { min-height: 64px; }
+    #regex-result {
+      flex: 1; min-height: 48px; max-height: 120px; overflow: auto;
+      font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+      word-break: break-all; color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 10px; background: var(--active-line);
+    }
+    .regex-match { color: var(--accent); }
+    .regex-error { color: #e06c75; }
+    /* 工具栏溢出菜单(低频入口集中,窄屏不再裁切按钮) */
+    #more-menu {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--panel-shadow);
+      padding: 6px;
+      display: none;
+      z-index: 46;
+      min-width: 148px;
+    }
+    #more-menu.show { display: block; }
+    .menu-item {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .menu-item:active { background: var(--accent-soft); }
+    .menu-item.active { color: var(--accent); }
+    /* 跳转到行小面板 */
+    #goto-panel {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--panel-shadow);
+      padding: 8px;
+      display: none;
+      z-index: 47;
+      gap: 6px;
+      align-items: center;
+      min-width: 220px;
+    }
+    #goto-panel.show { display: flex; }
+    #goto-input {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+    }
+    #goto-input:focus { border-color: var(--accent); outline: none; }
+    /* 面板底部操作行(与编辑器互通:选区填充/插回编辑器) */
+    .panel-footer {
+      display: flex;
+      gap: 8px;
+      padding-top: 2px;
+    }
+    .panel-footer .btn {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 12px;
+      padding: 7px 12px;
+    }
+    .tb-icon {
+      width: 18px; height: 18px;
+      vertical-align: middle;
+      pointer-events: none;
+    }
+    .panel-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      border-radius: 7px;
+      cursor: pointer;
+      flex-shrink: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .panel-btn:active { background: var(--accent-soft); }
+    .panel-btn svg {
+      width: 14px; height: 14px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="toolbar">
+    <button id="undoBtn" class="btn btn-icon" title="撤销">
+      <svg class="tb-icon" viewBox="0 0 18 18"><path d="M5 3.5L1.5 7 5 10.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 7H11a4 4 0 010 8H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <button id="redoBtn" class="btn btn-icon" title="重做">
+      <svg class="tb-icon" viewBox="0 0 18 18"><path d="M13 3.5l3.5 3.5-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.5 7H7a4 4 0 000 8h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <button id="searchToggleBtn" class="btn btn-icon btn-gap" title="搜索">
+      <svg class="tb-icon" viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8"/><line x1="11" y1="11" x2="15.5" y2="15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <button id="wrapBtn" class="btn btn-icon" title="自动换行">
+      <svg class="tb-icon" viewBox="0 0 18 18"><path d="M2 4.5h12.5a2 2 0 010 4H10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.5 6.5L9.5 8.5l2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="13.5" x2="9" y2="13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <button id="formatBtn" class="btn btn-icon btn-gap" title="格式化">
+      <svg class="tb-icon" viewBox="0 0 18 18"><line x1="2" y1="4" x2="16" y2="4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="5" y1="9" x2="16" y2="9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="5" y1="14" x2="13" y2="14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <button id="formatOptionsBtn" class="btn btn-icon" title="设置">
+      <svg class="tb-icon" viewBox="0 0 18 18"><line x1="2" y1="5" x2="16" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="6" cy="5" r="2" fill="var(--bg)" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="13" r="2" fill="var(--bg)" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+    <button id="moreBtn" class="btn btn-icon btn-gap" title="更多">
+      <svg class="tb-icon" viewBox="0 0 18 18"><circle cx="9" cy="3.5" r="1.6" fill="currentColor"/><circle cx="9" cy="9" r="1.6" fill="currentColor"/><circle cx="9" cy="14.5" r="1.6" fill="currentColor"/></svg>
+    </button>
+  </div>
+
+  <div id="editor-container">
+    <div id="editor"></div>
+    <div id="scroll-indicator-hit"></div>
+    <div id="scroll-indicator"></div>
+
+    <div id="more-menu">
+      <button class="menu-item" id="gotoToggleBtn">跳转到行</button>
+      <button class="menu-item" id="regexToggleBtn">正则测试</button>
+      <button class="menu-item" id="curlToggleBtn">curl 转换</button>
+      <button class="menu-item" id="logToggleBtn">日志</button>
+    </div>
+
+    <div id="goto-panel">
+      <input id="goto-input" type="text" inputmode="numeric" placeholder="行号 或 行:列" spellcheck="false" />
+      <button id="gotoConfirmBtn" class="btn">跳转</button>
+    </div>
+
+  <div id="format-options">
+    <div class="opt-group-title">编辑器</div>
+    <label class="opt">
+      <span>主题</span>
+      <select id="themeSelect">
+        <option value="auto" selected>系统</option>
+        <option value="light">浅色</option>
+        <option value="dark">深色</option>
+        <option value="sepia">护眼</option>
+        <option value="nord">极夜</option>
+      </select>
+    </label>
+    <label class="opt">
+      <span>字号</span>
+      <select id="fontSizeSelect">
+        <option value="auto" selected>自动</option>
+        <option value="12">12</option>
+        <option value="13">13</option>
+        <option value="14">14</option>
+        <option value="16">16</option>
+      </select>
+    </label>
+    <div class="opt-group-title">格式化</div>
+    <label class="opt">
+      <span>缩进</span>
+      <select id="indentSizeSelect">
+        <option value="2" selected>2</option>
+        <option value="4">4</option>
+      </select>
+    </label>
+    <label class="opt">
+      <span>宽度</span>
+      <select id="printWidthSelect">
+        <option value="80">80</option>
+        <option value="120" selected>120</option>
+        <option value="160">160</option>
+      </select>
+    </label>
+    <label class="opt">
+      <input id="wrapElementsToggle" type="checkbox" checked />
+      <span>元素换行</span>
+    </label>
+    <label class="opt">
+      <input id="singleQuoteToggle" type="checkbox" />
+      <span>单引号</span>
+    </label>
+    <label class="opt">
+      <input id="trailingCommaToggle" type="checkbox" checked />
+      <span>末尾逗号</span>
+    </label>
+  </div>
+
+  <div id="log-panel">
+    <div id="log-header">
+      <span>日志</span>
+      <span class="spacer"></span>
+      <button id="logCopyBtn" class="panel-btn" title="复制">
+        <svg viewBox="0 0 16 16"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M11 3H4.5A1.5 1.5 0 003 4.5V11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <button id="logClearBtn" class="panel-btn" title="清空">
+        <svg viewBox="0 0 16 16"><line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="2" y="2" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+      </button>
+      <button id="logCloseBtn" class="panel-btn" title="关闭">
+        <svg viewBox="0 0 16 16"><line x1="4" y1="8" x2="12" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <pre id="log-body"></pre>
+  </div>
+
+  <div id="curl-panel">
+    <div id="curl-header">
+      <span>curl</span>
+      <select id="curlModeSelect">
+        <option value="curl-to-analyze">curl → AnalyzeUrl</option>
+        <option value="analyze-to-curl">AnalyzeUrl → curl</option>
+      </select>
+      <span class="spacer"></span>
+      <button id="curlConvertBtn" class="panel-btn" title="转换">
+        <svg viewBox="0 0 16 16"><path d="M4 6l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 10l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -4)"/></svg>
+      </button>
+      <button id="curlCopyBtn" class="panel-btn" title="复制">
+        <svg viewBox="0 0 16 16"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M11 3H4.5A1.5 1.5 0 003 4.5V11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <button id="curlClearBtn" class="panel-btn" title="清空">
+        <svg viewBox="0 0 16 16"><line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="2" y="2" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+      </button>
+      <button id="curlCloseBtn" class="panel-btn" title="关闭">
+        <svg viewBox="0 0 16 16"><line x1="4" y1="8" x2="12" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="curl-body">
+      <textarea id="curl-input" class="curl-text" placeholder="粘贴 curl 或 AnalyzeUrl"></textarea>
+      <textarea id="curl-output" class="curl-text" placeholder="转换结果" readonly></textarea>
+      <div class="panel-footer">
+        <button id="curlFillBtn" class="btn">从选区填充</button>
+        <button id="curlInsertBtn" class="btn">插入结果到编辑器</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="regex-panel">
+    <div id="regex-header">
+      <span>正则测试</span>
+      <span class="spacer"></span>
+      <button id="regexCopyBtn" class="panel-btn" title="复制">
+        <svg viewBox="0 0 16 16"><rect x="5" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M11 3H4.5A1.5 1.5 0 003 4.5V11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <button id="regexClearBtn" class="panel-btn" title="清空">
+        <svg viewBox="0 0 16 16"><line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="2" y="2" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+      </button>
+      <button id="regexCloseBtn" class="panel-btn" title="关闭">
+        <svg viewBox="0 0 16 16"><line x1="4" y1="8" x2="12" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="regex-body">
+      <label>正则表达式</label>
+      <div class="regex-row">
+        <textarea id="regex-pattern" class="regex-input" placeholder="输入正则，如 (\w+)\s*=\s*(.+)" spellcheck="false"></textarea>
+        <div class="regex-flags-inline">
+          <button id="regexFlagG" class="regex-flag on">g</button>
+          <button id="regexFlagI" class="regex-flag">i</button>
+          <button id="regexFlagM" class="regex-flag">m</button>
+          <button id="regexFlagS" class="regex-flag">s</button>
+        </div>
+      </div>
+      <label>测试文本</label>
+      <textarea id="regex-sample" class="regex-input" placeholder="输入要测试的文本" spellcheck="false"></textarea>
+      <label>匹配结果</label>
+      <pre id="regex-result">等待输入…</pre>
+      <div class="panel-footer">
+        <button id="regexFillBtn" class="btn">从选区填充测试文本</button>
+        <button id="regexInsertBtn" class="btn">插入正则到编辑器</button>
+      </div>
+    </div>
+  </div>
+
+  </div>
+
+  <div id="syntax-status"></div>
+
+  <div id="toast"></div>
+
+  <script>
+    (function () {
+      function bootError(msg) {
+        var text = msg || "编辑器初始化失败";
+        var host = document.getElementById("editor");
+        var toast = document.getElementById("toast");
+        if (host) {
+          host.textContent = text;
+          host.style.padding = "12px";
+          host.style.color = "var(--text)";
+        }
+        if (toast) {
+          toast.textContent = text;
+          toast.classList.add("show");
+        }
+        if (window.Android && typeof window.Android.onEditorBootError === "function") {
+          try {
+            window.Android.onEditorBootError(text);
+          } catch (_) {}
+        }
+      }
+      window.__LEGADO_BOOT_ERROR = bootError;
+      window.__LEGADO_EDITOR_BOOTED = false;
+
+      function handleBootOrRuntimeError(kind, e) {
+        if (window.__LEGADO_EDITOR_BOOTED) {
+          if (typeof window.__LEGADO_RUNTIME_ERROR_HANDLER === "function") {
+            window.__LEGADO_RUNTIME_ERROR_HANDLER(kind, e);
+          }
+          return;
+        }
+        var msg = "发生未知错误";
+        if (kind === "promise") {
+          msg =
+            e && e.reason != null
+              ? String(
+                e.reason && e.reason.message ? e.reason.message : e.reason,
+              )
+              : msg;
+        } else {
+          msg = e && e.message ? e.message : msg;
+        }
+        bootError("脚本错误：" + msg);
+      }
+
+      window.addEventListener("error", function (e) {
+        handleBootOrRuntimeError("error", e);
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        handleBootOrRuntimeError("promise", e);
+      });
+    })();
+  </script>
+
+  <script src="codemirror.bundle.js" onerror="
+        window.__LEGADO_BOOT_ERROR &&
+          window.__LEGADO_BOOT_ERROR('codemirror.bundle.js 加载失败')
+      "></script>
+  <script src="completions.js" onerror="
+        window.__LEGADO_BOOT_ERROR &&
+          window.__LEGADO_BOOT_ERROR('completions.js 加载失败')
+      "></script>
+  <script>
+    (function () {
+      let prettierReadyPromise = null;
+      const PRETTIER_SCRIPTS = ["standalone.min.js", "babel.js", "estree.js"];
+
+      function hasPrettierRuntime() {
+        return (
+          !!window.prettier &&
+          !!window.prettierPlugins &&
+          !!window.prettierPlugins.babel &&
+          !!window.prettierPlugins.estree
+        );
+      }
+
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const node = document.createElement("script");
+          node.src = src;
+          node.async = true;
+          node.onload = resolve;
+          node.onerror = () => reject(new Error(src + " 加载失败"));
+          document.head.appendChild(node);
+        });
+      }
+
+      async function ensurePrettierReady() {
+        if (hasPrettierRuntime()) return true;
+        if (!prettierReadyPromise) {
+          prettierReadyPromise = (async () => {
+            for (const src of PRETTIER_SCRIPTS) {
+              await loadScript(src);
+            }
+            if (!hasPrettierRuntime()) {
+              throw new Error("Prettier 运行时加载不完整");
+            }
+            return true;
+          })().catch((e) => {
+            prettierReadyPromise = null;
+            throw e;
+          });
+        }
+        return prettierReadyPromise;
+      }
+
+      function warmupPrettier(onReady) {
+        const run = () => {
+          ensurePrettierReady()
+            .then(() => {
+              if (typeof onReady === "function") onReady();
+            })
+            .catch(() => { });
+        };
+        if (typeof window.requestIdleCallback === "function") {
+          window.requestIdleCallback(run, { timeout: 3500 });
+        } else {
+          window.setTimeout(run, 1200);
+        }
+      }
+
+      window.__ensurePrettierReady = ensurePrettierReady;
+      window.__warmupPrettier = warmupPrettier;
+    })();
+  </script>
+  <script>
+    // 早期兜底：如果主脚本未执行，显示提示
+    window.setTimeout(function () {
+      if (window.__LEGADO_EDITOR_BOOTED) return;
+      if (window.__LEGADO_BOOT_ERROR) {
+        window.__LEGADO_BOOT_ERROR(
+          "编辑器脚本未执行，请确认 codemirror.bundle.js 已更新并重新安装 APK。",
+        );
+      }
+    }, 1200);
+  </script>
+  <script>
+    (function () {
+      function errMsg(e) {
+        return e && e.message ? e.message : String(e);
+      }
+      try {
+        const $ = (id) => document.getElementById(id);
+        const bootError = window.__LEGADO_BOOT_ERROR || function () { };
+        const LOG_MAX = 200;
+        const SETTINGS_KEY = "legado.codeEditor.formatSettings";
+        const TOAST_MS = 1500;
+        const LONG_LINE_SCROLL_LIMIT = 2000;
+        // 语法检查仅做"停笔后"兜底:延迟拉长,低端机打字不卡顿
+        const LINT_DELAY = 1500;
+        // 超过该字符数才关闭语法检查(#19:12000 对长书源太容易触发,放宽到 120000)
+        const LINT_MAX_SIZE = 120000;
+
+        const dom = {
+          editorHost: $("editor"),
+          toast: $("toast"),
+          logPanel: $("log-panel"),
+          logBody: $("log-body"),
+          curlPanel: $("curl-panel"),
+          curlInput: $("curl-input"),
+          curlOutput: $("curl-output"),
+          curlModeSelect: $("curlModeSelect"),
+          undoBtn: $("undoBtn"),
+          redoBtn: $("redoBtn"),
+          wrapBtn: $("wrapBtn"),
+          formatBtn: $("formatBtn"),
+          formatOptionsBtn: $("formatOptionsBtn"),
+          searchToggleBtn: $("searchToggleBtn"),
+          curlToggleBtn: $("curlToggleBtn"),
+          logToggleBtn: $("logToggleBtn"),
+          logCloseBtn: $("logCloseBtn"),
+          logCopyBtn: $("logCopyBtn"),
+          logClearBtn: $("logClearBtn"),
+          curlConvertBtn: $("curlConvertBtn"),
+          curlCopyBtn: $("curlCopyBtn"),
+          curlClearBtn: $("curlClearBtn"),
+          curlCloseBtn: $("curlCloseBtn"),
+          wrapElementsToggle: $("wrapElementsToggle"),
+          indentSizeSelect: $("indentSizeSelect"),
+          fontSizeSelect: $("fontSizeSelect"),
+          printWidthSelect: $("printWidthSelect"),
+          themeSelect: $("themeSelect"),
+          singleQuoteToggle: $("singleQuoteToggle"),
+          trailingCommaToggle: $("trailingCommaToggle"),
+          formatOptions: $("format-options"),
+          syntaxStatus: $("syntax-status"),
+          regexPanel: $("regex-panel"),
+          regexPattern: $("regex-pattern"),
+          regexSample: $("regex-sample"),
+          regexResult: $("regex-result"),
+          regexToggleBtn: $("regexToggleBtn"),
+          regexCopyBtn: $("regexCopyBtn"),
+          regexClearBtn: $("regexClearBtn"),
+          regexCloseBtn: $("regexCloseBtn"),
+          regexFlagG: $("regexFlagG"),
+          regexFlagI: $("regexFlagI"),
+          regexFlagM: $("regexFlagM"),
+          regexFlagS: $("regexFlagS"),
+          moreBtn: $("moreBtn"),
+          moreMenu: $("more-menu"),
+          gotoToggleBtn: $("gotoToggleBtn"),
+          gotoPanel: $("goto-panel"),
+          gotoInput: $("goto-input"),
+          gotoConfirmBtn: $("gotoConfirmBtn"),
+          regexFillBtn: $("regexFillBtn"),
+          regexInsertBtn: $("regexInsertBtn"),
+          curlFillBtn: $("curlFillBtn"),
+          curlInsertBtn: $("curlInsertBtn"),
+        };
+
+        const CM = window.CodeMirrorBundle;
+        if (!CM || !CM.EditorView) {
+          bootError(
+            "CodeMirror 未加载，请确认 codemirror.bundle.js 已打包并可访问",
+          );
+          return;
+        }
+
+        const {
+          EditorState,
+          Compartment,
+          EditorView,
+          keymap,
+          lineNumbers,
+          highlightActiveLineGutter,
+          history,
+          undo,
+          redo,
+          undoDepth,
+          redoDepth,
+          indentOnInput,
+          bracketMatching,
+          syntaxHighlighting,
+          defaultHighlightStyle,
+          HighlightStyle,
+          tags,
+          indentUnit,
+          foldGutter,
+          highlightSelectionMatches,
+          search,
+          openSearchPanel,
+          autocompletion,
+          closeCompletion,
+          closeBrackets,
+          closeBracketsKeymap,
+          javascript,
+          indentMore,
+          indentLess,
+          insertNewlineAndIndent,
+          Transaction,
+        } = CM;
+
+        let isWrap = false;
+        let wrapElements = true;
+        let tabSize = 2;
+        let fontSize = "auto";
+        let printWidth = 120;
+        let singleQuote = false;
+        let trailingComma = true;
+        let themeMode = "auto";
+        let logLines = [];
+        let isLogOpen = false;
+        let lastAppliedPixelSize = 0;
+        let bottomInset = 0;
+
+        function appendLog(level, msg) {
+          const time = new Date()
+            .toISOString()
+            .replace("T", " ")
+            .replace("Z", "");
+          const text = String(msg == null ? "" : msg);
+          const line = `[${time}] ${level}: ${text.length > 1000 ? text.slice(0, 1000) + "…" : text}`;
+          logLines.push(line);
+          if (logLines.length > LOG_MAX) logLines.shift();
+          if (isLogOpen && dom.logBody) {
+            dom.logBody.textContent = logLines.join("\n");
+            dom.logBody.scrollTop = dom.logBody.scrollHeight;
+          }
+        }
+
+        function loadSettings() {
+          try {
+            const raw = window.localStorage
+              ? window.localStorage.getItem(SETTINGS_KEY)
+              : null;
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            if (data && typeof data === "object") {
+              if (typeof data.isWrap === "boolean") isWrap = data.isWrap;
+              if (typeof data.wrapElements === "boolean")
+                wrapElements = data.wrapElements;
+              if (data.tabSize != null)
+                tabSize = parseInt(data.tabSize, 10) || tabSize;
+              if (data.fontSize != null) fontSize = String(data.fontSize);
+              if (data.printWidth != null)
+                printWidth = parseInt(data.printWidth, 10) || printWidth;
+              if (typeof data.singleQuote === "boolean")
+                singleQuote = data.singleQuote;
+              if (typeof data.trailingComma === "boolean")
+                trailingComma = data.trailingComma;
+              if (typeof data.themeMode === "string")
+                themeMode = data.themeMode;
+            }
+          } catch (e) {
+            appendLog("error", "设置读取失败: " + errMsg(e));
+          }
+        }
+
+        function saveSettings() {
+          try {
+            if (!window.localStorage) return;
+            const data = {
+              isWrap,
+              wrapElements,
+              tabSize,
+              fontSize,
+              printWidth,
+              singleQuote,
+              trailingComma,
+              themeMode,
+            };
+            window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+          } catch (e) {
+            appendLog("error", "设置保存失败: " + errMsg(e));
+          }
+        }
+
+        const wrapComp = new Compartment();
+        const themeComp = new Compartment();
+        const fontComp = new Compartment();
+        const indentComp = new Compartment();
+        const deferredComp = new Compartment();
+        const highlightComp = new Compartment();
+        const mediaDark = window.matchMedia
+          ? window.matchMedia("(prefers-color-scheme: dark)")
+          : null;
+        let isWrappedScriptMode = false;
+
+        // Android 注入的应用主题（{dark, colors}）；auto 模式下优先于系统日夜
+        let appTheme = null;
+        // Android 注入的系统字号缩放(0 = 未注入,退回 computed 兜底);"字号:自动"基准 16px
+        let appFontScale = 0;
+        const APP_THEME_VARS = {
+          bg: "--bg",
+          gutterBg: "--gutter-bg",
+          gutterText: "--gutter-text",
+          text: "--text",
+          border: "--border",
+          activeLine: "--active-line",
+          accent: "--accent",
+          accentSoft: "--accent-soft",
+          toolbarBg: "--toolbar-bg",
+          selection: "--selection",
+        };
+
+        function hexToRgb(hex) {
+          const m = String(hex || "").trim().match(/^#([0-9a-f]{6})$/i);
+          if (!m) return null;
+          const v = parseInt(m[1], 16);
+          return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+        }
+
+        function rgbToHex(c) {
+          const to2 = (n) =>
+            Math.max(0, Math.min(255, Math.round(n)))
+              .toString(16)
+              .padStart(2, "0");
+          return "#" + to2(c.r) + to2(c.g) + to2(c.b);
+        }
+
+        function relLuminance(c) {
+          const ch = (v) => {
+            const s = v / 255;
+            return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+          };
+          return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
+        }
+
+        /** 深色底上过暗的强调色向白混合提亮，保持色相、保证可辨 */
+        function ensureAccentVisible(hex, dark) {
+          const rgb = hexToRgb(hex);
+          if (!rgb || !dark) return hex;
+          let c = rgb;
+          let guard = 0;
+          while (relLuminance(c) < 0.18 && guard++ < 6) {
+            c = {
+              r: c.r + (255 - c.r) * 0.25,
+              g: c.g + (255 - c.g) * 0.25,
+              b: c.b + (255 - c.b) * 0.25,
+            };
+          }
+          return guard > 0 ? rgbToHex(c) : hex;
+        }
+
+        function hexWithAlpha(hex, alpha) {
+          const rgb = hexToRgb(hex);
+          if (!rgb) return hex;
+          return (
+            "rgba(" + rgb.r + ", " + rgb.g + ", " + rgb.b + ", " + alpha + ")"
+          );
+        }
+
+        function applyAppThemeVars() {
+          const style = document.body.style;
+          Object.keys(APP_THEME_VARS).forEach((key) => {
+            style.removeProperty(APP_THEME_VARS[key]);
+          });
+          if (themeMode !== "auto" || !appTheme) {
+            style.removeProperty("color-scheme");
+            return;
+          }
+          const colors = appTheme.colors || {};
+          Object.keys(APP_THEME_VARS).forEach((key) => {
+            if (colors[key]) style.setProperty(APP_THEME_VARS[key], colors[key]);
+          });
+          style.setProperty("color-scheme", appTheme.dark ? "dark" : "light");
+        }
+
+        function isDarkTheme() {
+          if (themeMode === "auto") {
+            if (appTheme) return !!appTheme.dark;
+            return !!(mediaDark && mediaDark.matches);
+          }
+          return themeMode === "dark" || themeMode === "nord";
+        }
+
+        // 深色语法配色（One Dark 系）；bundle 未含 HighlightStyle/tags 时返回 null 走默认样式
+        let darkHighlightStyleCache = null;
+        function getDarkHighlightStyle() {
+          if (darkHighlightStyleCache) return darkHighlightStyleCache;
+          if (!HighlightStyle || !tags || typeof HighlightStyle.define !== "function") {
+            return null;
+          }
+          try {
+            darkHighlightStyleCache = HighlightStyle.define([
+              { tag: tags.keyword, color: "#c678dd" },
+              {
+                tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName],
+                color: "#e06c75",
+              },
+              { tag: [tags.function(tags.variableName), tags.labelName], color: "#61afef" },
+              { tag: [tags.color, tags.constant(tags.name), tags.standard(tags.name)], color: "#d19a66" },
+              { tag: [tags.definition(tags.name), tags.separator], color: "#abb2bf" },
+              {
+                tag: [tags.typeName, tags.className, tags.number, tags.changed, tags.annotation, tags.modifier, tags.self, tags.namespace],
+                color: "#e5c07b",
+              },
+              {
+                tag: [tags.operator, tags.operatorKeyword, tags.url, tags.escape, tags.regexp, tags.link, tags.special(tags.string)],
+                color: "#56b6c2",
+              },
+              { tag: [tags.meta, tags.comment], color: "#7d8799" },
+              { tag: [tags.atom, tags.bool, tags.special(tags.variableName)], color: "#d19a66" },
+              { tag: [tags.string, tags.inserted], color: "#98c379" },
+              { tag: tags.invalid, color: "#ffffff" },
+            ]);
+          } catch (e) {
+            appendLog("error", "深色高亮构建失败: " + errMsg(e));
+          }
+          return darkHighlightStyleCache;
+        }
+
+        function makeHighlightExt() {
+          if (typeof syntaxHighlighting !== "function") return [];
+          const darkStyle = isDarkTheme() ? getDarkHighlightStyle() : null;
+          return syntaxHighlighting(darkStyle || defaultHighlightStyle, {
+            fallback: true,
+          });
+        }
+
+        function reconfigureThemeEffects() {
+          if (!view) return;
+          view.dispatch({
+            effects: [
+              themeComp.reconfigure(makeTheme()),
+              highlightComp.reconfigure(makeHighlightExt()),
+            ],
+          });
+        }
+
+        function getSystemFontSize() {
+          if (appFontScale > 0) {
+            // WebView textZoom 固定为 100,自身读不到系统字号缩放,
+            // 用宿主注入的 fontScale 换算(16px 基准,对齐系统 sp 行为)
+            return Math.round(16 * appFontScale * 10) / 10;
+          }
+          const size = parseFloat(
+            window.getComputedStyle(document.body).fontSize,
+          );
+          return isNaN(size) ? 13 : size;
+        }
+
+        function makeFontTheme() {
+          const px =
+            fontSize === "auto"
+              ? getSystemFontSize()
+              : parseInt(fontSize, 10) || 13;
+          return EditorView.theme({
+            ".cm-scroller": {
+              fontSize: px + "px",
+            },
+            ".cm-gutters": { fontSize: px + "px" },
+          });
+        }
+
+        function makeTheme() {
+          return EditorView.theme(
+            {
+              "&": {
+                height: "100%",
+                backgroundColor: "var(--bg)",
+                color: "var(--text)",
+                "-webkit-tap-highlight-color": "transparent",
+              },
+              ".cm-scroller": {
+                fontFamily: "inherit",
+                lineHeight: "1.5",
+                overflow: "auto",
+                "-webkit-overflow-scrolling": "touch",
+                overflowAnchor: "none",
+              },
+              ".cm-content": {
+                padding: "10px 10px 10px 1px",
+                maxWidth: "none",
+              },
+              ".cm-gutters": {
+                backgroundColor: "var(--bg)",
+                color: "var(--gutter-text)",
+                borderRight: "1px solid var(--border)",
+                "-webkit-user-select": "none",
+                userSelect: "none",
+                pointerEvents: "none",
+                contain: "layout style paint",
+              },
+              ".cm-activeLineGutter": {
+                backgroundColor: "var(--active-line)",
+              },
+              ".cm-lineNumbers .cm-gutterElement": {
+                padding: "0 1px 0 4px",
+                minWidth: "0",
+                // 0.85em 缩号,行高 1.5/0.85 补偿,数字与代码行对齐
+                fontSize: "0.85em",
+                lineHeight: "1.7647",
+              },
+              ".cm-foldGutter .cm-gutterElement": {
+                width: "12px",
+                padding: "0",
+                textAlign: "center",
+              },
+              ".cm-gutters .cm-foldGutter, .cm-gutters .cm-foldPlaceholder": {
+                pointerEvents: "auto",
+              },
+              ".cm-activeLine": { backgroundColor: "var(--active-line)" },
+              ".cm-selectionBackground": {
+                backgroundColor: "var(--selection)",
+              },
+            },
+            { dark: isDarkTheme() },
+          );
+        }
+
+        function applyTheme(mode) {
+          themeMode = mode || "auto";
+          if (themeMode === "auto") {
+            document.body.removeAttribute("data-theme");
+          } else {
+            document.body.setAttribute("data-theme", themeMode);
+          }
+          applyAppThemeVars();
+          reconfigureThemeEffects();
+        }
+
+        function applyTabSize(size) {
+          tabSize = size;
+          if (view) {
+            view.dispatch({
+              effects: indentComp.reconfigure(
+                indentUnit.of(" ".repeat(tabSize)),
+              ),
+            });
+          }
+        }
+
+        function applyFontSize(size) {
+          fontSize = size;
+          const px = fontSize === "auto" ? getSystemFontSize() : (parseInt(fontSize, 10) || 13);
+          if (view && Math.abs(px - lastAppliedPixelSize) < 0.1) {
+            return;
+          }
+          lastAppliedPixelSize = px;
+          if (view) {
+            view.dispatch({ effects: fontComp.reconfigure(makeFontTheme()) });
+          }
+        }
+
+        function makeWrapExtensions(wrap) {
+          const exts = [];
+          if (wrap && EditorView.lineWrapping) exts.push(EditorView.lineWrapping);
+          exts.push(
+            EditorView.theme({
+              // 换行模式下右 padding 需 ≥ 滚动指示条热区宽度(24px),
+              // 否则热区会盖住正文行尾,吞掉点按与长按选字
+              ".cm-content": { paddingRight: wrap ? "26px" : "40px" },
+            }),
+          );
+          return exts;
+        }
+
+        function updateWrappedScriptMode(rawText) {
+          // 供 insertNewlineClamped 长行分支判断是否按 JS 语义增补缩进
+          isWrappedScriptMode = !!detectWrapper(rawText || "");
+        }
+
+        function shouldIncreaseIndentAfterLine(textBeforeCursor) {
+          const sanitized = String(textBeforeCursor || "")
+            .replace(/\/\/.*$/, "")
+            .trim();
+          if (!sanitized) return false;
+          const last = sanitized[sanitized.length - 1];
+          return last === "{" || last === "[" || last === "(";
+        }
+
+        function getBracketExpandPair(beforeCursorText, afterCursorText) {
+          const before = String(beforeCursorText || "");
+          const after = String(afterCursorText || "");
+          const leftMatch = before.match(/(\S)\s*$/);
+          const rightMatch = after.match(/^\s*(\S)/);
+          if (!leftMatch || !rightMatch) return null;
+          const left = leftMatch[1];
+          const right = rightMatch[1];
+          if (left === "{" && right === "}") return "{}";
+          if (left === "[" && right === "]") return "[]";
+          if (left === "(" && right === ")") return "()";
+          return null;
+        }
+
+        function insertTab(view) {
+          if (indentMore && !view.state.selection.main.empty) {
+            return indentMore(view);
+          }
+          view.dispatch(view.state.replaceSelection(" ".repeat(tabSize)));
+          return true;
+        }
+
+        function insertNewlineClamped(view) {
+          const { state } = view;
+          const { from, to, head } = state.selection.main;
+          const line = state.doc.lineAt(head);
+          const beforeCursorText = state.doc.sliceString(line.from, from);
+          const afterCursorText = state.doc.sliceString(from, line.to);
+          const trimmedLine = line.text.trim();
+          // 包裹边界行(@js: 头/<js>/{{)在 JS 解析器眼里是 label/表达式续行,
+          // 语法缩进会多给一层;这些行回车走纯换行。
+          // @js: 用全行锚定,避免 // @js: 这类注释行被误判
+          const isWrapperLine =
+            /^@js:\s*$/.test(trimmedLine) ||
+            /^<js>\s*$/i.test(trimmedLine) ||
+            /^\{\{\s*$/.test(trimmedLine);
+          if (
+            !isWrapperLine &&
+            line.length < LONG_LINE_SCROLL_LIMIT &&
+            typeof insertNewlineAndIndent === "function"
+          ) {
+            return insertNewlineAndIndent(view);
+          }
+          let baseIndent = (beforeCursorText.match(/^\s*/) || [""])[0];
+          const canExpandBracketBlock = from === to;
+          const bracketPair = canExpandBracketBlock
+            ? getBracketExpandPair(beforeCursorText, afterCursorText)
+            : null;
+          if (bracketPair) {
+            const innerIndent = baseIndent + " ".repeat(tabSize);
+            const insertBlock = "\n" + innerIndent + "\n" + baseIndent;
+            const blockCursor = from + 1 + innerIndent.length;
+            view.dispatch({
+              changes: { from, to, insert: insertBlock },
+              selection: { anchor: blockCursor, head: blockCursor },
+              effects: EditorView.scrollIntoView(blockCursor, { y: "nearest" }),
+            });
+            return true;
+          }
+          // 边界行已走纯换行,不再叠"末尾是 {[( 多缩进一层"的包裹模式规则
+          if (!isWrapperLine && isWrappedScriptMode && shouldIncreaseIndentAfterLine(beforeCursorText)) {
+            baseIndent += " ".repeat(tabSize);
+          }
+          const insert = "\n" + baseIndent;
+          const cursor = from + insert.length;
+          view.dispatch({
+            changes: { from, to, insert },
+            selection: { anchor: cursor, head: cursor },
+            effects: EditorView.scrollIntoView(cursor, { y: "nearest" }),
+          });
+          view.requestMeasure({
+            read() {
+              const coords = view.coordsAtPos(cursor);
+              const rect = view.scrollDOM.getBoundingClientRect();
+              return { coords, rect };
+            },
+            write(data) {
+              const scrollToCursor = () => {
+                requestAnimationFrame(() => {
+                  view.dispatch({
+                    effects: EditorView.scrollIntoView(cursor, {
+                      y: "nearest",
+                    }),
+                  });
+                });
+              };
+              if (!data || !data.coords) {
+                scrollToCursor();
+                return;
+              }
+              const { coords, rect } = data;
+              if (coords.top < rect.top || coords.bottom > rect.bottom) {
+                scrollToCursor();
+              }
+            },
+          });
+          return true;
+        }
+
+        
+
+        const CUSTOM_COMPLETIONS =
+          window.CUSTOM_COMPLETIONS &&
+            typeof window.CUSTOM_COMPLETIONS === "object"
+            ? window.CUSTOM_COMPLETIONS
+            : {};
+        const completionRegex = (() => {
+          const keys = Object.keys(CUSTOM_COMPLETIONS);
+          if (!keys.length) return null;
+          const escaped = keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+          return new RegExp(`^(${escaped.join("|")})\\.([\\w]*)$`);
+        })();
+
+        function customCompletion(context) {
+          if (!context.explicit) {
+            const prev =
+              context.pos > 0
+                ? context.state.sliceDoc(context.pos - 1, context.pos)
+                : "";
+            if (prev.trim() === "") return null;
+          }
+          const word = context.matchBefore(/[\w$.]+$/);
+          if (!word) return null;
+          if (!context.explicit && word.from === word.to) return null;
+          if (!completionRegex) return null;
+          const m = word.text.match(completionRegex);
+          if (!m) return null;
+          const base = m[1];
+          const prefix = m[2] || "";
+          const entry = CUSTOM_COMPLETIONS[base] || {
+            methods: [],
+            props: [],
+          };
+          const props = (entry.props || [])
+            .filter(
+              (label) =>
+                typeof label === "string" && label.startsWith(prefix),
+            )
+            .map((label) => ({ label, type: "property", detail: base }));
+          const methods = (entry.methods || [])
+            .filter(
+              (label) =>
+                typeof label === "string" && label.startsWith(prefix),
+            )
+            .map((label) => {
+              const hasParen = label.endsWith("()");
+              const insertText = hasParen ? label : label + "()";
+              return {
+                label,
+                type: "function",
+                detail: base,
+                apply: (view, completion, from, to) => {
+                  const anchor = hasParen
+                    ? from + insertText.length
+                    : from + insertText.length - 1;
+                  view.dispatch({
+                    changes: { from, to, insert: insertText },
+                    selection: { anchor, head: anchor },
+                  });
+                },
+              };
+            });
+          const options = props.concat(methods);
+          if (!options.length) return null;
+          return {
+            from: word.from + base.length + 1,
+            options,
+            validFor: /^\w*$/,
+          };
+        }
+
+        function tokenizeCurl(cmd) {
+          const tokens = [];
+          let cur = "";
+          let quote = "";
+          let i = 0;
+
+          function pushCur() {
+            if (cur) tokens.push(cur);
+            cur = "";
+          }
+
+          while (i < cmd.length) {
+            const ch = cmd[i];
+            if (quote) {
+              if (ch === "\\") {
+                if (i + 1 < cmd.length) {
+                  cur += cmd[i + 1];
+                  i += 2;
+                  continue;
+                }
+              }
+              if (ch === quote) {
+                quote = "";
+                i += 1;
+                continue;
+              }
+              cur += ch;
+              i += 1;
+              continue;
+            }
+
+            if (ch === "'" || ch === "\"") {
+              quote = ch;
+              i += 1;
+              continue;
+            }
+
+            if (/\s/.test(ch)) {
+              pushCur();
+              i += 1;
+              continue;
+            }
+
+            if (ch === "\\" && i + 1 < cmd.length) {
+              cur += cmd[i + 1];
+              i += 2;
+              continue;
+            }
+
+            cur += ch;
+            i += 1;
+          }
+          pushCur();
+          return tokens;
+        }
+
+        function parseCurl(cmd) {
+          const tokens = tokenizeCurl(cmd || "");
+          let method = "";
+          const headers = {};
+          const dataParts = [];
+          let url = "";
+          let cookie = "";
+
+          function takeValue(i) {
+            return i + 1 < tokens.length ? tokens[i + 1] : "";
+          }
+
+          for (let i = 0; i < tokens.length; i += 1) {
+            const t = tokens[i];
+            if (t === "curl") continue;
+
+            if (t === "-X" || t === "--request") {
+              method = takeValue(i).toUpperCase();
+              i += 1;
+              continue;
+            }
+
+            if (t === "-H" || t === "--header") {
+              const h = takeValue(i);
+              i += 1;
+              const idx = h.indexOf(":");
+              if (idx > 0) {
+                headers[h.slice(0, idx).trim()] = h.slice(idx + 1).trim();
+              }
+              continue;
+            }
+
+            if (t.indexOf("-H") === 0 && t.length > 2) {
+              const hv = t.slice(2);
+              const hidx = hv.indexOf(":");
+              if (hidx > 0) {
+                headers[hv.slice(0, hidx).trim()] = hv.slice(hidx + 1).trim();
+              }
+              continue;
+            }
+
+            if (
+              t === "-d" ||
+              t === "--data" ||
+              t === "--data-raw" ||
+              t === "--data-binary" ||
+              t === "--data-urlencode"
+            ) {
+              dataParts.push(takeValue(i));
+              if (!method) method = "POST";
+              i += 1;
+              continue;
+            }
+
+            if (
+              t.indexOf("--data=") === 0 ||
+              t.indexOf("--data-raw=") === 0 ||
+              t.indexOf("--data-binary=") === 0 ||
+              t.indexOf("--data-urlencode=") === 0
+            ) {
+              const eqIdx = t.indexOf("=");
+              dataParts.push(eqIdx >= 0 ? t.slice(eqIdx + 1) : "");
+              if (!method) method = "POST";
+              continue;
+            }
+
+            if (t === "-b" || t === "--cookie") {
+              cookie = takeValue(i);
+              i += 1;
+              continue;
+            }
+
+            if (t.indexOf("--cookie=") === 0) {
+              cookie = t.slice("--cookie=".length);
+              continue;
+            }
+
+            if (t.indexOf("http://") === 0 || t.indexOf("https://") === 0) {
+              url = t;
+              continue;
+            }
+
+            if (t[0] !== "-" && !url) {
+              url = t;
+            }
+          }
+
+          if (cookie && !headers.Cookie) {
+            headers.Cookie = cookie;
+          }
+
+          return {
+            url,
+            method,
+            headers,
+            body: dataParts.join("&"),
+          };
+        }
+
+        function shellQuote(value) {
+          const str = String(value == null ? "" : value);
+          if (!/[\s'"\\]/.test(str)) return str;
+          return "'" + str.replace(/'/g, "'\"'\"'") + "'";
+        }
+
+        function curlToAnalyzeUrl(cmd) {
+          const parsed = parseCurl(cmd);
+          if (!parsed.url) {
+            throw new Error("未解析到 URL");
+          }
+          const options = {};
+          const method = parsed.method || "";
+          if (method && (method !== "GET" || parsed.body)) {
+            options.method = method;
+          }
+          if (parsed.body) options.body = parsed.body;
+          if (parsed.headers && Object.keys(parsed.headers).length) {
+            options.headers = parsed.headers;
+          }
+          const hasOptions = Object.keys(options).length > 0;
+          return hasOptions
+            ? `${parsed.url},${JSON.stringify(options)}`
+            : parsed.url;
+        }
+
+        function splitAnalyzeUrl(text) {
+          const raw = String(text || "").trim();
+          if (!raw) return { url: "", options: null };
+          // 切分语义与 App 端 AnalyzeUrl.paramPattern 一致:首个 ",{" 为界
+          const m = raw.match(/\s*,\s*(?=\{)/);
+          if (!m) return { url: raw, options: null };
+          const url = raw.slice(0, m.index).trim();
+          const json = raw.slice(m.index + m[0].length).trim();
+          return { url, options: json };
+        }
+
+        function analyzeUrlToCurl(text) {
+          const parsed = splitAnalyzeUrl(text);
+          const url = parsed.url;
+          if (!url) throw new Error("未解析到 URL");
+          let options = {};
+          if (parsed.options) {
+            options = JSON.parse(parsed.options);
+          }
+          const method = options.method
+            ? String(options.method).toUpperCase()
+            : "";
+          const headers =
+            options.headers && typeof options.headers === "object"
+              ? options.headers
+              : {};
+          const body = options.body != null ? options.body : "";
+          const parts = ["curl", shellQuote(url)];
+          if (method && method !== "GET") {
+            parts.push("-X", method);
+          }
+          Object.keys(headers).forEach((key) => {
+            parts.push("-H", shellQuote(`${key}: ${headers[key]}`));
+          });
+          if (body !== "") {
+            const payload =
+              typeof body === "string" ? body : JSON.stringify(body);
+            parts.push("--data-raw", shellQuote(payload));
+          }
+          return parts.join(" ");
+        }
+
+        /** 撤销/重做可用态跟随历史深度；bundle 未含 undoDepth/redoDepth 时保持常亮 */
+        function updateHistoryButtons(state) {
+          if (typeof undoDepth !== "function" || typeof redoDepth !== "function") {
+            return;
+          }
+          if (dom.undoBtn) dom.undoBtn.disabled = undoDepth(state) === 0;
+          if (dom.redoBtn) dom.redoBtn.disabled = redoDepth(state) === 0;
+        }
+
+        function buildAutocompleteExtensions() {
+          if (!autocompletion) return [];
+          return [
+            autocompletion({
+              activateOnTyping: true,
+              maxRenderedOptions: 200,
+            }),
+          ];
+        }
+
+        function isCustomCompletionContext(state) {
+          if (!completionRegex) return false;
+          const main = state.selection.main;
+          if (!main || main.from !== main.to) return false;
+          const pos = main.head;
+          const start = Math.max(0, pos - 160);
+          const textBefore = state.sliceDoc(start, pos);
+          const token = textBefore.match(/[A-Za-z_$][\w$]*\.[\w$]*$/);
+          if (!token) return false;
+          return completionRegex.test(token[0]);
+        }
+
+        function buildCriticalExtensions() {
+          const tabKey = {
+            key: "Tab",
+            run: insertTab,
+            shift: indentLess || undefined,
+          };
+          const enterKey = { key: "Enter", run: insertNewlineClamped };
+          const exts = [];
+          if (keymap && typeof keymap.of === "function") {
+            const km = [tabKey];
+            if (enterKey) km.unshift(enterKey);
+            exts.push(keymap.of(km));
+          }
+          if (typeof lineNumbers === "function") exts.push(lineNumbers());
+          if (wrapComp && EditorView && EditorView.lineWrapping)
+            exts.push(wrapComp.of(makeWrapExtensions(isWrap)));
+          if (
+            indentComp &&
+            indentUnit &&
+            typeof indentUnit.of === "function"
+          ) {
+            exts.push(indentComp.of(indentUnit.of(" ".repeat(tabSize))));
+          }
+          if (typeof indentOnInput === "function") {
+            exts.push(indentOnInput());
+          }
+          if (typeof javascript === "function") exts.push(javascript());
+          if (EditorView && EditorView.scrollMargins) {
+            // 光标滚动定位把底部安全区计入边距,末行输入不落在手势条下
+            exts.push(EditorView.scrollMargins.of(() => ({ bottom: bottomInset })));
+          }
+          if (typeof syntaxHighlighting === "function") {
+            exts.push(highlightComp.of(makeHighlightExt()));
+          }
+          if (themeComp) exts.push(themeComp.of(makeTheme()));
+          if (fontComp) exts.push(fontComp.of(makeFontTheme()));
+          exts.push(deferredComp.of([]));
+          return exts;
+        }
+
+        function buildDeferredExtensions() {
+          const closeKeymap = Array.isArray(closeBracketsKeymap)
+            ? closeBracketsKeymap
+            : closeBracketsKeymap
+              ? [closeBracketsKeymap]
+              : [];
+          const exts = [];
+          if (typeof history === "function") exts.push(history());
+          if (keymap && typeof keymap.of === "function" && closeKeymap.length) {
+            exts.push(keymap.of(closeKeymap));
+          }
+          if (typeof highlightActiveLineGutter === "function")
+            exts.push(highlightActiveLineGutter());
+          if (typeof foldGutter === "function") exts.push(foldGutter());
+          if (typeof closeBrackets === "function") exts.push(closeBrackets());
+          if (typeof bracketMatching === "function")
+            exts.push(bracketMatching());
+          if (typeof highlightSelectionMatches === "function")
+            exts.push(highlightSelectionMatches());
+          // 面板置顶:底部默认位会被软键盘盖住
+          if (typeof search === "function") exts.push(search({ top: true }));
+          if (
+            EditorState &&
+            EditorState.phrases &&
+            typeof EditorState.phrases.of === "function"
+          ) {
+            exts.push(
+              EditorState.phrases.of({
+                "Find": "查找",
+                "Replace": "替换",
+                "next": "下一个",
+                "previous": "上一个",
+                "all": "全部",
+                "match case": "区分大小写",
+                "by word": "全字匹配",
+                "regexp": "正则",
+                "replace": "替换",
+                "replace all": "全部替换",
+                "close": "关闭",
+                "current match": "当前匹配",
+                "replaced $ matches": "已替换 $ 处",
+                "replaced match on line $": "已替换第 $ 行",
+                "on line": "于行",
+              }),
+            );
+          }
+          if (typeof closeCompletion === "function") {
+            let hadCustomCompletionContext = false;
+            exts.push(
+              EditorView.updateListener.of((update) => {
+                if (!update.docChanged && !update.selectionSet) return;
+                const isCustomContext = isCustomCompletionContext(update.state);
+                if (hadCustomCompletionContext && !isCustomContext) {
+                  closeCompletion(update.view);
+                }
+                hadCustomCompletionContext = isCustomContext;
+              }),
+            );
+          }
+          if (
+            EditorState &&
+            EditorState.languageData &&
+            typeof EditorState.languageData.of === "function"
+          ) {
+            exts.push(
+              EditorState.languageData.of((state, pos, side) => [
+                { autocomplete: customCompletion },
+              ]),
+            );
+          }
+          exts.push(...buildAutocompleteExtensions());
+          let _wrapCheckTimer = 0;
+          exts.push(
+            EditorView.updateListener.of((update) => {
+              if (!update.docChanged) return;
+              updateHistoryButtons(update.state);
+              clearTimeout(_wrapCheckTimer);
+              _wrapCheckTimer = setTimeout(() => {
+                updateWrappedScriptMode(update.state.doc.toString());
+              }, 300);
+              scheduleSyntaxCheck();
+            }),
+          );
+          return exts;
+        }
+
+        loadSettings();
+
+        let view;
+        try {
+          view = new EditorView({
+            state: EditorState.create({
+              doc: "",
+              extensions: buildCriticalExtensions(),
+            }),
+            parent: dom.editorHost,
+          });
+          const focusNoScroll = (e) => {
+            if (!view || !view.contentDOM) return;
+            if (view.hasFocus) return;
+            const target = e.target instanceof Element ? e.target : null;
+            if (target && target.closest(".cm-gutters, .cm-panels")) return;
+            try {
+              view.contentDOM.focus({ preventScroll: true });
+            } catch (ex) {
+              view.contentDOM.focus();
+            }
+          };
+          dom.editorHost.addEventListener("pointerdown", focusNoScroll, {
+            capture: true,
+            passive: true,
+          });
+          applyTabSize(tabSize);
+          applyFontSize(fontSize);
+          applyTheme(themeMode);
+          dom.wrapBtn.classList.toggle("active", isWrap);
+          updateHistoryButtons(view.state);
+        } catch (e) {
+          appendLog("error", errMsg(e));
+          bootError("编辑器初始化失败: " + errMsg(e));
+          return;
+        }
+        window.__LEGADO_EDITOR_BOOTED = true;
+
+        requestAnimationFrame(function() {
+          view.dispatch({
+            effects: deferredComp.reconfigure(buildDeferredExtensions()),
+          });
+        });
+
+        (function checkToolbarOverflow() {
+          const toolbar = $("toolbar");
+          if (!toolbar) return;
+          function update() {
+            toolbar.classList.toggle("overflowing", toolbar.scrollWidth > toolbar.clientWidth);
+          }
+          update();
+          if (typeof ResizeObserver === "function") {
+            new ResizeObserver(update).observe(toolbar);
+          } else {
+            window.addEventListener("resize", update);
+          }
+        })();
+
+        // 工具栏按钮 tap 与输入法:阻止 mousedown 默认聚焦只是第一步——Android
+        // WebView 上按钮不夺焦后,Chrome 可能把焦点"恢复"到之前聚焦过的
+        // contentDOM,CodeMirror 可编辑区一获得焦点就弹键盘。因此:
+        // 1) 编辑器若有焦点,点按钮时主动失焦(键盘收起,与移动端工具栏预期一致);
+        // 2) 交互窗口内 focusin 若落在 contentDOM 上立即拦回,保证绝不因点按钮弹键盘。
+        // 搜索按钮打开面板时 CM 会聚焦搜索输入框(input,非 contentDOM),不受拦截。
+        (function keepEditorFocusOnToolbar() {
+          const toolbar = $("toolbar");
+          if (!toolbar) return;
+          let toolbarTapUntil = 0;
+          toolbar.addEventListener(
+            "mousedown",
+            (e) => {
+              const t = e.target;
+              if (!(t instanceof Element) || !t.closest(".btn")) return;
+              e.preventDefault();
+              if (view && view.contentDOM && view.hasFocus) {
+                view.contentDOM.blur();
+              }
+              toolbarTapUntil = Date.now() + 300;
+            },
+            { passive: false },
+          );
+          document.addEventListener(
+            "focusin",
+            (e) => {
+              if (Date.now() > toolbarTapUntil) return;
+              if (!view || !view.contentDOM) return;
+              const t = e.target;
+              if (t === view.contentDOM || view.contentDOM.contains(t)) {
+                view.contentDOM.blur();
+              }
+            },
+            { capture: true },
+          );
+        })();
+
+        const syncAutoTheme = () => {
+          if (themeMode !== "auto" || appTheme) return;
+          reconfigureThemeEffects();
+        };
+        if (mediaDark) {
+          if (typeof mediaDark.addEventListener === "function") {
+            mediaDark.addEventListener("change", syncAutoTheme);
+          } else if (typeof mediaDark.addListener === "function") {
+            mediaDark.addListener(syncAutoTheme);
+          }
+        }
+        if (typeof window.__warmupPrettier === "function") {
+          window.__warmupPrettier(() => {
+            scheduleSyntaxCheck();
+          });
+        }
+
+        function getCode() {
+          return view.state.doc.toString();
+        }
+
+        function resetDoc(text, opts) {
+          const doc = text || "";
+          const len = view.state.doc.length;
+          const addToHistory = !(opts && opts.addToHistory === false);
+          const tr = {
+            changes: { from: 0, to: len, insert: doc },
+          };
+          if (!addToHistory && Transaction && Transaction.addToHistory) {
+            tr.annotations = Transaction.addToHistory.of(false);
+          }
+          view.dispatch(tr);
+        }
+
+        function detectWrapper(rawText) {
+          const raw = rawText || "";
+          const trimmed = raw.trim();
+          const jsPrefixMatch = raw.match(/^\s*@js:\s*[\r\n]?([\s\S]*)$/);
+          if (jsPrefixMatch) {
+            return {
+              type: "prefix",
+              prefix: "@js:",
+              body: jsPrefixMatch[1] || "",
+              reassemble: function(b) { return this.prefix + "\n" + b; },
+            };
+          }
+          const tagMatch = trimmed.match(/^<js>\s*([\s\S]*?)\s*<\/js>$/i);
+          if (tagMatch) {
+            return {
+              type: "tag",
+              open: "<js>",
+              close: "</js>",
+              body: tagMatch[1],
+              reassemble: function(b) { return this.open + "\n" + b + "\n" + this.close; },
+            };
+          }
+          const tagTailMatch = trimmed.match(
+            /^<js>\s*([\s\S]*?)\s*<\/js>([\s\S]+)$/i,
+          );
+          if (tagTailMatch) {
+            return {
+              type: "tag-tail",
+              open: "<js>",
+              close: "</js>",
+              body: tagTailMatch[1],
+              tail: tagTailMatch[2],
+              reassemble: function(b) { return this.open + "\n" + b + "\n" + this.close + this.tail; },
+            };
+          }
+          const braceMatch = trimmed.match(/^\{\{\s*([\s\S]*?)\s*\}\}$/);
+          if (braceMatch) {
+            return {
+              type: "moustache",
+              body: braceMatch[1],
+              reassemble: function(b) { return "{{\n" + b + "\n}}"; },
+            };
+          }
+          const mixedJsMatch = raw.match(/^([\s\S]*?\n)@js:\s*[\r\n]?([\s\S]*)$/);
+          if (mixedJsMatch) {
+            return {
+              type: "mixed",
+              header: mixedJsMatch[1],
+              prefix: "@js:",
+              body: mixedJsMatch[2] || "",
+              reassemble: function(b) { return this.header + this.prefix + "\n" + b; },
+            };
+          }
+          const mixedTagMatch = trimmed.match(
+            /^([\s\S]*?)<js>\s*([\s\S]*?)\s*<\/js>$/i,
+          );
+          if (mixedTagMatch && mixedTagMatch[1].length > 0) {
+            return {
+              type: "mixed-tag",
+              header: mixedTagMatch[1],
+              open: "<js>",
+              close: "</js>",
+              body: mixedTagMatch[2],
+              reassemble: function(b) { return this.header + this.open + "\n" + b + "\n" + this.close; },
+            };
+          }
+          const mixedTagTailMatch = trimmed.match(
+            /^([\s\S]*?)<js>\s*([\s\S]*?)\s*<\/js>([\s\S]+)$/i,
+          );
+          if (mixedTagTailMatch && mixedTagTailMatch[1].length > 0) {
+            return {
+              type: "mixed-tag-tail",
+              header: mixedTagTailMatch[1],
+              open: "<js>",
+              close: "</js>",
+              body: mixedTagTailMatch[2],
+              tail: mixedTagTailMatch[3],
+              reassemble: function(b) { return this.header + this.open + "\n" + b + "\n" + this.close + this.tail; },
+            };
+          }
+          return null;
+        }
+
+        let prettierPluginsCache = null;
+        function getPrettierPlugins() {
+          if (prettierPluginsCache) return prettierPluginsCache;
+          if (!window.prettierPlugins) return null;
+          const list = [];
+          if (window.prettierPlugins.babel)
+            list.push(window.prettierPlugins.babel);
+          if (window.prettierPlugins.estree)
+            list.push(window.prettierPlugins.estree);
+          prettierPluginsCache = list.length ? list : null;
+          return prettierPluginsCache;
+        }
+
+        async function preparePrettier(showLoadingToast) {
+          if (window.prettier && getPrettierPlugins()) return true;
+          if (typeof window.__ensurePrettierReady !== "function") return false;
+          if (showLoadingToast) showToast("加载格式化引擎...");
+          try {
+            await window.__ensurePrettierReady();
+            prettierPluginsCache = null;
+            return !!(window.prettier && getPrettierPlugins());
+          } catch (e) {
+            appendLog("error", errMsg(e));
+            if (showLoadingToast) showToast("格式化引擎加载失败");
+            return false;
+          }
+        }
+
+        async function formatWithPrettier(codeText, parser) {
+          if (!window.prettier || !window.prettierPlugins) {
+            throw new Error("Prettier 未加载");
+          }
+          const plugins = getPrettierPlugins();
+          if (!plugins || !plugins.length) {
+            throw new Error("Prettier 插件未加载");
+          }
+          const width = wrapElements
+            ? printWidth
+            : Math.max(printWidth, 99999);
+          const formatted = await window.prettier.format(codeText, {
+            parser: parser || "babel",
+            plugins: plugins,
+            tabWidth: tabSize,
+            useTabs: false,
+            singleQuote: singleQuote,
+            trailingComma: trailingComma ? "es5" : "none",
+            printWidth: width,
+          });
+          return formatted.replace(/\r?\n$/, "");
+        }
+
+        let isFormatting = false;
+
+        async function formatCode() {
+          if (isFormatting) return;
+          const raw = getCode();
+          const text = raw.trim();
+          if (!text) {
+            showToast("内容为空，无法格式化");
+            return;
+          }
+          if (!(await preparePrettier(true))) {
+            return;
+          }
+          isFormatting = true;
+          showToast("格式化中...");
+          await new Promise(requestAnimationFrame);
+          try {
+            const wrapper = detectWrapper(raw);
+            let formattedBody = "";
+            if (wrapper) {
+              formattedBody = await formatWithPrettier(wrapper.body, "babel");
+              formattedBody = wrapper.reassemble(formattedBody);
+            } else {
+              if (/^[\[{]/.test(text)) {
+                try {
+                  formattedBody = JSON.stringify(
+                    JSON.parse(text),
+                    null,
+                    " ".repeat(tabSize),
+                  );
+                } catch (e) {
+                  formattedBody = "";
+                }
+              }
+              if (!formattedBody) {
+                formattedBody = await formatWithPrettier(text, "babel");
+              }
+            }
+            resetDoc(formattedBody);
+            showToast("格式化完成");
+          } catch (e) {
+            appendLog("error", errMsg(e));
+            // 失败原因首行直接带上,不用再打开日志面板排查
+            const reason = errMsg(e).split("\n")[0];
+            showToast(
+              "格式化失败: " +
+                (reason.length > 80 ? reason.slice(0, 80) + "…" : reason),
+            );
+          } finally {
+            isFormatting = false;
+          }
+        }
+
+        bindClick(dom.undoBtn, () => undo(view));
+        bindClick(dom.redoBtn, () => redo(view));
+        bindClick(dom.formatBtn, formatCode);
+
+        const wrapBtn = dom.wrapBtn;
+        bindClick(wrapBtn, () => {
+          isWrap = !isWrap;
+          view.dispatch({
+            effects: wrapComp.reconfigure(makeWrapExtensions(isWrap)),
+          });
+          wrapBtn.classList.toggle("active", isWrap);
+          saveSettings();
+          showToast("自动换行: " + (isWrap ? "开" : "关"));
+        });
+        const formatOptionsBtn = dom.formatOptionsBtn;
+        const formatOptions = dom.formatOptions;
+        const wrapElementsToggle = dom.wrapElementsToggle;
+        const indentSizeSelect = dom.indentSizeSelect;
+        const fontSizeSelect = dom.fontSizeSelect;
+        const printWidthSelect = dom.printWidthSelect;
+        const themeSelect = dom.themeSelect;
+        const singleQuoteToggle = dom.singleQuoteToggle;
+        const trailingCommaToggle = dom.trailingCommaToggle;
+
+        wrapElementsToggle.checked = wrapElements;
+        indentSizeSelect.value = String(tabSize);
+        fontSizeSelect.value = String(fontSize);
+        printWidthSelect.value = String(printWidth);
+        themeSelect.value = String(themeMode);
+        singleQuoteToggle.checked = singleQuote;
+        trailingCommaToggle.checked = trailingComma;
+
+        function bindToggle(el, onChange, labelFn) {
+          el.addEventListener("change", () => {
+            onChange(el.checked);
+            if (labelFn) showToast(labelFn());
+            saveSettings();
+          });
+        }
+
+        function bindSelect(el, onChange, labelFn) {
+          el.addEventListener("change", () => {
+            onChange(el.value);
+            if (labelFn) showToast(labelFn());
+            saveSettings();
+          });
+        }
+
+        bindToggle(
+          wrapElementsToggle,
+          (val) => {
+            wrapElements = val;
+          },
+          () => "元素换行: " + (wrapElements ? "开" : "关"),
+        );
+        bindSelect(
+          indentSizeSelect,
+          (val) => applyTabSize(parseInt(val, 10) || 2),
+          () => "缩进: " + tabSize,
+        );
+        bindSelect(
+          fontSizeSelect,
+          (val) => applyFontSize(val || "auto"),
+          () => "字号: " + (fontSize === "auto" ? "自动" : fontSize),
+        );
+        bindSelect(
+          printWidthSelect,
+          (val) => {
+            printWidth = parseInt(val, 10) || 120;
+          },
+          () => "宽度: " + printWidth,
+        );
+        bindSelect(
+          themeSelect,
+          (val) => applyTheme(val || "auto"),
+          () => "主题: " + (themeMode === "auto" ? "系统" : themeMode),
+        );
+        bindToggle(
+          singleQuoteToggle,
+          (val) => {
+            singleQuote = val;
+          },
+          () => "单引号: " + (singleQuote ? "开" : "关"),
+        );
+        bindToggle(
+          trailingCommaToggle,
+          (val) => {
+            trailingComma = val;
+          },
+          () => "末尾逗号: " + (trailingComma ? "开" : "关"),
+        );
+
+        bindClick(formatOptionsBtn, () => {
+          formatOptions.classList.toggle("show");
+        });
+        document.addEventListener("click", (e) => {
+          const target = e.target;
+          if (!(target instanceof Element)) return;
+
+          if (formatOptions.classList.contains("show") &&
+              !target.closest("#format-options") &&
+              !target.closest("#formatOptionsBtn")) {
+            formatOptions.classList.remove("show");
+          }
+          if (dom.moreMenu.classList.contains("show") &&
+              !target.closest("#more-menu") &&
+              !target.closest("#moreBtn")) {
+            dom.moreMenu.classList.remove("show");
+          }
+          if (dom.gotoPanel.classList.contains("show") &&
+              !target.closest("#goto-panel") &&
+              !target.closest("#gotoToggleBtn")) {
+            dom.gotoPanel.classList.remove("show");
+          }
+          if (dom.logPanel.classList.contains("show") &&
+              !target.closest("#log-panel") &&
+              !target.closest("#logToggleBtn")) {
+            dom.logPanel.classList.remove("show");
+            isLogOpen = false;
+          }
+          if (dom.curlPanel.classList.contains("show") &&
+              !target.closest("#curl-panel") &&
+              !target.closest("#curlToggleBtn")) {
+            dom.curlPanel.classList.remove("show");
+          }
+          if (dom.regexPanel.classList.contains("show") &&
+              !target.closest("#regex-panel") &&
+              !target.closest("#regexToggleBtn")) {
+            dom.regexPanel.classList.remove("show");
+          }
+        });
+
+        // 更多菜单:打开时按各面板当前开合状态同步高亮;菜单项不夺编辑器焦点(同工具栏策略)
+        function closeMoreMenu() {
+          dom.moreMenu.classList.remove("show");
+        }
+        bindClick(dom.moreBtn, () => {
+          dom.regexToggleBtn.classList.toggle(
+            "active",
+            dom.regexPanel.classList.contains("show"),
+          );
+          dom.curlToggleBtn.classList.toggle(
+            "active",
+            dom.curlPanel.classList.contains("show"),
+          );
+          dom.logToggleBtn.classList.toggle(
+            "active",
+            dom.logPanel.classList.contains("show"),
+          );
+          dom.moreMenu.classList.toggle("show");
+        });
+        dom.moreMenu.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+        });
+        dom.gotoConfirmBtn.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+        });
+
+        function gotoLine() {
+          const v = (dom.gotoInput.value || "").trim();
+          const m = v.match(/^(\d+)(?:\s*[:：,，]\s*(\d+))?$/);
+          if (!m) {
+            showToast("请输入行号，如 120 或 120:8");
+            return;
+          }
+          const lineNo = Math.max(
+            1,
+            Math.min(parseInt(m[1], 10), view.state.doc.lines),
+          );
+          const line = view.state.doc.line(lineNo);
+          const col = m[2] ? Math.max(1, parseInt(m[2], 10)) : 1;
+          const pos = line.from + Math.min(col - 1, line.length);
+          view.dispatch({
+            selection: { anchor: pos, head: pos },
+            effects: EditorView.scrollIntoView(pos, { y: "center" }),
+          });
+          view.focus();
+          dom.gotoPanel.classList.remove("show");
+        }
+        bindClick(dom.gotoToggleBtn, () => {
+          closeMoreMenu();
+          dom.gotoPanel.classList.toggle("show");
+          if (dom.gotoPanel.classList.contains("show")) {
+            // 跳行就是为了立刻输数字,自动聚焦弹键盘符合预期
+            dom.gotoInput.value = "";
+            dom.gotoInput.focus();
+          }
+        });
+        bindClick(dom.gotoConfirmBtn, gotoLine);
+        dom.gotoInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") gotoLine();
+        });
+
+        // 面板 ↔ 编辑器互通:选区内容灌入面板,面板结果插回光标处
+        function getEditorSelectionText() {
+          const sel = view.state.selection.main;
+          return sel.empty ? "" : view.state.sliceDoc(sel.from, sel.to);
+        }
+
+        function insertIntoEditor(text) {
+          view.dispatch(view.state.replaceSelection(text));
+          view.focus();
+        }
+
+        bindClick(dom.searchToggleBtn, () => {
+          // bundle 未导出 closeSearchPanel,复用面板自身关闭按钮的处理器
+          const panel = view.dom.querySelector(".cm-panel.cm-search");
+          if (panel) {
+            const close = panel.querySelector('[name="close"]');
+            if (close) {
+              close.click();
+              return;
+            }
+          }
+          if (typeof openSearchPanel === "function") {
+            openSearchPanel(view);
+          }
+        });
+
+        // 搜索面板按钮 tap 不夺焦:阻止 mousedown 默认聚焦,输入框保持焦点,
+        // 输入法不闪。@codemirror/search 6.6 中 findNext/findPrevious 收尾的
+        // selectSearchInput 只在输入框已有焦点时才 select(),命令本身不会重新
+        // focus 输入框(唯一调 focus() 的是 openSearchPanel,打开面板本就该弹键盘),
+        // 因此不再需要全局 patch HTMLInputElement.prototype.focus/select,
+        // 也消除了原 300ms 触发窗误吞快速点按输入框焦点的问题。
+        (function tameSearchPanelFocus() {
+          document.addEventListener(
+            "mousedown",
+            (e) => {
+              const t = e.target;
+              if (!(t instanceof Element)) return;
+              if (t.closest(".cm-panel.cm-search button, .cm-panel.cm-search .cm-button")) {
+                e.preventDefault();
+              }
+            },
+            true,
+          );
+        })();
+
+        function bindClick(el, handler) {
+          el.onclick = handler;
+        }
+
+        function updateCurlPlaceholders() {
+          if (!dom.curlInput || !dom.curlOutput || !dom.curlModeSelect) return;
+          if (dom.curlModeSelect.value === "analyze-to-curl") {
+            dom.curlInput.placeholder = "粘贴 AnalyzeUrl";
+            dom.curlOutput.placeholder = "转换后的 curl";
+          } else {
+            dom.curlInput.placeholder = "粘贴 curl";
+            dom.curlOutput.placeholder = "转换后的 AnalyzeUrl";
+          }
+        }
+
+        if (dom.curlModeSelect) {
+          dom.curlModeSelect.addEventListener("change", updateCurlPlaceholders);
+          updateCurlPlaceholders();
+        }
+
+        bindClick(dom.curlToggleBtn, () => {
+          closeMoreMenu();
+          dom.curlPanel.classList.toggle("show");
+          if (dom.curlPanel.classList.contains("show")) {
+            // 不自动聚焦输入框:用户多半先粘贴内容,立即弹键盘会压缩面板可视区
+            updateCurlPlaceholders();
+          }
+        });
+        bindClick(dom.curlFillBtn, () => {
+          const text = getEditorSelectionText();
+          if (!text) {
+            showToast("请先在编辑器中选中文本");
+            return;
+          }
+          if (dom.curlInput) {
+            dom.curlInput.value = text;
+            showToast("已填充选区内容");
+          }
+        });
+        bindClick(dom.curlInsertBtn, () => {
+          const text = dom.curlOutput ? dom.curlOutput.value : "";
+          if (!text) {
+            showToast("没有转换结果");
+            return;
+          }
+          insertIntoEditor(text);
+          dom.curlPanel.classList.remove("show");
+          showToast("已插入到编辑器");
+        });
+        bindClick(dom.curlCloseBtn, () => {
+          dom.curlPanel.classList.remove("show");
+        });
+        bindClick(dom.curlClearBtn, () => {
+          if (dom.curlInput) dom.curlInput.value = "";
+          if (dom.curlOutput) dom.curlOutput.value = "";
+        });
+        bindClick(dom.curlConvertBtn, () => {
+          const input = dom.curlInput ? dom.curlInput.value : "";
+          if (!input.trim()) {
+            showToast("请输入内容");
+            return;
+          }
+          try {
+            const mode = dom.curlModeSelect
+              ? dom.curlModeSelect.value
+              : "curl-to-analyze";
+            const output =
+              mode === "analyze-to-curl"
+                ? analyzeUrlToCurl(input)
+                : curlToAnalyzeUrl(input);
+            if (dom.curlOutput) dom.curlOutput.value = output;
+          } catch (e) {
+            appendLog("error", "转换失败: " + errMsg(e));
+            showToast("转换失败");
+          }
+        });
+        bindClick(dom.curlCopyBtn, async () => {
+          const text = dom.curlOutput ? dom.curlOutput.value : "";
+          if (!text) {
+            showToast("没有可复制内容");
+            return;
+          }
+          try {
+            await copyToClipboard(text);
+            showToast("已复制");
+          } catch (e) {
+            appendLog("error", "复制失败: " + errMsg(e));
+            showToast("复制失败");
+          }
+        });
+
+        const regexFlags = { g: true, i: false, m: false, s: false };
+        const regexFlagEls = {
+          g: dom.regexFlagG, i: dom.regexFlagI,
+          m: dom.regexFlagM, s: dom.regexFlagS,
+        };
+
+        function updateRegexFlags() {
+          Object.keys(regexFlagEls).forEach((f) => {
+            regexFlagEls[f].classList.toggle("on", regexFlags[f]);
+          });
+        }
+
+        function buildRegexFlags() {
+          return Object.entries(regexFlags)
+            .filter(([, v]) => v).map(([k]) => k).join("");
+        }
+
+        function runRegex() {
+          const pattern = dom.regexPattern ? dom.regexPattern.value : "";
+          const sample = dom.regexSample ? dom.regexSample.value : "";
+          const result = dom.regexResult;
+          if (!result) return;
+          if (!pattern) { result.innerHTML = ""; return; }
+          try {
+            const re = new RegExp(pattern, buildRegexFlags());
+            let matches;
+            if (re.global) {
+              matches = [...sample.matchAll(re)];
+            } else {
+              const m = re.exec(sample);
+              matches = m ? [m] : [];
+            }
+            if (!matches.length) {
+              result.innerHTML = '<span class="regex-error">无匹配</span>';
+              return;
+            }
+            const lines = [];
+            matches.forEach((m, idx) => {
+              let line = `<span class="regex-match">#${idx + 1}:</span> <b>${escHtml(m[0])}</b>`;
+              if (m.length > 1) {
+                const groups = [];
+                for (let i = 1; i < m.length; i++) {
+                  if (m[i] != null) groups.push(`${i}: ${escHtml(m[i])}`);
+                }
+                if (groups.length) line += `  [${groups.join(", ")}]`;
+              }
+              if (m.index != null) line += `  (位置 ${m.index})`;
+              lines.push(line);
+            });
+            result.innerHTML = lines.join("\n");
+          } catch (e) {
+            result.innerHTML = '<span class="regex-error">正则错误: ' + escHtml(e.message) + '</span>';
+          }
+        }
+
+        function escHtml(s) {
+          return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function onRegexInput() { runRegex(); }
+
+        dom.regexPattern && dom.regexPattern.addEventListener("input", onRegexInput);
+        dom.regexSample && dom.regexSample.addEventListener("input", onRegexInput);
+
+        Object.keys(regexFlagEls).forEach((f) => {
+          regexFlagEls[f] && regexFlagEls[f].addEventListener("click", () => {
+            regexFlags[f] = !regexFlags[f];
+            updateRegexFlags();
+            runRegex();
+          });
+        });
+
+        bindClick(dom.regexToggleBtn, () => {
+          closeMoreMenu();
+          dom.regexPanel.classList.toggle("show");
+          if (dom.regexPanel.classList.contains("show")) {
+            // 不自动聚焦输入框,理由同 curl 面板
+            runRegex();
+          }
+        });
+        bindClick(dom.regexFillBtn, () => {
+          const text = getEditorSelectionText();
+          if (!text) {
+            showToast("请先在编辑器中选中文本");
+            return;
+          }
+          if (dom.regexSample) {
+            dom.regexSample.value = text;
+            runRegex();
+          }
+        });
+        bindClick(dom.regexInsertBtn, () => {
+          const pattern = dom.regexPattern ? dom.regexPattern.value : "";
+          if (!pattern) {
+            showToast("正则为空");
+            return;
+          }
+          insertIntoEditor(pattern);
+          showToast("已插入到编辑器");
+        });
+        bindClick(dom.regexCloseBtn, () => dom.regexPanel.classList.remove("show"));
+        bindClick(dom.regexClearBtn, () => {
+          if (dom.regexPattern) dom.regexPattern.value = "";
+          if (dom.regexSample) dom.regexSample.value = "";
+          if (dom.regexResult) dom.regexResult.innerHTML = "等待输入…";
+        });
+        bindClick(dom.regexCopyBtn, async () => {
+          const text = dom.regexPattern ? dom.regexPattern.value : "";
+          if (!text) { showToast("没有可复制内容"); return; }
+          try { await copyToClipboard(text); showToast("已复制"); }
+          catch (e) { showToast("复制失败"); }
+        });
+
+        bindClick(dom.logToggleBtn, () => {
+          closeMoreMenu();
+          dom.logPanel.classList.toggle("show");
+          isLogOpen = dom.logPanel.classList.contains("show");
+          if (isLogOpen && dom.logBody) {
+            dom.logBody.textContent = logLines.join("\n");
+            dom.logBody.scrollTop = dom.logBody.scrollHeight;
+          }
+        });
+        bindClick(dom.logCloseBtn, () => {
+          dom.logPanel.classList.remove("show");
+          isLogOpen = false;
+        });
+        bindClick(dom.logCopyBtn, async () => {
+          const text = logLines.join("\n");
+          if (!text) {
+            showToast("日志为空");
+            return;
+          }
+          try {
+            await copyToClipboard(text);
+            showToast("日志已复制");
+          } catch (e) {
+            appendLog("error", "复制失败: " + errMsg(e));
+            showToast("复制失败");
+          }
+        });
+        bindClick(dom.logClearBtn, () => {
+          logLines = [];
+          if (isLogOpen && dom.logBody) dom.logBody.textContent = "";
+        });
+
+        let toastTimer = null;
+        function showToast(msg) {
+          dom.toast.textContent = msg;
+          dom.toast.classList.add("show");
+          clearTimeout(toastTimer);
+          toastTimer = setTimeout(
+            () => dom.toast.classList.remove("show"),
+            TOAST_MS,
+          );
+        }
+
+        async function copyToClipboard(text) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+          }
+        }
+
+        let lintTimer = null;
+        let lintVersion = 0;
+
+        function scheduleSyntaxCheck() {
+          clearTimeout(lintTimer);
+          lintTimer = setTimeout(checkSyntax, LINT_DELAY);
+        }
+
+        function getBodyLineOffset(raw, wrapper) {
+          if (!wrapper) return 0;
+          if (wrapper.type === "prefix") {
+            const m = raw.match(/^(\s*@js:\s*[\r\n]?)/);
+            return m ? m[1].split("\n").length - 1 : 0;
+          }
+          if (wrapper.type === "tag") {
+            const m = raw.match(/^(\s*<js>\s*)/i);
+            return m ? m[1].split("\n").length - 1 : 0;
+          }
+          if (wrapper.type === "tag-tail") {
+            const m = raw.match(/^(\s*<js>\s*)/i);
+            return m ? m[1].split("\n").length - 1 : 0;
+          }
+          if (wrapper.type === "moustache") {
+            const m = raw.match(/^(\s*\{\{\s*)/);
+            return m ? m[1].split("\n").length - 1 : 0;
+          }
+          if (
+            wrapper.type === "mixed" ||
+            wrapper.type === "mixed-tag" ||
+            wrapper.type === "mixed-tag-tail"
+          ) {
+            const idx = raw.indexOf(wrapper.body);
+            if (idx > 0) return raw.slice(0, idx).split("\n").length - 1;
+          }
+          return 0;
+        }
+
+        // 语法状态条生命周期:错误/暂停常驻(错误可点击跳行);"语法正确"亮 4s 后自动收起,
+        // 持续输入期间反复 ok 不会闪烁重播,修复错误时重新亮起给出正反馈
+        let lintState = "none"; // none | ok | error | paused
+        let okHideTimer = 0;
+
+        function hideSyntaxStatus() {
+          dom.syntaxStatus.style.display = "none";
+        }
+
+        function showSyntaxOk() {
+          const reshown = lintState !== "ok";
+          lintState = "ok";
+          if (!reshown && dom.syntaxStatus.style.display === "none") return;
+          dom.syntaxStatus.style.display = "block";
+          dom.syntaxStatus.className = "ok";
+          dom.syntaxStatus.textContent = "✓ 语法正确";
+          dom.syntaxStatus.onclick = null;
+          clearTimeout(okHideTimer);
+          okHideTimer = setTimeout(() => {
+            if (lintState === "ok") hideSyntaxStatus();
+          }, 4000);
+        }
+
+        function showSyntaxError(msg, errorLine, errorCol) {
+          lintState = "error";
+          clearTimeout(okHideTimer);
+          dom.syntaxStatus.style.display = "block";
+          dom.syntaxStatus.className = "error";
+          const first = String(msg).split("\n")[0];
+          const display = first
+            .replace(/^SyntaxError:\s*/, "")
+            .replace(/\s*\(\d+:\d+\)\s*$/, "")
+            .trim();
+          dom.syntaxStatus.textContent = errorLine
+            ? "✗ 第 " + errorLine + " 行: " + display
+            : "✗ " + display;
+          if (errorLine && view) {
+            dom.syntaxStatus.onclick = () => {
+              const line = view.state.doc.line(
+                Math.min(errorLine, view.state.doc.lines),
+              );
+              const pos = line.from + Math.min((errorCol || 1) - 1, line.length);
+              view.dispatch({
+                selection: { anchor: pos, head: pos },
+                effects: EditorView.scrollIntoView(pos, { y: "center" }),
+              });
+              view.focus();
+            };
+          } else {
+            dom.syntaxStatus.onclick = null;
+          }
+        }
+
+        function showSyntaxPaused() {
+          lintState = "paused";
+          clearTimeout(okHideTimer);
+          dom.syntaxStatus.style.display = "block";
+          dom.syntaxStatus.className = "paused";
+          dom.syntaxStatus.textContent =
+            "⚠ 代码超过 " +
+            LINT_MAX_SIZE.toLocaleString() +
+            " 字符,已暂停自动语法检查";
+          dom.syntaxStatus.onclick = null;
+        }
+
+        async function checkSyntax() {
+          const plugins = getPrettierPlugins();
+          if (!window.prettier || !plugins) return;
+          const raw = getCode();
+          const text = raw.trim();
+          if (!text) {
+            lintState = "none";
+            clearTimeout(okHideTimer);
+            hideSyntaxStatus();
+            return;
+          }
+          const version = ++lintVersion;
+          const wrapper = detectWrapper(raw);
+          const body = wrapper ? wrapper.body : text;
+          if (body.length > LINT_MAX_SIZE) {
+            showSyntaxPaused();
+            return;
+          }
+          const lineOffset = getBodyLineOffset(raw, wrapper);
+
+          if (!wrapper && /^[\[{]/.test(text)) {
+            try {
+              JSON.parse(text);
+              if (version === lintVersion) showSyntaxOk();
+              return;
+            } catch (e) { /* try as JS below */ }
+          }
+
+          // 只做语法检查:优先 __debug.parse(跳过打印阶段,开销远小于 format,
+          // 返回 Promise,与 format 同为异步),缺该内部 API 时回退 format 兜底
+          const debugParse =
+            window.prettier.__debug &&
+            typeof window.prettier.__debug.parse === "function"
+              ? window.prettier.__debug.parse
+              : null;
+          try {
+            if (debugParse) {
+              await debugParse.call(window.prettier.__debug, body, {
+                parser: "babel",
+                plugins: plugins,
+              });
+            } else {
+              await window.prettier.format(body, {
+                parser: "babel",
+                plugins: plugins,
+                tabWidth: tabSize,
+              });
+            }
+            if (version === lintVersion) showSyntaxOk();
+          } catch (e) {
+            if (version !== lintVersion) return;
+            const msg = errMsg(e);
+            const m = msg.match(/\((\d+):(\d+)\)/);
+            const errorLine = m ? parseInt(m[1], 10) + lineOffset : null;
+            const errorCol = m ? parseInt(m[2], 10) : null;
+            showSyntaxError(msg, errorLine, errorCol);
+          }
+        }
+
+        function b64ToUtf8(b64) {
+          try {
+            const bin = window.atob(b64);
+            const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+            return new TextDecoder("utf-8").decode(bytes);
+          } catch (e) {
+            return "";
+          }
+        }
+
+        window.__LEGADO_RUNTIME_ERROR_HANDLER = function (kind, e) {
+          const unknown = "发生未知错误";
+          let msg = unknown;
+          let stack = "";
+
+          if (kind === "promise") {
+            const r = e && e.reason != null ? e.reason : unknown;
+            msg =
+              typeof r === "string"
+                ? r
+                : r && r.message
+                  ? r.message
+                  : String(r);
+            stack = r && r.stack ? String(r.stack) : "";
+          } else {
+            msg = e && e.message ? e.message : unknown;
+            stack =
+              e && e.error && e.error.stack ? String(e.error.stack) : "";
+          }
+
+          appendLog(kind, msg + (stack ? "\n" + stack : ""));
+          showToast("发生错误：" + msg);
+        };
+
+        /**
+         * Android 注入应用主题：payload 为 JSON 字符串或对象
+         * {dark: boolean, fontScale: number,
+         *  colors: {bg,gutterBg,gutterText,text,border,activeLine,accent,toolbarBg,selection}}
+         * auto（跟随）模式立即生效；显式选择 light/dark/sepia/nord 时仅存不用。
+         * fontScale 为系统字号缩放,用于"字号:自动"(WebView textZoom 固定读不到)。
+         */
+        window.setAppTheme = function (payload) {
+          try {
+            const p =
+              typeof payload === "string" ? JSON.parse(payload) : payload;
+            if (!p || typeof p !== "object") return;
+            const colors =
+              p.colors && typeof p.colors === "object" ? { ...p.colors } : {};
+            if (colors.accent) {
+              colors.accent = ensureAccentVisible(colors.accent, !!p.dark);
+              if (!colors.accentSoft) {
+                colors.accentSoft = hexWithAlpha(
+                  colors.accent,
+                  p.dark ? 0.2 : 0.12,
+                );
+              }
+            }
+            const prevFontScale = appFontScale;
+            if (
+              typeof p.fontScale === "number" &&
+              isFinite(p.fontScale) &&
+              p.fontScale > 0
+            ) {
+              // 夹紧到合理区间,极端系统字号也不至于把编辑器撑爆
+              appFontScale = Math.min(1.5, Math.max(0.85, p.fontScale));
+            }
+            appTheme = { dark: !!p.dark, colors };
+            const autoOption =
+              dom.themeSelect &&
+              dom.themeSelect.querySelector('option[value="auto"]');
+            if (autoOption) autoOption.textContent = "跟随应用";
+            if (themeMode === "auto") {
+              applyAppThemeVars();
+              reconfigureThemeEffects();
+            }
+            if (
+              fontSize === "auto" &&
+              Math.abs(appFontScale - prevFontScale) > 0.001
+            ) {
+              // "自动"字号跟随注入的系统缩放,px 变化时重配置字体扩展
+              applyFontSize("auto");
+            }
+          } catch (e) {
+            appendLog("error", "应用主题注入失败: " + errMsg(e));
+          }
+        };
+
+        /**
+         * Android 注入底部安全区高度(css px):宿主让 WebView 全出血延伸到屏幕底时传导航栏高度,
+         * 避让垫进滚动内容与底部浮层(--bottom-inset);固定边界宿主(弹窗)传 0 清除
+         */
+        window.setBottomInset = function (px) {
+          const v = Math.max(0, Math.round(Number(px) || 0));
+          if (v === bottomInset) return;
+          bottomInset = v;
+          document.documentElement.style.setProperty("--bottom-inset", v + "px");
+          if (view) view.requestMeasure();
+        };
+
+        // 新会话注入:整体替换 state(重建全部扩展),撤销/重做栈随旧 state 一起丢弃,
+        // 避免池化 WebView 上"撤销"跨会话回到上一个文档的编辑态
+        window.setCodeFromAndroid = function (b64) {
+          const text = b64ToUtf8(b64);
+          view.setState(
+            EditorState.create({
+              doc: text,
+              extensions: buildCriticalExtensions().concat(
+                buildDeferredExtensions(),
+              ),
+            }),
+          );
+          updateWrappedScriptMode(text);
+          updateHistoryButtons(view.state);
+          scheduleSyntaxCheck();
+        };
+
+        window.__save = function () {
+          const val = getCode();
+          if (window.Android && window.Android.save) window.Android.save(val);
+          else console.log("Mock Save:", val);
+        };
+
+        window.__getCode = function () {
+          return getCode();
+        };
+
+        // 滚动指示条:transform 位移+rAF 合帧,滚动路径零布局读写;
+        // 几何(scrollHeight/clientHeight)只在 rAF 里读且每帧一次
+        (function initScrollIndicator() {
+          const bar = $("scroll-indicator");
+          const hit = $("scroll-indicator-hit");
+          if (!bar || !hit || !view || !view.scrollDOM) return;
+          const scroller = view.scrollDOM;
+          const BAR_H = 40;
+          let rafPending = false;
+          let hideTimer = 0;
+          let dragging = false;
+          let trackTop = 0;
+          let trackRange = 1;
+
+          function layout() {
+            const scrollRange = scroller.scrollHeight - scroller.clientHeight;
+            const canScroll = scrollRange > 4;
+            hit.classList.toggle("enabled", canScroll);
+            if (!canScroll) {
+              bar.classList.remove("visible");
+              return false;
+            }
+            const host = bar.parentElement;
+            trackTop = 4;
+            trackRange = host.clientHeight - 8 - BAR_H;
+            const ratio = scroller.scrollTop / scrollRange;
+            bar.style.transform =
+              "translateY(" + (trackTop + ratio * trackRange - 4) + "px)";
+            return true;
+          }
+
+          function onFrame() {
+            rafPending = false;
+            if (!layout()) return;
+            bar.classList.add("visible");
+            if (!dragging) {
+              clearTimeout(hideTimer);
+              hideTimer = setTimeout(() => {
+                bar.classList.remove("visible");
+              }, 1200);
+            }
+          }
+
+          scroller.addEventListener(
+            "scroll",
+            () => {
+              if (rafPending) return;
+              rafPending = true;
+              requestAnimationFrame(onFrame);
+            },
+            { passive: true },
+          );
+
+          function dragTo(clientY) {
+            const hostRect = bar.parentElement.getBoundingClientRect();
+            const y = clientY - hostRect.top - trackTop - BAR_H / 2;
+            const ratio = Math.max(0, Math.min(1, y / trackRange));
+            scroller.scrollTop =
+              ratio * (scroller.scrollHeight - scroller.clientHeight);
+          }
+
+          hit.addEventListener(
+            "touchstart",
+            (e) => {
+              if (!layout()) return;
+              e.preventDefault();
+              dragging = true;
+              bar.classList.add("dragging", "visible");
+              clearTimeout(hideTimer);
+              dragTo(e.touches[0].clientY);
+            },
+            { passive: false },
+          );
+          hit.addEventListener(
+            "touchmove",
+            (e) => {
+              if (!dragging) return;
+              e.preventDefault();
+              dragTo(e.touches[0].clientY);
+            },
+            { passive: false },
+          );
+          const endDrag = () => {
+            if (!dragging) return;
+            dragging = false;
+            bar.classList.remove("dragging");
+            hideTimer = setTimeout(() => {
+              bar.classList.remove("visible");
+            }, 1200);
+          };
+          hit.addEventListener("touchend", endDrag);
+          hit.addEventListener("touchcancel", endDrag);
+
+          // 文档尺寸变化(输入/格式化)时校准热区可用性,不做每帧监听
+          view.dom.addEventListener("focusout", layout);
+          window.addEventListener("resize", layout);
+          layout();
+        })();
+
+        if (window.Android && typeof window.Android.onEditorReady === "function") {
+          window.Android.onEditorReady();
+        }
+
+        const __err = console.error.bind(console);
+        console.error = function (...args) {
+          const safe = args
+            .map((a) => {
+              if (typeof a === "string") return a;
+              try {
+                return JSON.stringify(a);
+              } catch (e) {
+                return String(a);
+              }
+            })
+            .join(" ");
+          appendLog("error", safe);
+          __err(...args);
+        };
+      } catch (e) {
+        const msg = errMsg(e);
+        if (window.__LEGADO_BOOT_ERROR) {
+          window.__LEGADO_BOOT_ERROR("编辑器初始化失败: " + msg);
+        }
+      }
+    })();
+  </script>
+</body>
+
+</html>

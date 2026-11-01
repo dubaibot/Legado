@@ -3,7 +3,7 @@
  */
 package com.script
 
-import org.mozilla.javascript.Scriptable
+import org.htmlunit.corejs.javascript.VarScope
 import java.io.Reader
 import kotlin.coroutines.CoroutineContext
 
@@ -13,22 +13,22 @@ interface ScriptEngine {
     fun createBindings(): Bindings?
 
     @Throws(ScriptException::class)
-    fun eval(reader: Reader, scope: Scriptable): Any?
+    fun eval(reader: Reader, scope: VarScope): Any?
 
     @Throws(ScriptException::class)
-    fun eval(reader: Reader, scope: Scriptable, coroutineContext: CoroutineContext?): Any?
+    fun eval(reader: Reader, scope: VarScope, coroutineContext: CoroutineContext?): Any?
 
     @Throws(ScriptException::class)
-    suspend fun evalSuspend(reader: Reader, scope: Scriptable): Any?
+    suspend fun evalSuspend(reader: Reader, scope: VarScope): Any?
 
     @Throws(ScriptException::class)
-    fun eval(script: String, scope: Scriptable): Any?
+    fun eval(script: String, scope: VarScope): Any?
 
     @Throws(ScriptException::class)
-    suspend fun evalSuspend(script: String, scope: Scriptable): Any?
+    suspend fun evalSuspend(script: String, scope: VarScope): Any?
 
     @Throws(ScriptException::class)
-    fun eval(script: String, scope: Scriptable, coroutineContext: CoroutineContext?): Any?
+    fun eval(script: String, scope: VarScope, coroutineContext: CoroutineContext?): Any?
 
     @Throws(ScriptException::class)
     fun eval(reader: Reader): Any?
@@ -51,9 +51,9 @@ interface ScriptEngine {
     @Throws(ScriptException::class)
     fun eval(script: String, context: ScriptContext): Any?
 
-    fun getRuntimeScope(bindings: ScriptBindings): Scriptable
+    fun getRuntimeScope(bindings: ScriptBindings): ScriptBindings
 
-    fun getRuntimeScope(context: ScriptContext): Scriptable
+    fun getRuntimeScope(context: ScriptContext): ScriptBindings
 
     fun getScriptContext(bindings: Bindings): ScriptContext
 

@@ -10,12 +10,38 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
+/**
+ * 字体/容器最低对比度下限（**运行时统一口径单源**，AD-16 / A3.4b）。
+ *
+ * XML 侧（`ThemeConfig` 的撞色 sanitize）与 Compose 侧（`ThemeSpec.withContrastGuard`）
+ * **必须复用本常量**，禁止各自声明——改造前两处分别为 `1.3` / `3.0f`，
+ * 导致同主题下 View 页与 Compose 页的文字改写分叉。
+ *
+ * ⚠️ 本值是**运行时兜底下限**（低于它才替换文字色），验收标准仍按 WCAG AA ≥4.5:1 执行。
+ */
+const val MIN_FONT_SURFACE_CONTRAST = 3.0
+
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 object ColorUtils {
 
     fun isColorLight(@ColorInt color: Int): Boolean {
         return ColorUtils.calculateLuminance(color) >= 0.5
     }
+
+    /**
+     * 前景对比色单源（R31，2026-09-23）：亮底取黑、暗底取白。
+     *
+     * View 侧与 Compose 侧**必须共用本函数**：Compose 的 `contrastOn`（ThemeSpec）与
+     * View 的 `RoundedTagBarView.readableTagTextColor` 均转发此处，禁止各自实现——
+     * 改造前曾三套并存（`readableTagTextColor` / `badgeTextBright` / `contrastOn`），
+     * 导致同主题下不同控件的兜底文字色分叉。
+     *
+     * 本函数是 `theme-consistency-iron-rule` §四 S3 的**登记豁免点**（对比度兜底真值单源，
+     * 见 `ai_tests/config/theme_token_allowlist.json`）。
+     */
+    @ColorInt
+    fun contrastOnColor(@ColorInt background: Int): Int =
+        if (isColorLight(background)) Color.BLACK else Color.WHITE
 
     fun intToString(intColor: Int): String {
         return String.format("#%06X", 0xFFFFFF and intColor)

@@ -25,8 +25,8 @@
 package com.script.rhino
 
 import com.script.ScriptContext
-import org.mozilla.javascript.*
-import org.mozilla.javascript.Function
+import org.htmlunit.corejs.javascript.*
+import org.htmlunit.corejs.javascript.Function
 
 /**
  * ExternalScriptable is an implementation of Scriptable
@@ -41,7 +41,7 @@ internal class ExternalScriptable @JvmOverloads constructor(
     private val indexedProps: MutableMap<Any, Any?> = HashMap()
 ) : Scriptable {
     private var prototype: Scriptable? = null
-    private var parent: Scriptable? = null
+    private var parent: VarScope? = null
 
     private fun isEmpty(name: String): Boolean {
         return name == ""
@@ -60,7 +60,7 @@ internal class ExternalScriptable @JvmOverloads constructor(
                 val scope = context.getAttributesScope(name)
                 return if (scope != -1) {
                     val value = context.getAttribute(name, scope)
-                    Context.javaToJS(value, this)
+                    Context.javaToJS(value, null)
                 } else {
                     Scriptable.NOT_FOUND
                 }
@@ -141,11 +141,11 @@ internal class ExternalScriptable @JvmOverloads constructor(
         this.prototype = prototype
     }
 
-    override fun getParentScope(): Scriptable? {
+    override fun getParentScope(): VarScope? {
         return parent
     }
 
-    override fun setParentScope(parent: Scriptable?) {
+    override fun setParentScope(parent: VarScope?) {
         this.parent = parent
     }
 

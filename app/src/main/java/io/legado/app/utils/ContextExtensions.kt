@@ -317,15 +317,11 @@ fun Context.sendToClip(text: String) {
 fun Context.getClipText(): String? {
     clipboardManager.primaryClip?.let {
         if (it.itemCount > 0) {
+            // ClipDescription.MIMETYPE_TEXT_PLAIN/_HTML 时 text 才非空；图片/URI/Intent 项 text==null，需判空避免 NPE
             return it.getItemAt(0).text?.toString()?.trim()
         }
     }
     return null
-}
-
-fun Context.clearClip() {
-    val clipData = ClipData.newPlainText(null, null)
-    clipboardManager.setPrimaryClip(clipData)
 }
 
 fun Context.sendMail(mail: String) {
@@ -370,6 +366,36 @@ fun Context.openUrl(uri: Uri) {
     } catch (e: Exception) {
         toastOnUi(e.localizedMessage ?: "open url error")
         e.printOnDebug()
+    }
+}
+
+/**
+ * 使用内置浏览器打开链接
+ * http/https 协议打开 WebViewActivity，legado/yuedu 协议打开在线导入页，其他协议交给系统处理
+ */
+fun Context.openInInnerBrowser(url: String) {
+    openInInnerBrowser(Uri.parse(url))
+}
+
+/**
+ * 使用内置浏览器打开链接
+ * http/https 协议打开 WebViewActivity，legado/yuedu 协议打开在线导入页，其他协议交给系统处理
+ */
+fun Context.openInInnerBrowser(uri: Uri) {
+    when (uri.scheme) {
+        "http", "https" -> {
+            startActivity<io.legado.app.ui.browser.WebViewActivity> {
+                putExtra("url", uri.toString())
+            }
+        }
+        "legado", "yuedu" -> {
+            startActivity<io.legado.app.ui.association.OnLineImportActivity> {
+                data = uri
+            }
+        }
+        else -> {
+            openUrl(uri)
+        }
     }
 }
 
@@ -423,3 +449,11 @@ val Context.channel: String
 
 val Context.isDebuggable: Boolean
     get() = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+
+fun Context.clearClip() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        clipboardManager.clearPrimaryClip()
+    } else {
+        clipboardManager.setPrimaryClip(ClipData.newPlainText(null, ""))
+    }
+}

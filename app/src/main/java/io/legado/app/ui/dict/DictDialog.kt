@@ -20,14 +20,18 @@ import io.legado.app.help.TextViewTagHandler
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.dialog.PhotoDialog
+import io.legado.app.utils.GSON
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.help.InnerBrowserLinkResolver
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.glide.GlideImagesPlugin
@@ -43,6 +47,13 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
     constructor(word: String) : this() {
         arguments = Bundle().apply {
             putString("word", word)
+        }
+    }
+
+    constructor(word: String, dictRule: DictRule) : this() {
+        arguments = Bundle().apply {
+            putString("word", word)
+            putString("dictRule", GSON.toJson(dictRule))
         }
     }
 
@@ -106,6 +117,12 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
                             val markwon: Markwon
                             val markdown = withContext(IO) {
                                 markwon = Markwon.builder(requireContext())
+                                    // 设置自定义链接解析器，使 Markdown 链接走内置浏览器
+                                    .usePlugin(object : io.noties.markwon.AbstractMarkwonPlugin() {
+                                        override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+                                            builder.linkResolver(InnerBrowserLinkResolver)
+                                        }
+                                    })
                                     .usePlugin(
                                         GlideImagesPlugin.create(
                                             Glide.with(requireContext())
@@ -150,15 +167,24 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
                 }
             }
         })
-        viewModel.initData {
-            it.forEach { d  ->
-                binding.tabLayout.addTab(binding.tabLayout.newTab().apply {
-                    text = d.name
-                    tag = d
-                })
+        val previewRule = GSON.fromJsonObject<DictRule>(arguments?.getString("dictRule")).getOrNull()
+        if (previewRule != null) {
+            addDictTabs(listOf(previewRule))
+        } else {
+            viewModel.initData {
+                addDictTabs(it)
             }
-            setupTabLayoutMode(it.size)
         }
+    }
+
+    private fun addDictTabs(dictRules: List<DictRule>) {
+        dictRules.forEach { d ->
+            binding.tabLayout.addTab(binding.tabLayout.newTab().apply {
+                text = d.name
+                tag = d
+            })
+        }
+        setupTabLayoutMode(dictRules.size)
     }
 
     //根据已启用词典数动态选取布局

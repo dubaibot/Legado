@@ -23,10 +23,14 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.JS_URL
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
 import io.legado.app.utils.ACache
+import io.legado.app.constant.AppLog
+import io.legado.app.model.debug.ToastContext
+import io.legado.app.model.debug.ToastSourceType
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeBytes
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import java.util.Date
 
@@ -86,7 +90,9 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
                 val ruleContent = rssSource?.ruleContent
                 val startHtml = intent.getStringExtra("startHtml")
                 val openUrl = intent.getStringExtra("openUrl")
+                // starthtml 启动页也查收藏（用 sourceUrl 作为 link）
                 if (startHtml != null) {
+                    rssStar = appDb.rssStarDao.get(origin, origin)
                     loadStartHtml(startHtml)
                 } else if (ruleContent.isNullOrBlank() || rssSource!!.singleUrl) {
                     loadUrl(openUrl, origin)
@@ -114,10 +120,18 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
         urlLiveData.postValue(analyzeUrl)
     }
 
-    private fun loadContent(rssArticle: RssArticle, ruleContent: String) {
+    /**
+     * 刷新序号：每次刷新自增，用于丢弃过期请求的结果，
+     * 防止快速多次点击刷新时旧请求的响应后到并覆盖新响应
+     */
+    private var refreshToken = 0
+
+    private fun loadContent(rssArticle: RssArticle, ruleContent: String, token: Int = 0) {
         val source = rssSource ?: return
         Rss.getContent(viewModelScope, rssArticle, ruleContent, source)
             .onSuccess(IO) { body ->
+                // 丢弃过期请求的结果，避免旧响应覆盖新响应
+                if (token != 0 && token != refreshToken) return@onSuccess
                 rssArticle.description = body
                 appDb.rssArticleDao.insert(rssArticle)
                 rssStar?.let {
@@ -127,25 +141,48 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
                 this@ReadRssViewModel.rssArticle = rssArticle
                 contentLiveData.postValue(body)
             }.onError {
+                if (token != 0 && token != refreshToken) return@onError
                 contentLiveData.postValue("加载正文失败\n${it.stackTraceToString()}")
             }
     }
 
     fun refresh(finish: () -> Unit) {
-        val rssArticle = rssArticle ?: return finish.invoke()
-        if (!rssArticle.description.isNullOrBlank()) {
-            return finish.invoke()
-        }
         val rssSource = rssSource ?: let {
-            appCtx.toastOnUi("订阅源不存在")
+            appCtx.toastOnUi(
+                "订阅源不存在",
+                ToastContext(
+                    activityName = "ReadRssActivity",
+                    sourceType = ToastSourceType.RSS
+                )
+            )
             return finish.invoke()
         }
+        // 启动页源（有 startHtml）没有 rssArticle，需要重新加载启动页
+        val startHtml = rssSource.startHtml
+        if (startHtml != null && rssArticle == null) {
+            // 刷新后重新查询收藏状态，确保星标菜单正确显示
+            rssStar = appDb.rssStarDao.get(origin ?: rssSource.sourceUrl, rssSource.sourceUrl)
+            loadStartHtml(startHtml)
+            // 不调用 finish()，让 WebView 的 onProgressChanged 来隐藏进度条
+            upStarMenuData.postValue(true)
+            return
+        }
+        val rssArticle = rssArticle ?: return finish.invoke()
+        // 修复：刷新必须强制重新拉取最新内容，不能直接回显本地缓存的旧 description。
+        // 收藏的条目在收藏时已缓存正文，若此处短路直接 postValue 旧内容，网络请求永远不
+        // 会重新发起，刷新后始终显示旧内容（URL 带时间参数的视频链接内容更新频繁，最易暴露）。
+        refreshToken++
+        val token = refreshToken
         val ruleContent = rssSource.ruleContent
         if (!ruleContent.isNullOrBlank()) {
-            loadContent(rssArticle, ruleContent)
+            loadContent(rssArticle, ruleContent, token)
         } else {
-            finish.invoke()
+            // 无正文规则时重新加载原始链接网页
+            viewModelScope.launch(IO) {
+                loadUrl(rssArticle.link, rssArticle.origin)
+            }
         }
+        finish()
     }
 
     fun favorite() {
@@ -156,6 +193,19 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
             } ?: rssArticle?.toStar()?.let {
                 appDb.rssStarDao.insert(it)
                 rssStar = it
+            } ?: rssSource?.let { source ->
+                // starthtml 启动页：用 sourceUrl 作为 link 创建收藏
+                val star = RssStar(
+                    origin = source.sourceUrl,
+                    sort = "",
+                    title = source.sourceName,
+                    starTime = System.currentTimeMillis(),
+                    link = source.sourceUrl,
+                    group = source.sourceGroup ?: "默认分组",
+                    type = 0
+                )
+                appDb.rssStarDao.insert(star)
+                rssStar = star
             }
         }.onSuccess {
             upStarMenuData.postValue(true)
@@ -232,15 +282,22 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
         return if (URLUtil.isValidUrl(data)) {
             okHttpClient.newCallResponseBody {
                 url(data)
+                headerMap.forEach { (key, value) ->
+                    addHeader(key, value)
+                }
             }.bytes()
         } else {
             Base64.decode(data.split(",").toTypedArray()[1], Base64.DEFAULT)
         }
     }
 
-    fun clHtml(content: String, style: String?): String {
+    fun clHtml(content: String, style: String?, injectBridge: Boolean = false): String {
         val htmlBuilder = StringBuilder(content.length + JS_URL.length + 200)
-        if (hasPreloadJs) {
+        if (hasPreloadJs || injectBridge) {
+            // 注入基础 JS 桥（JS_INJECTION 提供 java/ajaxAwait 等异步函数）。
+            // 默认仅在源配置了 preloadJs 时注入；startHtml 启动页（如工具类网页）即便没有
+            // preloadJs 也依赖这套桥才能工作，故由调用方通过 injectBridge 强制注入，
+            // 对齐 WebViewActivity 对 localHtml 的无条件注入行为。
             val headIndex = content.indexOf("<head>")
             if (headIndex >= 0) {
                 htmlBuilder.append(content, 0, headIndex + 6)
@@ -295,8 +352,13 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
             } else {
                 startHtml
             }
-            processedHtml = clHtml(processedHtml, source.startStyle ?: source.style)
+            // startHtml 启动页即便没有 preloadJs 也要注入基础 JS 桥（对齐浏览器 localHtml）
+            processedHtml = clHtml(processedHtml, source.startStyle ?: source.style, injectBridge = true)
             htmlLiveData.postValue(processedHtml)
+        }.onError {
+            // 加载启动页失败时，记录错误日志并显示 Toast
+            AppLog.put("加载启动页失败", it)
+            appCtx.toastOnUi("加载启动页失败: ${it.message}")
         }
     }
 

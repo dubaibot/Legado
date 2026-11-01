@@ -43,6 +43,12 @@ import java.io.File
 class FontSelectDialog : BaseDialogFragment(R.layout.dialog_font_select),
     Toolbar.OnMenuItemClickListener,
     FontAdapter.CallBack {
+
+    companion object {
+        /** 规则字体选择场景：菜单"系统字体"只清空回调字体，不改全局 AppConfig.systemTypefaces */
+        const val ARG_FOR_RULE = "forRule"
+    }
+
     private val fontRegex = Regex("(?i).*\\.[ot]tf")
     private val binding by viewBinding(DialogFontSelectBinding::bind)
     private val adapter by lazy {

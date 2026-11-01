@@ -12,6 +12,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.AudioPlay
+import io.legado.app.model.AutoTask
 import io.legado.app.model.ReadBook
 import io.legado.app.model.VideoPlay
 import io.legado.app.utils.toastOnUi
@@ -52,10 +53,16 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                     val sourceKey = intent.getStringExtra("key")
                         ?: throw NoStackTraceException("没有参数")
                     val type = intent.getStringExtra("type")
-                    source = when (type) {
-                        "bookSource" ->  appDb.bookSourceDao.getBookSource(sourceKey)
-                        "rssSource" -> appDb.rssSourceDao.getByKey(sourceKey)
-                        "httpTts" -> appDb.httpTTSDao.get(sourceKey.toLong())
+                    source = when {
+                        AutoTask.isAutoTaskType(type) -> {
+                            val taskId = intent.getStringExtra(AutoTask.EXTRA_TASK_ID)
+                                ?: intent.getStringExtra("taskId")
+                                ?: AutoTask.normalizeSourceTaskId(sourceKey)
+                            AutoTask.get(taskId.orEmpty())?.let { AutoTask.buildSource(it) }
+                        }
+                        type == "bookSource" -> appDb.bookSourceDao.getBookSource(sourceKey)
+                        type == "rssSource" -> appDb.rssSourceDao.getByKey(sourceKey)
+                        type == "httpTts" -> appDb.httpTTSDao.get(sourceKey.toLong())
                         else -> null
                     }
                     val bookUrl = intent.getStringExtra("bookUrl")

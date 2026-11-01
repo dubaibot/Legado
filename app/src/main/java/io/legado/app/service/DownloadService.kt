@@ -43,6 +43,13 @@ class DownloadService : BaseService() {
         }
     }
 
+    companion object {
+        fun cancelDownload(id: Long) = DownloadState.cancelDownload(id)
+        fun retryDownload(context: Context, id: Long) = DownloadState.retryDownload(context, id)
+        fun clearAllTasks() = DownloadState.clear()
+        fun getAllTasks(): List<DownloadTask> = DownloadState.getAllTasks()
+    }
+
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate() {
         super.onCreate()

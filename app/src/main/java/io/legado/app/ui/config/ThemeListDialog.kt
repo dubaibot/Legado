@@ -6,7 +6,9 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import kotlinx.coroutines.launch
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
@@ -59,10 +61,12 @@ class ThemeListDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         when (item?.itemId) {
             R.id.menu_import -> {
                 requireContext().getClipText()?.let {
-                    if (ThemeConfig.addConfig(it)) {
-                        initData()
-                    } else {
-                        toastOnUi("格式不对,添加失败")
+                    lifecycleScope.launch {
+                        if (ThemeConfig.addConfig(it) > 0) {
+                            initData()
+                        } else {
+                            toastOnUi("格式不对,添加失败")
+                        }
                     }
                 }
             }
@@ -73,8 +77,10 @@ class ThemeListDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     fun delete(index: Int) {
         alert(R.string.delete, R.string.sure_del) {
             yesButton {
-                ThemeConfig.delConfig(index)
-                initData()
+                lifecycleScope.launch {
+                    ThemeConfig.delConfig(index)
+                    initData()
+                }
             }
             noButton()
         }

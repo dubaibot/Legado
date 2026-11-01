@@ -42,4 +42,8 @@
 
     <!--statusBarBackground-->
     <color name="navigation_bar_bag">#222222</color>
+    <color name="background_add_button">#08FFFFFF</color>
+    <color name="border_add_button">#10FFFFFF</color>
+    <color name="background_card_surface">#0FFFFFFF</color>
+    <color name="background_tab_selected">#10FFFFFF</color>
 </resources>

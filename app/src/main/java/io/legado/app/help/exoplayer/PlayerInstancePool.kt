@@ -1,0 +1,296 @@
+package io.legado.app.help.exoplayer
+
+import android.os.Looper
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.upstream.DefaultAllocator
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import io.legado.app.constant.AppLog
+import splitties.init.appCtx
+
+/**
+ * T5.1: 播放器实例池（P2-20，对齐 GSYVideoPlayer 实例复用思想 + 主流短视频平台播放器池化实践）
+ *
+ * 解决根因：沉浸竖滑风格 ViewPager2 垂直滑动场景，GSY 全局单 manager 模型下每次切视频都
+ * release 旧 ExoPlayer 实例 + Builder().build() 新建实例（渲染器初始化/解码器查询/线程启动
+ * 约 30-100ms），快速滑动时内存抖动 + 起播延迟。
+ *
+ * 池化策略：
+ * - 池化对象：mInternalPlayer（ExoPlayer 重量级实例），非 Exo2MediaPlayer（轻量字段容器）
+ * - 池大小：3 个（offscreenPageLimit=1 保留当前+前后各 1 视图，全局单 manager 稳态仅 0-1 空闲，
+ *   MAX=3 为极端场景上限），LRU 淘汰（队首=最近归还，队尾=最久未用）
+ * - 生命周期：= VideoPlayerActivity 生命周期，onDestroy 调 clear() 全量释放（避免后台占用解码器）
+ *
+ * 共享策略（V-P0-1 修正：TrackSelector 改为每实例独立）：
+ * - sharedRendererFactory：DefaultRenderersFactory 无状态，官方可共享
+ * - TrackSelector：每实例独立（DefaultTrackSelector.init() 有 checkState 校验，
+ *   一个 selector 同一时刻只能绑定一个存活 Player；共享单例在并发 acquire 场景
+ *   二次 init 抛 IllegalStateException——2026-07-27 真机 5 次 FATAL 实证。
+ *   原注释"官方 demo 即 app 级共享"系错误类推，demo 为单实例播放器场景）
+ * - LoadControl：工厂方法按带宽档位新建（共享 DefaultAllocator 内存池，保留内存收益）
+ *
+ * 线程约束：acquire/recycle 全链路在 Exo2MediaPlayer 创建线程（GSY 默认主线程），
+ * 池内实例 Looper 与 acquire 传入 Looper 一致；@Synchronized 双保险防极端并发。
+ */
+@UnstableApi
+object PlayerInstancePool {
+
+    private const val MAX_POOL_SIZE = 3
+
+    /**
+     * video-regression-fix-0906 热修开关：实例池总开关（当前 false=直建直毁）。
+     * 真机铁证：复用实例 prepare 报 "Ignoring messages sent after release"（池内实例已被
+     * 外部路径 release 成死实例）→ 真机全部视频无法播放。池代码保留，死实例根因
+     * （外部 release 路径与池生命周期竞态）定位后再恢复 true。
+     */
+    private const val POOL_ENABLED = false
+
+    /**
+     * 池内空闲实例队列（队首=最近归还，队尾=最久未用）
+     */
+    private val pool = ArrayDeque<ExoPlayer>()
+
+    /**
+     * video-play-7001-videograph-fix 2.2/AD-02：注入过 video effects 的实例标记（污染隔离）。
+     * 根因：media3 1.10.1 的 videoEffects 字段经 setVideoEffects 写入后终生不回置 null，
+     * 复用实例第二次 prepare 会再次激活 GL VideoGraph 管线（切集 7001 崩溃的池复用放大器）。
+     * 策略：注入过 effects 的实例用完即毁，永不回池（池内零污染）；增强关闭用户绝不 setVideoEffects。
+     */
+    private val taintedPool = mutableSetOf<ExoPlayer>()
+
+    /**
+     * 标记实例已注入过 video effects（调用方 Exo2MediaPlayer.setUp/enhance 生效后调用）
+     */
+    @Synchronized
+    fun markTainted(player: ExoPlayer) {
+        taintedPool.add(player)
+        AppLog.put(
+            "PlayerPool: markTainted (effects injected, never recycle), " +
+                "taintedSize=${taintedPool.size}"
+        )
+    }
+
+    /**
+     * 查询实例是否被标记污染（池回收决策用）
+     */
+    @Synchronized
+    fun isTainted(player: ExoPlayer): Boolean = taintedPool.contains(player)
+
+    /**
+     * V-P0-1: TrackSelector 工厂——每实例独立
+     *
+     * 根因：共享单例在并发 acquire（R5 双命中/ViewPager2 双 Fragment 并发 prepare）时
+     * 二次 init 触发 DefaultTrackSelector checkState → IllegalStateException（5 次 FATAL）。
+     * 音轨 override 状态仍由 recycle 时 clearOverrides 重置，不受独立化影响。
+     */
+    fun createTrackSelector(): DefaultTrackSelector {
+        return DefaultTrackSelector(appCtx)
+    }
+
+    /**
+     * 实例 → 其独立 TrackSelector 的映射（IdentityHashMap：按引用相等）
+     * 用途：EventLogger 等需要与 player 同一 selector 实例的场景（Exo2MediaPlayer.attachToPlayer）
+     */
+    private val selectorMap = java.util.IdentityHashMap<ExoPlayer, DefaultTrackSelector>()
+
+    /**
+     * 获取 player 实例关联的 TrackSelector（新建时登记，release 时移除）
+     */
+    @Synchronized
+    fun trackSelectorOf(player: ExoPlayer): DefaultTrackSelector? {
+        return selectorMap[player]
+    }
+
+    /**
+     * 共享渲染器工厂（无状态，EXTENSION_RENDERER_MODE_PREFER 与原 Exo2MediaPlayer 配置一致）
+     */
+    val sharedRendererFactory: DefaultRenderersFactory by lazy {
+        DefaultRenderersFactory(appCtx).setExtensionRendererMode(
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+        )
+    }
+
+    /**
+     * 共享内存分配器（3 实例共享同一缓冲内存池，保留原 sharedLoadControl 的内存收益）
+     */
+    private val sharedAllocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
+
+    /**
+     * V-003-P2-1: LoadControl 按 tier 缓存（避免每次 acquire 重复创建）
+     *
+     * 不用 lazy 单例的原因：lazy 只初始化一次，档位会"进程级终身不变"；
+     * 不用每次新建的原因：同 tier 重复创建浪费资源。
+     * 折中：按 tier.name 缓存，不同 tier 不同实例，同 tier 复用。
+     */
+    // BUG5 fix: 移除 LoadControl 缓存，每实例独立创建
+    // 原因：ConcurrentHashMap 按 tier 缓存导致同 tier 多实例共享同一 LoadControl，
+    // 但 ExoPlayer 约束"共享 LoadControl 的 Player 必须共享同一个 playback thread"，
+    // 视频滑动切换时 acquire(looper) 传入不同 looper 违反此约束，抛出 IllegalStateException。
+    // 修复：每次调用 createLoadControl() 都新建实例，保留 sharedAllocator 实现内存池共享。
+
+    /**
+     * LoadControl 工厂：按当前带宽档位新建实例（共享 allocator 内存池，实例不共享避免线程冲突）
+     */
+    fun createLoadControl(): DefaultLoadControl {
+        val tier = ExoPlayerHelper.getCurrentBandwidthTier()
+        AppLog.put(
+            "PlayerPool: createLoadControl (new instance), tier=$tier, " +
+                "bitrateEstimate=${ExoPlayerHelper.bandwidthMeter.bitrateEstimate}bps"
+        )
+        return ExoPlayerHelper.createLoadControlByTier(tier, sharedAllocator)
+    }
+
+    /**
+     * 获取播放器实例（命中复用 / 未命中新建）
+     *
+     * @param looper 播放器工作 Looper（仅新建时生效；复用实例沿用其创建时 Looper，全链路同线程约束保证一致）
+     * @return 可用实例（池内取出已做状态重置，调用方需重新 addListener + setVideoSurface + setMediaItem）
+     */
+    @Synchronized
+    fun acquire(looper: Looper): ExoPlayer {
+        // video-regression-fix-0906 热修：真机铁证"acquire hit (reuse)"拿到的实例 prepare 时报
+        // "Ignoring messages sent after release"（池内实例已被外部路径 release 成死实例），
+        // 25s BUFFERING 超时后释放 → 后续全部复用死实例 → 真机无一可播。
+        // 实例池整体降级为直建直毁（丢失复用性能 ~100ms/次，换确定性可用），复用逻辑保留待排查后重启用
+        if (!POOL_ENABLED) {
+            val selector = createTrackSelector()
+            val player = ExoPlayer.Builder(appCtx, sharedRendererFactory)
+                .setLooper(looper)
+                .setTrackSelector(selector)
+                .setLoadControl(createLoadControl())
+                .setMediaSourceFactory(
+                    DefaultMediaSourceFactory(ExoPlayerHelper.resolvingDataSource)
+                        .setLiveTargetOffsetMs(5000)
+                )
+                .build()
+            selectorMap[player] = selector
+            AppLog.put(
+                "PlayerPool: POOL_DISABLED acquire (create new), " +
+                    "playerId=${System.identityHashCode(player)}"
+            )
+            return player
+        }
+        val reused = pool.removeFirstOrNull()
+        if (reused != null) {
+            AppLog.put(
+                "PlayerPool: acquire hit (reuse), poolSize=${pool.size}, " +
+                    "playerId=${System.identityHashCode(reused)}, " +
+                    "selector=${System.identityHashCode(selectorMap[reused])}"
+            )
+            return reused
+        }
+        // V-P0-1: 每实例独立 TrackSelector（共享单例并发二次 init 崩溃）
+        val selector = createTrackSelector()
+        val player = ExoPlayer.Builder(appCtx, sharedRendererFactory)
+            .setLooper(looper)
+            .setTrackSelector(selector)
+            .setLoadControl(createLoadControl())
+            .setMediaSourceFactory(
+                // 与原 Exo2MediaPlayer 配置一致：resolvingDataSource 支持 SPLIT_TAG per-request Header 注入
+                DefaultMediaSourceFactory(ExoPlayerHelper.resolvingDataSource)
+                    .setLiveTargetOffsetMs(5000) // 直播时延 5 秒
+            )
+            .build()
+        selectorMap[player] = selector
+        AppLog.put(
+            "PlayerPool: acquire miss (create new), " +
+                "selector=${System.identityHashCode(selector)}"
+        )
+        return player
+    }
+
+    /**
+     * 归还实例到池中（LRU：池满淘汰最久未用实例）
+     *
+     * 状态重置清单（防止跨视频状态污染）：
+     * - stop + clearMediaItems：清除播放内容/timeline
+     * - clearVideoSurface：解除 surface 绑定（旧 surface 可能已销毁）
+     * - clearOverrides：清除音轨选择 override（selectAudioTrack 残留）
+     * - playbackParameters=DEFAULT：重置倍速
+     * - repeatMode=REPEAT_MODE_OFF：重置循环模式
+     * - playWhenReady=false：重置自动播放标志
+     *
+     * 注意：listener 移除由调用方（Exo2MediaPlayer.detachFromPlayer）在 recycle 前完成，
+     * ExoPlayer 无批量移除 listener API，池无法感知外部挂了哪些 listener。
+     *
+     * @param player 待归还实例（必须已从所有 listener 解绑）
+     */
+    @Synchronized
+    fun recycle(player: ExoPlayer) {
+        // video-regression-fix-0906 热修：POOL_DISABLED 下 recycle 直毁（配合 acquire 直建）
+        if (!POOL_ENABLED) {
+            selectorMap.remove(player)
+            taintedPool.remove(player)
+            kotlin.runCatching { player.release() }
+            AppLog.put(
+                "PlayerPool: POOL_DISABLED recycle -> release directly, " +
+                    "playerId=${System.identityHashCode(player)}"
+            )
+            return
+        }
+        // video-play-7001-videograph-fix 2.2/AD-02：污染隔离——注入过 effects 的实例用完即毁，永不回池
+        if (taintedPool.remove(player)) {
+            AppLog.put("PlayerPool: tainted instance recycle -> release directly (never re-pool)")
+            selectorMap.remove(player)
+            kotlin.runCatching { player.release() }
+            return
+        }
+        kotlin.runCatching {
+            player.stop()
+            player.clearMediaItems()
+            player.clearVideoSurface()
+            player.trackSelectionParameters =
+                player.trackSelectionParameters.buildUpon().clearOverrides().build()
+            player.playbackParameters = PlaybackParameters.DEFAULT
+            player.repeatMode = Player.REPEAT_MODE_OFF
+            player.playWhenReady = false
+        }.onFailure {
+            // 状态重置失败（极端场景）——直接销毁不入池，避免污染池
+            AppLog.put("PlayerPool: recycle reset failed, release directly", it)
+            selectorMap.remove(player)  // player 已 release，移除映射防泄漏
+            taintedPool.remove(player)
+            kotlin.runCatching { player.release() }
+            return
+        }
+        if (pool.size >= MAX_POOL_SIZE) {
+            val oldest = pool.removeLast()
+            selectorMap.remove(oldest)  // evict 的 player 即将 release，移除映射防泄漏
+            taintedPool.remove(oldest)
+            kotlin.runCatching { oldest.release() }
+            AppLog.put("PlayerPool: evict oldest (LRU), poolSize=${pool.size}")
+        }
+        pool.addFirst(player)
+        AppLog.put("PlayerPool: recycled, poolSize=${pool.size}")
+    }
+
+    /**
+     * 清空池（VideoPlayerActivity.onDestroy 调用）
+     * 池生命周期 = Activity 生命周期，避免 App 后台时池内实例占用解码器/缓冲区资源
+     */
+    @Synchronized
+    fun clear() {
+        var count = 0
+        while (pool.isNotEmpty()) {
+            kotlin.runCatching { pool.removeFirst().release() }
+            count++
+        }
+        // 污染实例（曾注入 effects）也全部释放，防止泄漏
+        if (taintedPool.isNotEmpty()) {
+            taintedPool.forEach { player ->
+                kotlin.runCatching { player.release() }
+                count++
+            }
+            taintedPool.clear()
+        }
+        selectorMap.clear()  // 池内实例全部 release，清空映射防泄漏
+        if (count > 0) {
+            AppLog.put("PlayerPool: cleared $count instances on activity destroy")
+        }
+    }
+}

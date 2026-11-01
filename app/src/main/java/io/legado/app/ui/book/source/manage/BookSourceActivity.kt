@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.source.manage
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -52,6 +53,7 @@ import io.legado.app.utils.StringUtils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
+import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.isAbsUrl
@@ -105,6 +107,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     private var snackBar: Snackbar? = null
     private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
+    private var locateSourceUrl: String? = null
+    private var locateSourceName: String? = null
     private val qrResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
         showDialogFragment(ImportBookSourceDialog(it))
@@ -160,8 +164,14 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        locateSourceUrl = intent.getStringExtra("locateSourceUrl")
+        locateSourceName = intent.getStringExtra("locateSourceName")
+        AppLog.put("BookSourceActivity启动: locateSourceUrl=$locateSourceUrl, locateSourceName=$locateSourceName")
         initRecyclerView()
         initSearchView()
+        if (locateSourceUrl != null) {
+            searchView.setQuery("", false)
+        }
         upBookSource()
         intent.getStringExtra("group")?.let {
             searchView.setQuery("group:$it", true)
@@ -402,11 +412,48 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             ).catch {
                 AppLog.put("书源界面更新书源出错", it)
             }.flowOn(IO).conflate().collect { data ->
-                adapter.setItems(data, adapter.diffItemCallback, !Debug.isChecking)
+                if (locateSourceUrl != null) {
+                    adapter.setItems(data)
+                } else {
+                    adapter.setItems(data, adapter.diffItemCallback, !Debug.isChecking)
+                }
                 itemTouchCallback.isCanDrag =
                     sort == BookSourceSort.Default && !groupSourcesByDomain
+                tryLocateSource(data)
                 delay(500)
             }
+        }
+    }
+
+    private fun tryLocateSource(data: List<BookSourcePart>) {
+        val urlToLocate = locateSourceUrl ?: return
+        val nameToLocate = locateSourceName
+        val index = data.indexOfFirst { it.bookSourceUrl == urlToLocate }.takeIf { it >= 0 }
+            ?: data.indexOfFirst { nameToLocate != null && it.bookSourceName == nameToLocate }
+        AppLog.put("locate book source: url=$urlToLocate, name=$nameToLocate, index=$index, dataSize=${data.size}")
+        if (index < 0) {
+            return
+        }
+        locateSourceUrl = null
+        locateSourceName = null
+        binding.recyclerView.post {
+            (binding.recyclerView.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(index, 72.dpToPx())
+                ?: binding.recyclerView.scrollToPosition(index)
+            adapter.setSelection(index)
+            AppLog.put("locate book source done: index=$index")
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        locateSourceUrl = intent.getStringExtra("locateSourceUrl")
+        locateSourceName = intent.getStringExtra("locateSourceName")
+        AppLog.put("BookSourceActivity onNewIntent: locateSourceUrl=$locateSourceUrl, locateSourceName=$locateSourceName")
+        if (locateSourceUrl != null) {
+            searchView.setQuery("", false)
+            upBookSource()
         }
     }
 
@@ -490,6 +537,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             R.id.menu_enable_explore -> viewModel.enableSelectExplore(adapter.selection)
             R.id.menu_disable_explore -> viewModel.disableSelectExplore(adapter.selection)
             R.id.menu_check_source -> checkSource()
+            R.id.menu_check_source_compose -> checkSourceCompose()
             R.id.menu_top_sel -> viewModel.topSource(*adapter.selection.toTypedArray())
             R.id.menu_bottom_sel -> viewModel.bottomSource(*adapter.selection.toTypedArray())
             R.id.menu_add_group -> selectionAddToGroups()
@@ -522,6 +570,10 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             R.id.menu_check_selected_interval -> adapter.checkSelectedInterval()
         }
         return true
+    }
+
+    private fun checkSourceCompose() {
+        startActivity<io.legado.app.ui.book.source.check.CheckSourceActivity>()
     }
 
     @SuppressLint("InflateParams")

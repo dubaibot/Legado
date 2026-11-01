@@ -4,10 +4,15 @@ import android.os.Parcelable
 import android.text.TextUtils
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import com.google.gson.JsonElement
+import com.google.gson.JsonSerializationContext
+import com.google.gson.JsonSerializer
+import com.google.gson.annotations.SerializedName
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.rule.BookInfoRule
@@ -18,9 +23,11 @@ import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.model.AudioPlay
 import io.legado.app.utils.GSON
+import io.legado.app.utils.INITIAL_GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.splitNotBlank
 import kotlinx.parcelize.Parcelize
+import java.lang.reflect.Type
 
 @Suppress("unused")
 @Parcelize
@@ -56,6 +63,9 @@ data class BookSource(
     // 启用okhttp CookieJAr 自动保存每次请求的cookie
     @ColumnInfo(defaultValue = "0")
     override var enabledCookieJar: Boolean? = true,
+    // Cookie 隔离作用域 key
+    @Ignore
+    override var cookieScopeKey: String? = null,
     // 并发率
     override var concurrentRate: String? = null,
     // 请求头
@@ -89,6 +99,8 @@ data class BookSource(
     var ruleExplore: ExploreRule? = null,
     // 搜索url
     var searchUrl: String? = null,
+    // 上次使用的host
+    var lastHost: String? = null,
     // 搜索规则
     var ruleSearch: SearchRule? = null,
     // 书籍信息页规则
@@ -99,10 +111,18 @@ data class BookSource(
     var ruleContent: ContentRule? = null,
     // 段评规则
     var ruleReview: ReviewRule? = null,
+    // 纯 JavaScript 单文件书源主脚本，非空时优先使用脚本抓取流程
+    @SerializedName("mainJs")
+    var mainJs: String? = null,
     @ColumnInfo(defaultValue = "0")
     var eventListener: Boolean = false, // 是否监听事件来执行回调规则
     @ColumnInfo(defaultValue = "0")
-    var customButton: Boolean = false //由书源控制的自定义按钮
+    var customButton: Boolean = false, //由书源控制的自定义按钮
+    @ColumnInfo(defaultValue = "0")
+    var nextPageLazyLoad: Boolean = false, //下一页懒加载
+    // 首页模块定义JSON
+    @ColumnInfo(defaultValue = "''")
+    var homepageModules: String? = null
 ) : Parcelable, BaseSource {
 
     override fun getTag(): String {
@@ -265,6 +285,21 @@ data class BookSource(
     }
 
     private fun equal(a: String?, b: String?) = a == b || (a.isNullOrEmpty() && b.isNullOrEmpty())
+
+    val hasJs: Boolean get() = !jsLib.isNullOrBlank()
+    val hasSearchUrl: Boolean get() = !searchUrl.isNullOrBlank()
+    val hasLoginUrl: Boolean get() = !loginUrl.isNullOrBlank()
+    val hasExploreUrl: Boolean get() = !exploreUrl.isNullOrBlank()
+
+    companion object {
+        val jsonSerializer = JsonSerializer<BookSource> { src, _, _ ->
+            val jsonObject = INITIAL_GSON.toJsonTree(src).asJsonObject
+            if (src.nextPageLazyLoad == false) {
+                jsonObject.remove("nextPageLazyLoad")
+            }
+            jsonObject as JsonElement
+        }
+    }
 
     class Converters {
 

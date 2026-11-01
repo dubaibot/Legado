@@ -80,6 +80,8 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
     }
 
     private var initHandler = false
+    private var lastUiError: String? = null
+    private var v2Delegate: SourceLoginV2Delegate? = null
     private val handler by lazy {
         initHandler = true
         buildMainHandler()
@@ -104,6 +106,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
     private fun handleReUiView(deltaUp: Boolean) {
         val source = viewModel.source ?: return
         val loginUiStr = source.loginUi ?: return
+        lastUiError = null
         val codeStr = loginUiStr.let {
             when {
                 it.startsWith("@js:") -> it.substring(4)
@@ -236,6 +239,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
                 }.toString()
             }
         } catch (e: Exception) {
+            lastUiError = e.localizedMessage ?: e.toString()
             AppLog.put(source.getTag() + " loginUi err:" + (e.localizedMessage ?: e.toString()), e)
             null
         }
@@ -243,6 +247,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
 
     fun loginUi(json: String?): List<RowUi>? {
         return GSON.fromJsonArray<RowUi>(json).onFailure {
+            lastUiError = "loginUi JSON 解析失败: ${it.localizedMessage}"
             AppLog.put("loginUi json parse err:" + it.localizedMessage, it)
         }.getOrNull()
     }
@@ -641,6 +646,9 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
 
     private fun buttonUi(source: BaseSource, rowUis: List<RowUi>?) {
         rowUiBuilder(source, rowUis, false)
+        if (rowUis.isNullOrEmpty()) {
+            showLoadError(source)
+        }
         binding.toolBar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.menu_ok -> {
@@ -665,33 +673,80 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
         }
     }
 
+    /** Renders the failure reason instead of leaving the dialog body blank. */
+    private fun showLoadError(source: BaseSource) {
+        val err = lastUiError
+        val msg = if (err.isNullOrBlank()) {
+            "登录界面(loginUi)为空或未返回内容\n请检查任务的 登录界面/登录前JS/jsLib 是否与源中配置一致\n来源: ${source.getTag()}"
+        } else {
+            "登录界面加载失败:\n$err\n\n请检查任务的 登录界面(loginUi)/登录前JS(loginUrl)/jsLib 是否与源中配置一致"
+        }
+        val tip = TextView(requireContext()).apply {
+            text = msg
+            setPadding(16.dpToPx(), 12.dpToPx(), 16.dpToPx(), 12.dpToPx())
+        }
+        binding.flexbox.addView(tip)
+    }
+
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val source = viewModel.source ?: return
+        lastUiError = null
         loginUrl = source.getLoginJs()
-        val loginUiStr = source.loginUi ?: return
-        val codeStr = loginUiStr.let {
-            when {
-                it.startsWith("@js:") -> it.substring(4)
-                it.startsWith("<js>") -> it.substring(4, it.lastIndexOf("<"))
-                else -> null
-            }
-        }
-        if (codeStr != null) {
-            lifecycleScope.launch(Main) {
-                withContext(IO) {
-                    val loginUiJson = evalUiJs(codeStr)
-                    rowUis = loginUi(loginUiJson)
-                }
-                buttonUi(source, rowUis)
-            }
-        } else {
-            rowUis = loginUi(loginUiStr)
-            buttonUi(source, rowUis)
-        }
         binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.title = getString(R.string.login_source, source.getTag())
         binding.toolBar.inflateMenu(R.menu.source_login)
         binding.toolBar.menu.applyTint(requireContext())
+        val loginUiStr = source.loginUi ?: return
+        if (source.isLoginUiV2()) {
+            // v2 提交是普通 action,无「确定」语义
+            binding.toolBar.menu.findItem(R.id.menu_ok)?.isVisible = false
+            binding.toolBar.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.menu_show_login_header -> alert {
+                        setTitle(R.string.login_header)
+                        source.getLoginHeader()?.let { loginHeader ->
+                            setMessage(loginHeader)
+                            positiveButton(R.string.copy_text) {
+                                appCtx.sendToClip(loginHeader)
+                            }
+                        }
+                    }
+
+                    R.id.menu_del_login_header -> source.removeLoginHeader()
+                    R.id.menu_log -> showDialogFragment<AppLogDialog>()
+                }
+                return@setOnMenuItemClickListener true
+            }
+            v2Delegate =
+                SourceLoginV2Delegate(this, binding, source, viewModel.book, viewModel.chapter)
+            v2Delegate?.start()
+        } else {
+            val codeStr = loginUiStr.let {
+                when {
+                    it.startsWith("@js:") -> it.substring(4)
+                    it.startsWith("<js>") -> it.substring(4, it.lastIndexOf("<"))
+                    else -> null
+                }
+            }
+            if (codeStr != null) {
+                lifecycleScope.launch(Main) {
+                    withContext(IO) {
+                        val loginUiJson = evalUiJs(codeStr)
+                        rowUis = loginUi(loginUiJson)
+                    }
+                    buttonUi(source, rowUis)
+                }
+            } else {
+                rowUis = loginUi(loginUiStr)
+                buttonUi(source, rowUis)
+            }
+        }
+    }
+
+    override fun onDestroyView() {
+        v2Delegate?.destroy()
+        v2Delegate = null
+        super.onDestroyView()
     }
 
     private fun handleButtonClick(source: BaseSource, action: String?, name: String, isLongClick: Boolean) {

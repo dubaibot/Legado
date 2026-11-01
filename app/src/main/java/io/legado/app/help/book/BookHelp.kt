@@ -62,6 +62,23 @@ object BookHelp {
 
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
 
+    /**
+     * 创建目录刷新时的章节缓存迁移器
+     */
+    fun createChapterCacheMigrator(
+        book: Book,
+        oldChapters: List<BookChapter>
+    ): ChapterCacheMigrator {
+        return ChapterCacheMigrator(
+            FileUtils.getPath(downloadDir, cacheFolderName, book.getFolderName()),
+            oldChapters
+        )
+    }
+
+    fun getCacheDir(book: Book): File {
+        return downloadDir.getFile(cacheFolderName, book.getFolderName())
+    }
+
     fun clearCache() {
         FileUtils.delete(
             FileUtils.getPath(downloadDir, cacheFolderName)

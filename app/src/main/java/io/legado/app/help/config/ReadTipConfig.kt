@@ -11,6 +11,7 @@ object ReadTipConfig {
     const val chapterTitle = 1
     const val time = 2
     const val battery = 3
+    const val batteryInside = 12
     const val batteryPercentage = 10
     const val page = 4
     const val totalProgress = 5
@@ -19,10 +20,11 @@ object ReadTipConfig {
     const val timeBattery = 8
     const val timeBatteryPercentage = 9
     const val totalProgress1 = 11
+    const val timeBatteryIconOnly = 13
 
     val tipValues = arrayOf(
-        none, bookName, chapterTitle, time, battery, batteryPercentage, page,
-        totalProgress, totalProgress1, pageAndTotal, timeBattery, timeBatteryPercentage
+        none, bookName, chapterTitle, time, battery, batteryInside, batteryPercentage, page,
+        totalProgress, totalProgress1, pageAndTotal, timeBattery, timeBatteryIconOnly, timeBatteryPercentage
     )
     val tipNames get() = appCtx.resources.getStringArray(R.array.read_tip).toList()
 
@@ -66,6 +68,51 @@ object ReadTipConfig {
             ReadBookConfig.config.tipFooterRight = value
         }
 
+    /**
+     * 各位置的信息模板，为空表示尚未自定义，按 [effectiveTemplate] 回退到旧枚举规则。
+     */
+    var tipHeaderLeftTemplate: String?
+        get() = ReadBookConfig.config.tipHeaderLeftTemplate
+        set(value) {
+            ReadBookConfig.config.tipHeaderLeftTemplate = value
+        }
+
+    var tipHeaderMiddleTemplate: String?
+        get() = ReadBookConfig.config.tipHeaderMiddleTemplate
+        set(value) {
+            ReadBookConfig.config.tipHeaderMiddleTemplate = value
+        }
+
+    var tipHeaderRightTemplate: String?
+        get() = ReadBookConfig.config.tipHeaderRightTemplate
+        set(value) {
+            ReadBookConfig.config.tipHeaderRightTemplate = value
+        }
+
+    var tipFooterLeftTemplate: String?
+        get() = ReadBookConfig.config.tipFooterLeftTemplate
+        set(value) {
+            ReadBookConfig.config.tipFooterLeftTemplate = value
+        }
+
+    var tipFooterMiddleTemplate: String?
+        get() = ReadBookConfig.config.tipFooterMiddleTemplate
+        set(value) {
+            ReadBookConfig.config.tipFooterMiddleTemplate = value
+        }
+
+    var tipFooterRightTemplate: String?
+        get() = ReadBookConfig.config.tipFooterRightTemplate
+        set(value) {
+            ReadBookConfig.config.tipFooterRightTemplate = value
+        }
+
+    /**
+     * 取实际生效的模板：自定义过就用模板，否则把旧枚举规则转成等价模板。
+     */
+    fun effectiveTemplate(template: String?, legacyTip: Int): String =
+        template ?: ReaderInfoTemplate.fromLegacy(legacyTip)
+
     var headerMode: Int
         get() = ReadBookConfig.config.headerMode
         set(value) {
@@ -88,6 +135,20 @@ object ReadTipConfig {
         get() = ReadBookConfig.config.tipDividerColor
         set(value) {
             ReadBookConfig.config.tipDividerColor = value
+        }
+
+    /** 页眉字体大小(sp) */
+    var headerFontSize: Int
+        get() = ReadBookConfig.config.headerFontSize
+        set(value) {
+            ReadBookConfig.config.headerFontSize = value
+        }
+
+    /** 页脚字体大小(sp) */
+    var footerFontSize: Int
+        get() = ReadBookConfig.config.footerFontSize
+        set(value) {
+            ReadBookConfig.config.footerFontSize = value
         }
 
     fun getHeaderModes(context: Context): LinkedHashMap<Int, String> {

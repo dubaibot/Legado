@@ -103,6 +103,15 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
     }
 
+    //模块①：本地文件桥接。registerForActivityResult 必须在 Lifecycle STARTED 之前调用，
+    //故在此处注册，再由 initWebView 的异步回调构造 LocalFileBridge 时注入 launcher
+    private var localFileBridge: LocalFileBridge? = null
+    private val localFileChooser = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        localFileBridge?.handleLocalFileResult(uri)
+    }
+
     private fun refresh() {
         currentWebView.reload()
     }
@@ -255,9 +264,9 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         // 添加 JavaScript 接口
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
         //模块①：注入本地文件桥接
-        currentWebView.addJavascriptInterface(
-            LocalFileBridge(this) { currentWebView }, LocalFileBridge.NAME
-        )
+        val bridge = LocalFileBridge(this, localFileChooser) { currentWebView }
+        localFileBridge = bridge
+        currentWebView.addJavascriptInterface(bridge, LocalFileBridge.NAME)
         currentWebView.webViewClient = CustomWebViewClient()
         currentWebView.settings.apply {
             useWideViewPort = true

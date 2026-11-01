@@ -26,6 +26,7 @@ import io.legado.app.data.entities.rule.ExploreCatNode
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity
@@ -33,6 +34,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
+import io.legado.app.ui.widget.topBarContentColor
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
@@ -69,11 +71,22 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         get() = binding.titleBar.toolbar.findViewById(R.id.tv_page)
     private val tvTitle: TextView?
         get() = binding.titleBar.toolbar.findViewById(R.id.tv_title)
-    private val tvSubtitle: TextView?
-        get() = binding.titleBar.toolbar.findViewById(R.id.tv_subtitle)
 
     private var searchMenuItem: MenuItem? = null
     private var categoryMenuItem: MenuItem? = null
+
+    companion object {
+        private const val MAX_TITLE_LENGTH = 6
+
+        fun truncateTitle(name: String?): String {
+            if (name.isNullOrBlank()) return ""
+            return if (name.length <= MAX_TITLE_LENGTH) {
+                name
+            } else {
+                name.take(MAX_TITLE_LENGTH - 3) + "..."
+            }
+        }
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         onBackPressedDispatcher.addCallback(this) {
@@ -86,7 +99,9 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 source?.exploreStyle == 1 || intent.getBooleanExtra("newStyle", false)
             )
             if (titleInited) {
-                tvTitle?.text = source?.bookSourceName ?: intent.getStringExtra("exploreName")
+                tvTitle?.text = truncateTitle(
+                    source?.bookSourceName ?: intent.getStringExtra("exploreName")
+                )
             }
             //source异步加载完成,补刷搜索按钮可见性
             searchMenuItem?.isVisible = !source?.searchUrl.isNullOrBlank()
@@ -98,9 +113,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         }
         viewModel.l2Data.observe(this) {
             upL2Bar()
-        }
-        viewModel.l3Data.observe(this) {
-            upL3Bar()
         }
         viewModel.nodeInvalidLiveData.observe(this) {
             toastOnUi(R.string.explore_node_invalid)
@@ -146,28 +158,18 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         titleInited = true
         tvPage?.text = getString(R.string.menu_page, 1)
         tvPage?.setOnClickListener { changePage() }
-        tvTitle?.text = viewModel.sourceData.value?.bookSourceName
-            ?: intent.getStringExtra("exploreName")
-        updateSubtitle()
+        tvTitle?.text = truncateTitle(
+            viewModel.sourceData.value?.bookSourceName
+                ?: intent.getStringExtra("exploreName")
+        )
         binding.titleBar.setColorFilter(primaryTextColor)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.menu_category) {
-            CategoryEditDialogFragment().show(supportFragmentManager, "categoryEdit")
+            CategoryListDialogFragment().show(supportFragmentManager, "categoryList")
         }
         return super.onCompatOptionsItemSelected(item)
-    }
-
-    /** 副标题显示当前分类名,无分类时隐藏 */
-    private fun updateSubtitle() {
-        val subtitle = viewModel.currentL3?.name
-            ?: viewModel.currentL2?.name
-            ?: viewModel.currentL1?.name
-        tvSubtitle?.let {
-            it.isVisible = subtitle != null
-            it.text = subtitle
-        }
     }
 
     /**
@@ -332,11 +334,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         viewModel.l2Kinds(), viewModel.currentL2
     ) { viewModel.selectL2(it) }
 
-    private fun upL3Bar() = upBar(
-        binding.hsvThirdCategory, binding.llThirdCategory,
-        viewModel.l3Kinds(), viewModel.currentL3
-    ) { viewModel.selectL3(it) }
-
     private fun upBar(
         scrollView: HorizontalScrollView,
         container: ViewGroup,
@@ -352,16 +349,23 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
         container.removeAllViews()
         val names = ExploreCatNode.displayNames(nodes)
         var selectedView: TextView? = null
+        val contentColor = binding.titleBar.topBarContentColor()
+        val selectedColor = accentColor
         nodes.forEachIndexed { index, node ->
             val tv = layoutInflater.inflate(
                 R.layout.item_quick_group, container, false
             ) as TextView
             tv.text = names[index]
             tv.isSelected = current == node
+            tv.setTextColor(if (current == node) selectedColor else contentColor)
             tv.setOnClickListener {
                 if (onSelect(node)) {
                     clearAndReload()
                 }
+            }
+            tv.setOnLongClickListener {
+                CategoryListDialogFragment().show(supportFragmentManager, "categoryList")
+                true
             }
             container.addView(tv)
             if (tv.isSelected) {
@@ -369,9 +373,6 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
             }
         }
         selectedView?.let { ensureChipVisible(scrollView, it) }
-        if (titleInited) {
-            updateSubtitle()
-        }
     }
 
     /** 高亮chip滚动到可见 */

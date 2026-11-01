@@ -123,6 +123,22 @@ fun Uri.readBytes(context: Context): ByteArray {
 }
 
 @Throws(Exception::class)
+fun Uri.readBytes(context: Context, maxBytes: Long = Long.MAX_VALUE): ByteArray {
+    return if (this.isContentScheme()) {
+        context.contentResolver.openInputStream(this)?.use {
+            it.readBytesLimited(maxBytes)
+        } ?: throw NoStackTraceException("打开文件失败\n${this}")
+    } else {
+        val path = RealPathUtil.getPath(context, this)
+        if (path?.isNotEmpty() == true) {
+            File(path).inputStream().use { it.readBytesLimited(maxBytes) }
+        } else {
+            throw NoStackTraceException("获取文件真实地址失败\n${this.path}")
+        }
+    }
+}
+
+@Throws(Exception::class)
 fun Uri.readText(context: Context): String {
     readBytes(context).let {
         return String(it)

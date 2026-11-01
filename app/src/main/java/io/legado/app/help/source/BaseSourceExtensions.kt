@@ -5,10 +5,10 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssSource
 import io.legado.app.model.SharedJsScope
-import org.mozilla.javascript.Scriptable
+import com.script.ScriptBindings
 import kotlin.coroutines.CoroutineContext
 
-fun BaseSource.getShareScope(coroutineContext: CoroutineContext? = null): Scriptable? {
+fun BaseSource.getShareScope(coroutineContext: CoroutineContext? = null): ScriptBindings? {
     return SharedJsScope.getScope(jsLib, coroutineContext)
 }
 

@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.EditText
 import androidx.annotation.LayoutRes
@@ -32,6 +33,12 @@ abstract class BaseDialogFragment(
     private val adaptationSoftKeyboard: Boolean = false
 ) : DialogFragment(layoutID) {
 
+    enum class DialogForm { FLOATING, SELF_MANAGED }
+
+    protected open val dialogForm: DialogForm = DialogForm.FLOATING
+    protected open val dialogEdgeInset: Boolean = false
+    protected open val contentSizedRoot: Boolean = false
+
     private var onDismissListener: OnDismissListener? = null
 
     fun setOnDismissListener(onDismissListener: OnDismissListener?) {
@@ -40,6 +47,18 @@ abstract class BaseDialogFragment(
 
     override fun onStart() {
         super.onStart()
+        if (contentSizedRoot) {
+            view?.let { root ->
+                val params = root.layoutParams
+                    ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                root.layoutParams = params
+            }
+        }
+        if (!adaptationSoftKeyboard && !AppConfig.isEInkMode && dialogEdgeInset) {
+            val inset = EDGE_INSET_DP.dpToPx()
+            dialog?.window?.decorView?.setPadding(inset, inset, inset, inset)
+        }
         if (adaptationSoftKeyboard) {
             dialog?.window?.setBackgroundDrawableResource(R.color.transparent)
         } else if (AppConfig.isEInkMode) {
@@ -120,5 +139,9 @@ abstract class BaseDialogFragment(
             parent = parent.parent
         }
         return parent
+    }
+
+    companion object {
+        private const val EDGE_INSET_DP = 16
     }
 }

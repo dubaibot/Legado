@@ -81,6 +81,18 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="backup_selector"
+            android:summary="@string/backup_selector_summary"
+            android:title="@string/backup_selector"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="book_cache_selector"
+            android:summary="@string/book_cache_selector_summary"
+            android:title="@string/book_cache_selector"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="web_dav_restore"
             android:summary="@string/restore_summary"
             android:title="@string/restore"
@@ -94,6 +106,19 @@
 
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
+            android:key="restoreShowSelector"
+            android:summary="@string/restore_show_selector_summary"
+            android:title="@string/restore_show_selector"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="import_old"
+            android:summary="@string/import_old_summary"
+            android:title="@string/menu_import_old_version"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
             android:key="onlyLatestBackup"
             android:summary="@string/only_latest_backup_s"
             android:title="@string/only_latest_backup_t"
@@ -101,9 +126,33 @@
 
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
+            android:key="autoBackup"
+            android:summary="@string/auto_backup_summary"
+            android:title="@string/auto_backup_title"
+            app:allowDividerAbove="false"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
             android:key="autoCheckNewBackup"
             android:summary="@string/auto_check_new_backup_s"
             android:title="@string/auto_check_new_backup_t"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="viewBackupInfo"
+            android:summary="@string/view_backup_info_s"
+            android:title="@string/view_backup_info_t"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="viewRestoreInfo"
+            android:summary="@string/view_restore_info_s"
+            android:title="@string/view_restore_info_t"
             app:allowDividerAbove="false"
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />

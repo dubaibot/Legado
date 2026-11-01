@@ -48,11 +48,13 @@ import io.legado.app.help.http.text
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.applyTopBarConfig
+import io.legado.app.ui.widget.applyTopBarWallpaper
+import io.legado.app.ui.widget.topBarContentColor
 import io.legado.app.ui.rss.favorites.RssFavoritesDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
@@ -180,7 +182,18 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
     }
 
+    //模块①：本地文件桥接。registerForActivityResult 必须在 Lifecycle STARTED 之前调用，
+    //故在此处注册，再由 initWebView 构造 LocalFileBridge 时注入 launcher
+    private var localFileBridge: LocalFileBridge? = null
+    private val localFileChooser = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        localFileBridge?.handleLocalFileResult(uri)
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.titleBar.applyTopBarConfig()
+        binding.titleBar.applyTopBarWallpaper()
         pooledWebView = WebViewPool.acquire(this)
         currentWebView = pooledWebView.realWebView
         binding.webViewContainer.addView(currentWebView)
@@ -434,9 +447,9 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         //添加屏幕方向控制，网页关闭，openUI
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
         //模块①：注入本地文件桥接
-        currentWebView.addJavascriptInterface(
-            LocalFileBridge(this) { currentWebView }, LocalFileBridge.NAME
-        )
+        val bridge = LocalFileBridge(this, localFileChooser) { currentWebView }
+        localFileBridge = bridge
+        currentWebView.addJavascriptInterface(bridge, LocalFileBridge.NAME)
         //模块⑥：注入图片选择桥接
         currentWebView.addJavascriptInterface(ImageSelectBridge(), "lycImgSelect")
         currentWebView.webViewClient = CustomWebViewClient()
@@ -553,7 +566,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     private fun upStarMenu() {
-        starMenuItem?.isVisible = viewModel.rssArticle != null
+        starMenuItem?.isVisible = true
         if (viewModel.rssStar != null) {
             starMenuItem?.setIcon(R.drawable.ic_star)
             starMenuItem?.setTitle(R.string.in_favorites)
@@ -561,7 +574,9 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             starMenuItem?.setIcon(R.drawable.ic_star_border)
             starMenuItem?.setTitle(R.string.out_favorites)
         }
-        starMenuItem?.icon?.setTintMutate(primaryTextColor)
+        starMenuItem?.icon?.setTintMutate(binding.titleBar.topBarContentColor())
+        // starthtml 场景无文章，TTS 菜单不应显示
+        ttsMenuItem?.isVisible = viewModel.rssArticle != null
     }
 
     private fun upTtsMenu(isPlaying: Boolean) {
@@ -573,7 +588,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 ttsMenuItem?.setIcon(R.drawable.ic_volume_up)
                 ttsMenuItem?.setTitle(R.string.read_aloud)
             }
-            ttsMenuItem?.icon?.setTintMutate(primaryTextColor)
+            ttsMenuItem?.icon?.setTintMutate(binding.titleBar.topBarContentColor())
         }
     }
 

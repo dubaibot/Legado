@@ -12,6 +12,9 @@ interface CookieDao {
     @Query("select * from cookies where url like '%|%'")
     fun getOkHttpCookies(): List<Cookie>
 
+    @Query("SELECT * FROM cookies Where url LIKE :prefix||'%'")
+    fun getByPrefix(prefix: String): List<Cookie>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(vararg cookie: Cookie)
 
@@ -20,6 +23,9 @@ interface CookieDao {
 
     @Query("delete from cookies where url = :url")
     fun delete(url: String)
+
+    @Query("delete from cookies where url LIKE :prefix||'%'")
+    fun deleteByPrefix(prefix: String)
 
     @Query("delete from cookies where url like '%|%'")
     fun deleteOkHttp()

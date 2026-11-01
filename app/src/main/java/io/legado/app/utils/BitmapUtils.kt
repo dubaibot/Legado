@@ -6,7 +6,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
 import android.graphics.BitmapFactory
+import android.graphics.BitmapRegionDecoder
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.NinePatchDrawable
 import com.google.android.renderscript.Toolkit
@@ -37,6 +39,30 @@ object BitmapUtils {
             op.inSampleSize = calculateInSampleSize(op, width, height)
             op.inJustDecodeBounds = false
             BitmapFactory.decodeFileDescriptor(fis.fd, null, op)
+        }
+    }
+
+    /**
+     * 从输入流工厂解码 Bitmap（archive ReadGoalWidgetProvider 依赖）
+     */
+    fun decodeBitmap(
+        inputFactory: () -> InputStream?,
+        width: Int,
+        height: Int? = null,
+        preferredConfig: Bitmap.Config? = null
+    ): Bitmap? {
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        inputFactory()?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        } ?: return null
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        options.inSampleSize = calculateInSampleSize(options, width, height)
+        options.inJustDecodeBounds = false
+        preferredConfig?.let { options.inPreferredConfig = it }
+        return inputFactory()?.use {
+            BitmapFactory.decodeStream(it, null, options)
         }
     }
 
@@ -231,6 +257,70 @@ object BitmapUtils {
         return ByteArrayInputStream(bos.toByteArray()).also { bos.close() }
     }
 
+    /**
+     * F-P7 按指定宽高比居中裁剪图片并覆盖原文件。
+     * - .9.png / .gif 跳过裁剪（保留特殊格式）
+     * - 居中裁剪（Center Crop），保留中央主体
+     * - 小图不放大（裁剪区域不超过原图尺寸）
+     * - 使用 BitmapRegionDecoder 只解码裁剪区域，避免大图 OOM
+     * @param srcPath 源图片路径
+     * @param ratioW 目标宽高比的宽（如屏幕 widthPixels）
+     * @param ratioH 目标宽高比的高（如屏幕 heightPixels）
+     * @return 裁剪后文件路径（跳过/失败时返回原路径）
+     */
+    fun cropBitmapToAspectRatio(srcPath: String, ratioW: Int, ratioH: Int): String {
+        // .9.png / .gif 跳过裁剪
+        if (srcPath.contains(".9.png", true) || srcPath.contains(".gif", true)) return srcPath
+        if (ratioW <= 0 || ratioH <= 0) return srcPath
+        var regionDecoder: BitmapRegionDecoder? = null
+        try {
+            regionDecoder = BitmapRegionDecoder.newInstance(srcPath, false) ?: return srcPath
+            val srcW = regionDecoder.width
+            val srcH = regionDecoder.height
+            if (srcW <= 0 || srcH <= 0) return srcPath
+            // 计算居中裁剪区域
+            val srcRatio = srcW.toFloat() / srcH.toFloat()
+            val dstRatio = ratioW.toFloat() / ratioH.toFloat()
+            val cropW: Int
+            val cropH: Int
+            if (srcRatio > dstRatio) {
+                // 原图更宽 → 裁剪左右
+                cropH = srcH
+                cropW = (srcH * dstRatio).toInt()
+            } else {
+                // 原图更高 → 裁剪上下
+                cropW = srcW
+                cropH = (srcW / dstRatio).toInt()
+            }
+            val x = (srcW - cropW) / 2
+            val y = (srcH - cropH) / 2
+            val rect = Rect(x, y, x + cropW, y + cropH)
+            // 采样：限制最大输出边为 1920px（满足主流屏幕，避免 OOM）
+            val maxSide = 1920
+            val sample = max(cropW, cropH) / maxSide
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = if (sample > 1) sample else 1
+            }
+            val cropped = regionDecoder.decodeRegion(rect, opts) ?: return srcPath
+            // 保存覆盖原文件（按后缀判断格式）
+            val format = when {
+                srcPath.endsWith(".png", true) -> Bitmap.CompressFormat.PNG
+                srcPath.endsWith(".webp", true) -> Bitmap.CompressFormat.WEBP
+                else -> Bitmap.CompressFormat.JPEG
+            }
+            val quality = if (format == Bitmap.CompressFormat.PNG) 100 else 90
+            FileOutputStream(srcPath).use { fos ->
+                cropped.compress(format, quality, fos)
+            }
+            cropped.recycle()
+            return srcPath
+        } catch (e: Exception) {
+            return srcPath
+        } finally {
+            regionDecoder?.recycle()
+        }
+    }
+
 }
 
 /**
@@ -280,4 +370,54 @@ fun Bitmap.getMeanColor(): Int {
         averagePixelBlue + 3
     )
 
+}
+
+/**
+ * 是否含透明像素（封面缩略图 PNG/JPG 选择依据）。
+ * 小图全扫，大图按步长采样，异常时回退到 hasAlpha()。
+ */
+fun Bitmap.hasTransparentPixels(): Boolean {
+    if (!hasAlpha() || width <= 0 || height <= 0 || isRecycled) return false
+    return runCatching {
+        val pixelCount = width.toLong() * height.toLong()
+        if (pixelCount <= TRANSPARENT_PIXEL_FULL_SCAN_LIMIT) {
+            val row = IntArray(width)
+            for (y in 0 until height) {
+                getPixels(row, 0, width, 0, y, width, 1)
+                for (pixel in row) {
+                    if (Color.alpha(pixel) < 255) return true
+                }
+            }
+            return false
+        }
+        val step = ceil(sqrt(pixelCount.toDouble() / TRANSPARENT_PIXEL_FULL_SCAN_LIMIT)).toInt()
+            .coerceAtLeast(2)
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                if (Color.alpha(getPixel(x, y)) < 255) return true
+                x += step
+            }
+            y += step
+        }
+        false
+    }.getOrDefault(hasAlpha())
+}
+
+private const val TRANSPARENT_PIXEL_FULL_SCAN_LIMIT = 512_000L
+
+/** 根据是否有透明像素返回封面缩略图扩展名。 */
+fun Bitmap.preferredCoverExtension(): String {
+    return if (hasTransparentPixels()) "png" else "jpg"
+}
+
+/** 有透明像素时按 PNG 无损压缩，否则按 JPEG 指定质量压缩。 */
+fun Bitmap.compressPreservingAlpha(outputStream: OutputStream, jpegQuality: Int = 90): Boolean {
+    val usePng = hasTransparentPixels()
+    return compress(
+        if (usePng) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
+        if (usePng) 100 else jpegQuality,
+        outputStream
+    )
 }

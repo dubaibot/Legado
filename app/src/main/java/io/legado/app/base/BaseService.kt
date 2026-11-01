@@ -54,11 +54,17 @@ abstract class BaseService : LifecycleService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
+    /**
+     * onTaskRemoved 时是否停止服务。
+     * 默认 true 保持既有行为；需要"划掉最近任务后继续工作"的服务覆写为 false。
+     */
+    protected open val stopSelfOnTaskRemoved: Boolean = true
+
     @CallSuper
     override fun onTaskRemoved(rootIntent: Intent?) {
         LogUtils.d(simpleName, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
-        stopSelf()
+        if (stopSelfOnTaskRemoved) stopSelf()
     }
 
     override fun onBind(intent: Intent): IBinder? {

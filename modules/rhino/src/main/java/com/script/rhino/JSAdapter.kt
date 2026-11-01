@@ -24,8 +24,8 @@
  */
 package com.script.rhino
 
-import org.mozilla.javascript.*
-import org.mozilla.javascript.Function
+import org.htmlunit.corejs.javascript.*
+import org.htmlunit.corejs.javascript.Function
 
 /**
  * JSAdapter is java.lang.reflect.Proxy equivalent for JavaScript. JSAdapter
@@ -71,7 +71,7 @@ import org.mozilla.javascript.Function
 @Suppress("unused", "UNUSED_PARAMETER")
 class JSAdapter private constructor(var adaptee: Scriptable) : Scriptable, Function {
     private var prototype: Scriptable? = null
-    private var parent: Scriptable? = null
+    private var parent: VarScope? = null
     private var isPrototype = false
 
     override fun getClassName(): String {
@@ -168,11 +168,11 @@ class JSAdapter private constructor(var adaptee: Scriptable) : Scriptable, Funct
         this.prototype = prototype
     }
 
-    override fun getParentScope(): Scriptable? {
+    override fun getParentScope(): VarScope? {
         return parent
     }
 
-    override fun setParentScope(parent: Scriptable?) {
+    override fun setParentScope(parent: VarScope?) {
         this.parent = parent
     }
 
@@ -231,7 +231,7 @@ class JSAdapter private constructor(var adaptee: Scriptable) : Scriptable, Funct
     }
 
     @Throws(RhinoException::class)
-    override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<Any>): Any {
+    override fun call(cx: Context, scope: VarScope, thisObj: Scriptable, args: Array<Any>): Any {
         return if (isPrototype) {
             construct(cx, scope, args)
         } else {
@@ -245,17 +245,16 @@ class JSAdapter private constructor(var adaptee: Scriptable) : Scriptable, Funct
     }
 
     @Throws(RhinoException::class)
-    override fun construct(cx: Context, scope: Scriptable, args: Array<Any>): Scriptable {
-        val tmp: Scriptable?
+    override fun construct(cx: Context, scope: VarScope, args: Array<Any>): Scriptable {
         return if (isPrototype) {
-            tmp = ScriptableObject.getTopLevelScope(scope)
+            val tmp = ScriptableObject.getTopLevelScope(scope)
             if (args.isNotEmpty()) {
                 JSAdapter(Context.toObject(args[0], tmp))
             } else {
                 throw Context.reportRuntimeError("JSAdapter requires adaptee")
             }
         } else {
-            tmp = adaptee
+            val tmp = adaptee
             if (tmp is Function) {
                 tmp.construct(cx, scope, args)
             } else {
@@ -292,7 +291,7 @@ class JSAdapter private constructor(var adaptee: Scriptable) : Scriptable, Funct
         private const val GET_PROPIDS = "__getIds__"
 
         @Throws(RhinoException::class)
-        fun init(cx: Context, scope: Scriptable, sealed: Boolean) {
+        fun init(cx: Context, scope: VarScope, sealed: Boolean) {
             val obj = JSAdapter(cx.newObject(scope))
             obj.parentScope = scope
             obj.setPrototype(getFunctionPrototype(scope))
@@ -300,7 +299,7 @@ class JSAdapter private constructor(var adaptee: Scriptable) : Scriptable, Funct
             ScriptableObject.defineProperty(scope, "JSAdapter", obj, 2)
         }
 
-        private fun getFunctionPrototype(scope: Scriptable): Scriptable {
+        private fun getFunctionPrototype(scope: VarScope): Scriptable {
             return ScriptableObject.getFunctionPrototype(scope)
         }
     }

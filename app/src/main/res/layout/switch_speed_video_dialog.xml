@@ -1,27 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 倍速面板容器：靠右垂直居中，wrap_content 高度。
+     video-player-theme-unify：背景改透明，由 ChoiceSpeedDialog 动态设
+     ThemeStore.backgroundColor + UiCorner.panelRadius 圆角，跟随整体主题 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#80121212"
-    android:orientation="vertical"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp">
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+    android:layout_height="wrap_content"
+    android:background="@null"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <ListView
         android:id="@+id/switch_dialog_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:layout_marginEnd="16dp"
         android:background="@null"
         android:cacheColorHint="#00000000"
         android:divider="#00000000"
         android:dividerHeight="4dp"
-        android:listSelector="#00000000" />
+        android:listSelector="#00000000"
+        android:scrollbars="none" />
 
-</LinearLayout>
+</FrameLayout>

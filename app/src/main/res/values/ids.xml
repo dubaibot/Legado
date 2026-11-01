@@ -16,5 +16,75 @@
     <item name="small_id" type="id" />
     <item name="full_id" type="id" />
     <item name="text_watcher" type="id" />
+    <item name="ui_title_typeface_role" type="id" />
 
+
+    <item name="menu_bookshelf" type="id" />
+
+    <item name="layout_rotate_toolbar" type="id" />
+
+    <item name="menu_type_image" type="id" />
+
+    <item name="menu_type_web" type="id" />
+
+    <item name="configFrameLayout" type="id" />
+
+    <item name="ai_markdown_link_tap_handler" type="id" />
+
+    <item name="et_name" type="id" />
+
+    <item name="btn_reset" type="id" />
+
+    <item name="fl_fragment" type="id" />
+
+    <item name="menu_ai" type="id" />
+
+
+    <item name="book_info_useweb_popup_host" type="id" />
+
+    <item name="menu_discovery" type="id" />
+
+    <item name="et_js_lib" type="id" />
+
+    <item name="et_script" type="id" />
+
+    <item name="menu_search_scope" type="id" />
+
+    <item name="menu_rss" type="id" />
+
+    <item name="tv_page_index" type="id" />
+
+    <item name="menu_group_3" type="id" />
+
+    <item name="menu_my_config" type="id" />
+
+    <item name="et_login_ui" type="id" />
+
+    <item name="fl_content" type="id" />
+
+    <item name="menu_source_manage" type="id" />
+
+    <item name="et_login_url" type="id" />
+
+    <item name="menu_type_all" type="id" />
+
+    <item name="et_timeout" type="id" />
+
+    <item name="view_pager" type="id" />
+
+
+
+    <item name="btn_rotate_left" type="id" />
+
+    <item name="menu_type_video" type="id" />
+
+    <item name="btn_rotate_right" type="id" />
+    <item name="tag_cover_loader_job" type="id" />
+
+    <item name="tag3" type="id" />
+    <item name="inline_content_generation" type="id" />
+    <item name="inline_content_lock_parent_scroll" type="id" />
+    <item name="explore_source_url" type="id" />
+    <item name="explore_content_signature" type="id" />
+    <item name="bubble_preview_key" type="id" />
 </resources>

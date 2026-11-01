@@ -42,6 +42,9 @@ val Book.isAudio: Boolean
 val Book.isVideo: Boolean
     get() = isType(BookType.video)
 
+val Book.isMedia: Boolean
+    get() = isAudio || isVideo
+
 val Book.isImage: Boolean
     get() = isType(BookType.image)
 

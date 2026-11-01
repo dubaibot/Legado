@@ -29,6 +29,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
+import io.legado.app.help.video.SniffCandidate
 import io.legado.app.model.Debug
 import io.legado.app.utils.get
 import io.legado.app.utils.runOnUI
@@ -61,12 +62,17 @@ class BackstageWebView(
     private val cacheFirst: Boolean = false,
     private val timeout: Long? = null,
     private val result: String? = null,
-    private val isRule: Boolean = false
+    private val isRule: Boolean = false,
+    private val interceptAllRequests: Boolean = false,
+    private val videoSniffJs: String? = null
 ) {
 
     private val mHandler = Handler(Looper.getMainLooper())
     private var callback: Callback? = null
     private var pooledWebView: PooledWebView? = null
+
+    var lastSniffCandidate: SniffCandidate? = null
+        private set
 
     suspend fun getStrResponse(): StrResponse = withTimeout(timeout ?: 60000L) {
         suspendCancellableCoroutine { block ->

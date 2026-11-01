@@ -24,6 +24,7 @@ import io.legado.app.help.book.sync
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadBook
+import io.legado.app.model.debug.SourceSubCategory
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
 import io.legado.app.utils.onEachParallel
@@ -67,6 +68,16 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     var callback: CallBack? = null
     fun setActivityCallback(callback: CallBack) {
         this.callback = callback
+    }
+
+    private fun logUpdate(message: String, throwable: Throwable? = null, verbose: Boolean = false) {
+        if (!verbose || AppConfig.verboseUpdateLog) {
+            if (throwable != null) {
+                AppLog.putSource(message, throwable, SourceSubCategory.UPDATE)
+            } else {
+                AppLog.putSource(message, subCategory = SourceSubCategory.UPDATE)
+            }
+        }
     }
 
     init {
@@ -165,7 +176,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     cacheBook()
                 }
             }.catch {
-                AppLog.put("更新目录出错\n${it.localizedMessage}", it)
+                logUpdate("更新目录出错\n${it.localizedMessage}", it)
             }.collect()
         }
     }
@@ -209,7 +220,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             addDownload(source, book)
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            AppLog.put("${book.name} 更新目录失败\n${it.localizedMessage}", it)
+            logUpdate("${book.name} 更新目录失败\n${it.localizedMessage}", it)
             //这里可能因为时间太长书籍信息已经更改,所以重新获取
             appDb.bookDao.getBook(book.bookUrl)?.let { book ->
                 book.addType(BookType.updateError)

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/ll_content"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:minHeight="48dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/auto_task_enable"
+            android:textColor="@color/primaryText"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/switch_enable"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:minHeight="48dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/auto_task_notify_switch"
+            android:textColor="@color/primaryText"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/switch_notify"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:minHeight="48dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/auto_task_cache_switch"
+            android:textColor="@color/primaryText"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/switch_cache"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:minHeight="48dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/auto_task_interval"
+            android:textColor="@color/primaryText"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <io.legado.app.ui.widget.text.TextInputLayout
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            app:boxBackgroundMode="none"
+            app:hintEnabled="false">
+
+            <io.legado.app.lib.theme.view.ThemeEditText
+                android:id="@+id/edit_interval"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="1"
+                android:importantForAutofill="no"
+                android:inputType="number"
+                android:maxLength="4"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:textColor="@color/primaryText"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
+                android:textSize="@dimen/text_body_medium" />
+
+        </io.legado.app.ui.widget.text.TextInputLayout>
+    </LinearLayout>
+
+</LinearLayout>

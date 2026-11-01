@@ -1,8 +1,8 @@
 <resources>
     <!--App-->
-    <string name="app_name">閱讀D</string>
-    <string name="app_name_a">閱讀·D</string>
-    <string name="receiving_shared_label">閱讀D·搜尋</string>
+    <string name="app_name">閱讀</string>
+    <string name="app_name_a">閱讀·A</string>
+    <string name="receiving_shared_label">閱讀·搜尋</string>
     <string name="tip_perm_request_storage">閱讀需要存取記憶卡權限，請前往「設定」—「應用程式權限」—打開所需權限</string>
 
     <!--Other-->
@@ -1223,4 +1223,8 @@
     <string name="auto_check_new_backup_t">自动检查新备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
+
+    <string name="folder_view">資料夾視圖</string>
+
+    <string name="all_groups">全部</string>
 </resources>

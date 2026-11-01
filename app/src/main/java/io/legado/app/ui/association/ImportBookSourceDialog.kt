@@ -14,6 +14,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
@@ -23,6 +24,7 @@ import io.legado.app.databinding.ItemSourceImportBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
@@ -32,10 +34,10 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import splitties.views.onClick
-
 
 /**
  * 导入书源弹出窗口
@@ -54,6 +56,9 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel by viewModels<ImportBookSourceViewModel>()
     private val adapter by lazy { SourcesAdapter(requireContext()) }
+    private var enableLocate = false
+    private val canShowLocate: Boolean
+        get() = arguments?.getBoolean("finishOnDismiss") != true
 
     override fun onStart() {
         super.onStart()
@@ -154,6 +159,11 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
                 ?.isChecked = AppConfig.importKeepEnable
             findItem(R.id.menu_show_comment)
                 ?.isChecked = AppConfig.importShowComment
+            findItem(R.id.menu_enable_locate)
+                ?.apply {
+                    isVisible = canShowLocate
+                    isChecked = enableLocate
+                }
         }
     }
 
@@ -201,6 +211,12 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
             R.id.menu_show_comment -> {
                 item.isChecked = !item.isChecked
                 AppConfig.importShowComment = item.isChecked
+                adapter.notifyDataSetChanged()
+            }
+
+            R.id.menu_enable_locate -> {
+                item.isChecked = !item.isChecked
+                enableLocate = item.isChecked
                 adapter.notifyDataSetChanged()
             }
         }
@@ -279,10 +295,16 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
                     showComment.gone()
                 }
                 val localSource = viewModel.checkSources[holder.layoutPosition]
-                tvSourceState.text = when {
+                val stateText = when {
                     localSource == null -> "新增"
                     item.lastUpdateTime > localSource.lastUpdateTime -> "更新"
                     else -> "已有"
+                }
+                tvSourceState.text = stateText
+                if (canShowLocate && enableLocate && localSource != null) {
+                    ivLocate.visible()
+                } else {
+                    ivLocate.gone()
                 }
             }
         }
@@ -307,6 +329,16 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
                             requestId = holder.layoutPosition.toString()
                         )
                     )
+                }
+                ivLocate.setOnClickListener {
+                    val source = viewModel.checkSources.getOrNull(holder.layoutPosition)
+                        ?: return@setOnClickListener
+                    AppLog.put("点击定位图标: url=${source.bookSourceUrl}, name=${source.bookSourceName}")
+                    startActivity<BookSourceActivity> {
+                        putExtra("locateSourceUrl", source.bookSourceUrl)
+                        putExtra("locateSourceName", source.bookSourceName)
+                    }
+                    dismissAllowingStateLoss()
                 }
             }
         }

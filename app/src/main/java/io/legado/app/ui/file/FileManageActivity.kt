@@ -229,4 +229,7 @@ class FileManageActivity : VMBaseActivity<ActivityFileManageBinding, FileManageV
 
     }
 
+    companion object {
+        const val EXTRA_INITIAL_PATH = "initialPath"
+    }
 }

@@ -9,6 +9,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.BookSourceExploreLite
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.splitNotBlank
@@ -19,6 +20,9 @@ import kotlinx.coroutines.flow.map
 
 @Dao
 interface BookSourceDao {
+
+    @Query("select * from book_sources order by customOrder asc")
+    fun getAllSources(): List<BookSource>
 
     @Query("select * from book_sources_part order by customOrder asc")
     fun flowAll(): Flow<List<BookSourcePart>>
@@ -283,6 +287,9 @@ interface BookSourceDao {
         }
     }
 
+    @Query("delete from book_sources")
+    fun deleteAll()
+
     @get:Query("select min(customOrder) from book_sources")
     val minOrder: Int
 
@@ -380,4 +387,10 @@ interface BookSourceDao {
             dealGroups(list)
         }.flowOn(IO)
     }
+
+    @Query("update book_sources set lastHost = :lastHost where bookSourceUrl = :bookSourceUrl")
+    fun updateLastHost(bookSourceUrl: String, lastHost: String?)
+
+    @Query("SELECT bookSourceUrl, bookSourceName, bookSourceGroup, exploreUrl, homepageModules FROM book_sources WHERE enabled = 1 AND exploreUrl IS NOT NULL AND exploreUrl != '' ORDER BY customOrder ASC")
+    fun flowExploreSourcesLite(): Flow<List<BookSourceExploreLite>>
 }

@@ -42,4 +42,7 @@ interface TxtTocRuleDao {
 
     @Query("delete from txtTocRules where id < 0")
     fun deleteDefault()
+    @Query("delete from txtTocRules")
+    fun deleteAll()
+
 }

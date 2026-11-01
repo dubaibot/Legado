@@ -18,6 +18,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
@@ -29,6 +30,7 @@ import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
+import io.legado.app.ui.book.read.config.TtsDebugActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -107,7 +109,7 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
                 return@registerForActivityResult
             }
             view.requestFocus()
-            result.data?.getStringExtra("text")?.let {
+            CodeEditLauncher.readText(result.data)?.let {
                 view.setText(it)
             }
             result.data?.getIntExtra("cursorPosition", -1)?.takeIf { it in 0 ..< view.text.length }?.let {
@@ -122,7 +124,7 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
             focusedEditText = view
             val currentText = view.text.toString()
             val intent = Intent(requireActivity(), CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
+                CodeEditLauncher.putText(this, currentText)
                 putExtra("title", hint)
                 putExtra("cursorPosition", view.selectionStart)
             }
@@ -137,6 +139,18 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
             R.id.menu_save -> viewModel.save(dataFromView()) {
                 dismissAllowingStateLoss()
                 toastOnUi("保存成功")
+            }
+            R.id.menu_debug -> {
+                val httpTts = dataFromView()
+                if (httpTts.url.isBlank()) {
+                    toastOnUi("URL不能为空")
+                } else {
+                    viewModel.save(httpTts) {
+                        startActivity<TtsDebugActivity> {
+                            putExtra("ttsId", httpTts.id)
+                        }
+                    }
+                }
             }
             R.id.menu_login -> dataFromView().let { httpTts ->
                 if (httpTts.loginUrl.isNullOrBlank()) {

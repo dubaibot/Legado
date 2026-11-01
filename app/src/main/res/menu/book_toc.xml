@@ -48,6 +48,18 @@
             android:title="@string/load_word_count"
             app:showAsAction="never" />
 
+        <item
+            android:id="@+id/menu_collapse_volume_name"
+            android:checkable="true"
+            android:title="@string/collapse_volume_name"
+            app:showAsAction="never" />
+
+        <item
+            android:id="@+id/menu_show_full_chapter_name"
+            android:checkable="true"
+            android:title="@string/show_full_chapter_name"
+            app:showAsAction="never" />
+
     </group>
 
     <group
@@ -62,6 +74,27 @@
         <item
             android:id="@+id/menu_export_md"
             android:title="@string/export_md"
+            app:showAsAction="never" />
+
+        <item
+            android:id="@+id/menu_bookmark_search_chapter_name"
+            android:checkable="true"
+            android:checked="true"
+            android:title="@string/bookmark_search_chapter_name"
+            app:showAsAction="never" />
+
+        <item
+            android:id="@+id/menu_bookmark_search_book_text"
+            android:checkable="true"
+            android:checked="true"
+            android:title="@string/bookmark_search_book_text"
+            app:showAsAction="never" />
+
+        <item
+            android:id="@+id/menu_bookmark_search_content"
+            android:checkable="true"
+            android:checked="true"
+            android:title="@string/bookmark_search_content"
             app:showAsAction="never" />
 
     </group>

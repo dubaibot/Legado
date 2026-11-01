@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    R2 换肤引擎角色声明:前 32 项 enum 与 AppSchemeColors 字段同名同序,其后为 app 四色角色(SkinRoleMappingTest 锚定)。
+    aapt 在编译期校验取值,布局里写错角色名=资源编译失败,杜绝静默失效。
+-->
+<resources>
+    <attr name="skin_background" format="enum">
+        <enum name="primary" value="0" />
+        <enum name="onPrimary" value="1" />
+        <enum name="primaryContainer" value="2" />
+        <enum name="onPrimaryContainer" value="3" />
+        <enum name="secondary" value="4" />
+        <enum name="onSecondary" value="5" />
+        <enum name="secondaryContainer" value="6" />
+        <enum name="onSecondaryContainer" value="7" />
+        <enum name="tertiary" value="8" />
+        <enum name="onTertiary" value="9" />
+        <enum name="tertiaryContainer" value="10" />
+        <enum name="onTertiaryContainer" value="11" />
+        <enum name="error" value="12" />
+        <enum name="onError" value="13" />
+        <enum name="errorContainer" value="14" />
+        <enum name="onErrorContainer" value="15" />
+        <enum name="outline" value="16" />
+        <enum name="outlineVariant" value="17" />
+        <enum name="inversePrimary" value="18" />
+        <enum name="inverseSurface" value="19" />
+        <enum name="inverseOnSurface" value="20" />
+        <enum name="background" value="21" />
+        <enum name="onBackground" value="22" />
+        <enum name="surface" value="23" />
+        <enum name="onSurface" value="24" />
+        <enum name="surfaceVariant" value="25" />
+        <enum name="onSurfaceVariant" value="26" />
+        <enum name="surfaceContainerLowest" value="27" />
+        <enum name="surfaceContainerLow" value="28" />
+        <enum name="surfaceContainer" value="29" />
+        <enum name="surfaceContainerHigh" value="30" />
+        <enum name="surfaceContainerHighest" value="31" />
+        <enum name="themePrimary" value="32" />
+        <enum name="themeBottomBackground" value="33" />
+    </attr>
+    <attr name="skin_textColor" format="enum">
+        <enum name="primary" value="0" />
+        <enum name="onPrimary" value="1" />
+        <enum name="primaryContainer" value="2" />
+        <enum name="onPrimaryContainer" value="3" />
+        <enum name="secondary" value="4" />
+        <enum name="onSecondary" value="5" />
+        <enum name="secondaryContainer" value="6" />
+        <enum name="onSecondaryContainer" value="7" />
+        <enum name="tertiary" value="8" />
+        <enum name="onTertiary" value="9" />
+        <enum name="tertiaryContainer" value="10" />
+        <enum name="onTertiaryContainer" value="11" />
+        <enum name="error" value="12" />
+        <enum name="onError" value="13" />
+        <enum name="errorContainer" value="14" />
+        <enum name="onErrorContainer" value="15" />
+        <enum name="outline" value="16" />
+        <enum name="outlineVariant" value="17" />
+        <enum name="inversePrimary" value="18" />
+        <enum name="inverseSurface" value="19" />
+        <enum name="inverseOnSurface" value="20" />
+        <enum name="background" value="21" />
+        <enum name="onBackground" value="22" />
+        <enum name="surface" value="23" />
+        <enum name="onSurface" value="24" />
+        <enum name="surfaceVariant" value="25" />
+        <enum name="onSurfaceVariant" value="26" />
+        <enum name="surfaceContainerLowest" value="27" />
+        <enum name="surfaceContainerLow" value="28" />
+        <enum name="surfaceContainer" value="29" />
+        <enum name="surfaceContainerHigh" value="30" />
+        <enum name="surfaceContainerHighest" value="31" />
+        <enum name="themePrimary" value="32" />
+        <enum name="themeBottomBackground" value="33" />
+    </attr>
+    <attr name="skin_tint" format="enum">
+        <enum name="primary" value="0" />
+        <enum name="onPrimary" value="1" />
+        <enum name="primaryContainer" value="2" />
+        <enum name="onPrimaryContainer" value="3" />
+        <enum name="secondary" value="4" />
+        <enum name="onSecondary" value="5" />
+        <enum name="secondaryContainer" value="6" />
+        <enum name="onSecondaryContainer" value="7" />
+        <enum name="tertiary" value="8" />
+        <enum name="onTertiary" value="9" />
+        <enum name="tertiaryContainer" value="10" />
+        <enum name="onTertiaryContainer" value="11" />
+        <enum name="error" value="12" />
+        <enum name="onError" value="13" />
+        <enum name="errorContainer" value="14" />
+        <enum name="onErrorContainer" value="15" />
+        <enum name="outline" value="16" />
+        <enum name="outlineVariant" value="17" />
+        <enum name="inversePrimary" value="18" />
+        <enum name="inverseSurface" value="19" />
+        <enum name="inverseOnSurface" value="20" />
+        <enum name="background" value="21" />
+        <enum name="onBackground" value="22" />
+        <enum name="surface" value="23" />
+        <enum name="onSurface" value="24" />
+        <enum name="surfaceVariant" value="25" />
+        <enum name="onSurfaceVariant" value="26" />
+        <enum name="surfaceContainerLowest" value="27" />
+        <enum name="surfaceContainerLow" value="28" />
+        <enum name="surfaceContainer" value="29" />
+        <enum name="surfaceContainerHigh" value="30" />
+        <enum name="surfaceContainerHighest" value="31" />
+        <enum name="themePrimary" value="32" />
+        <enum name="themeBottomBackground" value="33" />
+    </attr>
+    <attr name="skin_hintColor" format="enum">
+        <enum name="primary" value="0" />
+        <enum name="onPrimary" value="1" />
+        <enum name="primaryContainer" value="2" />
+        <enum name="onPrimaryContainer" value="3" />
+        <enum name="secondary" value="4" />
+        <enum name="onSecondary" value="5" />
+        <enum name="secondaryContainer" value="6" />
+        <enum name="onSecondaryContainer" value="7" />
+        <enum name="tertiary" value="8" />
+        <enum name="onTertiary" value="9" />
+        <enum name="tertiaryContainer" value="10" />
+        <enum name="onTertiaryContainer" value="11" />
+        <enum name="error" value="12" />
+        <enum name="onError" value="13" />
+        <enum name="errorContainer" value="14" />
+        <enum name="onErrorContainer" value="15" />
+        <enum name="outline" value="16" />
+        <enum name="outlineVariant" value="17" />
+        <enum name="inversePrimary" value="18" />
+        <enum name="inverseSurface" value="19" />
+        <enum name="inverseOnSurface" value="20" />
+        <enum name="background" value="21" />
+        <enum name="onBackground" value="22" />
+        <enum name="surface" value="23" />
+        <enum name="onSurface" value="24" />
+        <enum name="surfaceVariant" value="25" />
+        <enum name="onSurfaceVariant" value="26" />
+        <enum name="surfaceContainerLowest" value="27" />
+        <enum name="surfaceContainerLow" value="28" />
+        <enum name="surfaceContainer" value="29" />
+        <enum name="surfaceContainerHigh" value="30" />
+        <enum name="surfaceContainerHighest" value="31" />
+        <enum name="themePrimary" value="32" />
+        <enum name="themeBottomBackground" value="33" />
+    </attr>
+    <declare-styleable name="SkinView">
+        <attr name="skin_background" />
+        <attr name="skin_textColor" />
+        <attr name="skin_tint" />
+        <attr name="skin_hintColor" />
+    </declare-styleable>
+</resources>

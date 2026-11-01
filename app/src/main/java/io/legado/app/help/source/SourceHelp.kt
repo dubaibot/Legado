@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
@@ -11,6 +12,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.RssSource
 import io.legado.app.help.AppCacheManager
+import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.AudioPlay
@@ -25,6 +27,7 @@ import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
+import io.legado.app.help.source.OpenUrlConfirmMemory
 
 object SourceHelp {
 
@@ -39,6 +42,46 @@ object SourceHelp {
         }
     }
 
+    /**
+     * BookSource 内存缓存（LRU + 上限 50）
+     *
+     * 用途：BackstageWebView.load() 在主线程通过 runBlocking 查询数据库获取 BookSource，
+     * 长跑下频繁主线程阻塞影响 UI 流畅度。改为先读内存缓存，未命中再走数据库。
+     *
+     * 缓存一致性：insertBookSource 写入；deleteBookSourceInternal 删除。
+     * 缓存对象为 BookSource 实体，书源编辑后需走 insertBookSource 刷新缓存。
+     *
+     * 已知上限：50 个 BookSource 约 250KB 内存（每个约 5KB） | 升级路径：如内存紧张可降至 20
+     */
+    private val bookSourceCache = android.util.LruCache<String, BookSource>(50)
+
+    /**
+     * 读取内存缓存中的 BookSource（不查数据库）
+     * 调用方：BackstageWebView.load() 主线程场景，未命中需自行 runBlocking 查数据库
+     */
+    fun getCachedBookSource(key: String): BookSource? = bookSourceCache.get(key)
+
+    /**
+     * 写入内存缓存
+     * 调用方：insertBookSource / BackstageWebView 未命中后查询数据库写入
+     */
+    fun putBookSourceCache(key: String, source: BookSource) {
+        bookSourceCache.put(key, source)
+    }
+
+    /**
+     * 删除内存缓存（删源时调用）
+     */
+    fun removeBookSourceCache(key: String) {
+        bookSourceCache.remove(key)
+    }
+
+    /**
+     * 读取书源/订阅源（会话态优先，其次 R18 短时缓存，未命中回库）。
+     *
+     * R18（B4）：末段回库查询包进 [SourceQueryCache]（TTL + epoch 失效）；
+     * 六类写源入口会让缓存整体失效 ⇒ 「写完立即读到最新」，开关关闭时行为与改造前一致。
+     */
     fun getSource(key: String?): BaseSource? {
         key ?: return null
         if (ReadBook.bookSource?.bookSourceUrl == key) {
@@ -50,15 +93,21 @@ object SourceHelp {
         } else if (VideoPlay.source?.getKey() == key) {
             return VideoPlay.source
         }
-        return appDb.bookSourceDao.getBookSource(key)
-            ?: appDb.rssSourceDao.getByKey(key)
+        return SourceQueryCache.get("any:$key") {
+            appDb.bookSourceDao.getBookSource(key)
+                ?: appDb.rssSourceDao.getByKey(key)
+        }
     }
 
     fun getSource(key: String?, @SourceType.Type type: Int): BaseSource? {
         key ?: return null
         return when (type) {
-            SourceType.book -> appDb.bookSourceDao.getBookSource(key)
-            SourceType.rss -> appDb.rssSourceDao.getByKey(key)
+            SourceType.book -> SourceQueryCache.get("book:$key") {
+                appDb.bookSourceDao.getBookSource(key)
+            }
+            SourceType.rss -> SourceQueryCache.get("rss:$key") {
+                appDb.rssSourceDao.getByKey(key)
+            }
             else -> null
         }
     }
@@ -89,9 +138,30 @@ object SourceHelp {
     }
 
     private fun deleteBookSourceInternal(key: String) {
+        // B7 回收站：删除前回收（开关关时 recycle 内部直接 return，不影响原行为；runCatching 防回收异常阻断删除）
+        kotlin.runCatching {
+            appDb.bookSourceDao.getBookSource(key)?.let {
+                SourceRecycleBinHelp.recycleBookSources(listOf(it))
+            }
+        }
+        removeBookSourceCache(key)
+        OpenUrlConfirmMemory.forget(appCtx, key)
         appDb.bookSourceDao.delete(key)
+        // R18（B4）：写源入口 ②删除源 —— 使查询缓存整体失效（epoch++）
+        SourceQueryCache.invalidate()
         appDb.cacheDao.deleteSourceVariables(key)
         SourceConfig.removeSource(key)
+        // F-P1-C4 删源时清理并发限流记录，避免内存泄漏
+        ConcurrentRateLimiter.clearRecord(key)
+        // P0-S2 删源联动：清理脚本缓存命名空间（DB+内存+文件三处，失败不阻断删源，E17）
+        kotlin.runCatching { BookSourceCacheStore.clear(key) }.onFailure {
+            AppLog.putDebugWithTag(
+                AppLog.TAG_SOURCE_CACHE,
+                "clear source cache failed ns=${BookSourceStorageScope.namespace(key).take(8)} err=${it.localizedMessage}",
+                null,
+                AppLog.Level.WARN
+            )
+        }
     }
 
     fun deleteBookSource(key: String) {
@@ -109,9 +179,28 @@ object SourceHelp {
     }
 
     private fun deleteRssSourceInternal(key: String) {
+        // B7 回收站：删除前回收（开关关时 recycle 内部直接 return，不影响原行为；runCatching 防回收异常阻断删除）
+        kotlin.runCatching {
+            appDb.rssSourceDao.getByKey(key)?.let {
+                SourceRecycleBinHelp.recycleRssSources(listOf(it))
+            }
+        }
         appDb.rssSourceDao.delete(key)
         appDb.rssArticleDao.delete(key)
+        // R18（B4）：写源入口 ②删除源（订阅）—— 使查询缓存整体失效
+        SourceQueryCache.invalidate()
         appDb.cacheDao.deleteSourceVariables(key)
+        // F-P1-C4 删源时清理并发限流记录，避免内存泄漏
+        ConcurrentRateLimiter.clearRecord(key)
+        // P0-S2 删源联动：清理脚本缓存命名空间（RssSource 用 sourceUrl 作 key；前缀清理对未隔离数据无副作用，E17）
+        kotlin.runCatching { BookSourceCacheStore.clear(key) }.onFailure {
+            AppLog.putDebugWithTag(
+                AppLog.TAG_SOURCE_CACHE,
+                "clear rss source cache failed ns=${BookSourceStorageScope.namespace(key).take(8)} err=${it.localizedMessage}",
+                null,
+                AppLog.Level.WARN
+            )
+        }
     }
 
     fun deleteRssSource(key: String) {
@@ -124,6 +213,8 @@ object SourceHelp {
             SourceType.book -> appDb.bookSourceDao.enable(key, enable)
             SourceType.rss -> appDb.rssSourceDao.enable(key, enable)
         }
+        // R18（B4）：启停属于写源（影响 getSource 命中结果的可用态）⇒ 一并失效
+        SourceQueryCache.invalidate()
     }
 
     fun insertRssSource(vararg rssSources: RssSource) {
@@ -135,6 +226,8 @@ object SourceHelp {
         }
         rssSourcesGroup[false]?.let {
             appDb.rssSourceDao.insert(*it.toTypedArray())
+            // R18（B4）：写源入口 ①新增/③批量导入（订阅）
+            SourceQueryCache.invalidate()
         }
     }
 
@@ -147,6 +240,9 @@ object SourceHelp {
         }
         bookSourcesGroup[false]?.let {
             appDb.bookSourceDao.insert(*it.toTypedArray())
+            it.forEach { source -> putBookSourceCache(source.bookSourceUrl, source) }
+            // R18（B4）：写源入口 ①新增/③批量导入/⑤内置源自动更新（RuleUpdate 经本函数写入）
+            SourceQueryCache.invalidate()
         }
         Coroutine.async {
             adjustSortNumber()
@@ -173,16 +269,16 @@ object SourceHelp {
      */
     fun adjustSortNumber() {
         if (
-            appDb.bookSourceDao.maxOrder > 99999
-            || appDb.bookSourceDao.minOrder < -99999
-            || appDb.bookSourceDao.hasDuplicateOrder
-        ) {
-            val sources = appDb.bookSourceDao.allPart
-            sources.forEachIndexed { index, bookSource ->
-                bookSource.customOrder = index
+                appDb.bookSourceDao.maxOrder > 99999
+                || appDb.bookSourceDao.minOrder < -99999
+                || appDb.bookSourceDao.hasDuplicateOrder
+            ) {
+                val sources = appDb.bookSourceDao.allPart
+                sources.forEachIndexed { index, bookSource ->
+                    bookSource.customOrder = index
+                }
+                appDb.bookSourceDao.upOrder(sources)
             }
-            appDb.bookSourceDao.upOrder(sources)
-        }
     }
 
     fun openVideoPlayer(source: BaseSource?, url: String, title: String, isFloat: Boolean) {

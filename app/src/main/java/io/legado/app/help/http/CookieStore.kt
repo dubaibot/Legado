@@ -7,6 +7,8 @@ import androidx.annotation.Keep
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.equalsRegex
 import io.legado.app.constant.AppPattern.semicolonRegex
+import io.legado.app.help.http.CookieBridge.taskCookieScopePrefix
+import io.legado.app.utils.MD5Utils
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Cookie
 import io.legado.app.help.CacheManager
@@ -18,7 +20,7 @@ import io.legado.app.utils.removeCookie
 import io.legado.app.utils.splitNotBlank
 
 @Keep
-object CookieStore : CookieManagerInterface {
+object CookieStore : CookieManagerInterface, TaskCookieBackend {
 
     /**
      *保存cookie到数据库，会自动识别url的二级域名
@@ -63,32 +65,189 @@ object CookieStore : CookieManagerInterface {
         }
     }
 
+    @Synchronized
+    override fun setTaskCookie(scopeId: String, url: String, cookie: String?) {
+        val normalized = cookie
+            ?.takeIf { it.isNotBlank() }
+            ?.let { formatCookie(cookieToMap(it)) }
+        if (normalized.isNullOrBlank()) {
+            removeTaskCookie(scopeId, url)
+            return
+        }
+        val key = taskCookieKey(scopeId, url)
+        appDb.cookieDao.insert(Cookie(key, normalized))
+        CacheManager.deleteMemory("${key}_session_cookie")
+    }
+
+    @Synchronized
+    override fun mergeTaskCookie(scopeId: String, url: String, cookie: String?) {
+        if (cookie.isNullOrBlank()) return
+        val key = taskCookieKey(scopeId, url)
+        val incoming = cookieToMap(cookie)
+        if (incoming.isEmpty()) return
+        val persistent = cookieToMap(appDb.cookieDao.get(key)?.cookie.orEmpty())
+        persistent.putAll(incoming)
+        val normalized = formatCookie(persistent)
+        if (normalized.isNullOrBlank()) {
+            removeTaskCookie(scopeId, url)
+            return
+        }
+        appDb.cookieDao.insert(Cookie(key, normalized))
+
+        val sessionKey = "${key}_session_cookie"
+        val session = cookieToMap(CacheManager.getFromMemory(sessionKey) as? String ?: "")
+        incoming.keys.forEach(session::remove)
+        val sessionCookie = mapToCookie(session)
+        if (sessionCookie.isNullOrEmpty()) {
+            CacheManager.deleteMemory(sessionKey)
+        } else {
+            CacheManager.putMemory(sessionKey, sessionCookie)
+        }
+    }
+
+    @Synchronized
+    fun updateTaskCookie(
+        scopeId: String,
+        url: String,
+        cookies: List<okhttp3.Cookie>,
+        now: Long = System.currentTimeMillis()
+    ) {
+        if (cookies.isEmpty()) return
+        val key = taskCookieKey(scopeId, url)
+        val persistent = cookieToMap(appDb.cookieDao.get(key)?.cookie.orEmpty())
+        val sessionKey = "${key}_session_cookie"
+        val session = cookieToMap(CacheManager.getFromMemory(sessionKey) as? String ?: "")
+        cookies.forEach { cookie ->
+            persistent.remove(cookie.name)
+            session.remove(cookie.name)
+            if (cookie.expiresAt > now) {
+                if (cookie.persistent) persistent[cookie.name] = cookie.value
+                else session[cookie.name] = cookie.value
+            }
+        }
+        val persistentCookie = mapToCookie(persistent)
+        val sessionCookie = mapToCookie(session)
+        when {
+            !persistentCookie.isNullOrEmpty() -> appDb.cookieDao.insert(Cookie(key, persistentCookie))
+            !sessionCookie.isNullOrEmpty() -> appDb.cookieDao.insert(Cookie(key, ""))
+            else -> appDb.cookieDao.delete(key)
+        }
+        if (sessionCookie.isNullOrEmpty()) {
+            CacheManager.deleteMemory(sessionKey)
+        } else {
+            CacheManager.putMemory(sessionKey, sessionCookie)
+        }
+    }
+
+    @Synchronized
+    override fun getTaskCookie(scopeId: String, url: String): String {
+        val key = taskCookieKey(scopeId, url)
+        return CookieManager.mergeCookies(
+            appDb.cookieDao.get(key)?.cookie,
+            CacheManager.getFromMemory("${key}_session_cookie") as? String
+        ).orEmpty()
+    }
+
+    @Synchronized
+    fun getTaskCookiesByDomain(scopeId: String): Map<String, String> {
+        val prefix = "$TASK_COOKIE_PREFIX${normalizeScope(scopeId)}:"
+        return appDb.cookieDao.getByPrefix(prefix).associate { row ->
+            val domain = row.url.removePrefix(prefix)
+            val session = CacheManager.getFromMemory("${row.url}_session_cookie") as? String
+            domain to CookieManager.mergeCookies(row.cookie, session).orEmpty()
+        }
+    }
+
+    @Synchronized
+    override fun removeTaskCookie(scopeId: String, url: String) {
+        val key = taskCookieKey(scopeId, url)
+        appDb.cookieDao.delete(key)
+        CacheManager.deleteMemory("${key}_session_cookie")
+    }
+
+    @Synchronized
+    fun removeTaskCookie(scopeId: String, url: String, cookieName: String) {
+        val key = taskCookieKey(scopeId, url)
+        val persistent = cookieToMap(appDb.cookieDao.get(key)?.cookie.orEmpty())
+        persistent.remove(cookieName)
+        val sessionKey = "${key}_session_cookie"
+        val session = cookieToMap(CacheManager.getFromMemory(sessionKey) as? String ?: "")
+        session.remove(cookieName)
+        val persistentCookie = mapToCookie(persistent)
+        val sessionCookie = mapToCookie(session)
+        when {
+            !persistentCookie.isNullOrEmpty() -> appDb.cookieDao.insert(Cookie(key, persistentCookie))
+            !sessionCookie.isNullOrEmpty() -> appDb.cookieDao.insert(Cookie(key, ""))
+            else -> appDb.cookieDao.delete(key)
+        }
+        if (sessionCookie.isNullOrEmpty()) {
+            CacheManager.deleteMemory(sessionKey)
+        } else {
+            CacheManager.putMemory(sessionKey, sessionCookie)
+        }
+    }
+
+    @Synchronized
+    fun removeTaskCookies(scopeId: String) {
+        val prefix = "$TASK_COOKIE_PREFIX${normalizeScope(scopeId)}:"
+        val rows = appDb.cookieDao.getByPrefix(prefix)
+        appDb.cookieDao.deleteByPrefix(prefix)
+        rows.forEach { cookie ->
+            CacheManager.deleteMemory("${cookie.url}_session_cookie")
+        }
+    }
+
+    fun taskCookieKey(scopeId: String, url: String): String {
+        val domain = NetworkUtils.getSubDomain(url)
+        return "$TASK_COOKIE_PREFIX${normalizeScope(scopeId)}:$domain"
+    }
+
+    private fun normalizeScope(scopeId: String): String {
+        return if (scopeId.startsWith(taskCookieScopePrefix)) {
+            scopeId
+        } else {
+            taskCookieScopePrefix + MD5Utils.md5Encode16(scopeId)
+        }
+    }
+
+    private const val TASK_COOKIE_PREFIX = "task_cookie:"
+
     /**
      *获取url所属的二级域名的cookie
      */
     override fun getCookie(url: String): String {
         val domain = NetworkUtils.getSubDomain(url)
-
-        val cookie = getCookieNoSession(url)
-        val sessionCookie = CookieManager.getSessionCookie(domain)
-
-        val cookieMap = mergeCookiesToMap(cookie, sessionCookie)
-
-        var ck = mapToCookie(cookieMap) ?: ""
-        while (ck.length > 4096) {
-            val removeKey = cookieMap.keys.random()
-            CookieManager.removeCookie(url, removeKey)
-            cookieMap.remove(removeKey)
-            ck = mapToCookie(cookieMap) ?: ""
-        }
-        return ck
+        return formatCookie(
+            mergeCookiesToMap(
+                getCookieNoSession(url),
+                CookieManager.getSessionCookie(domain)
+            )
+        ) { key -> CookieManager.removeCookie(url, key) }
     }
 
-    fun getKey(url: String, key: String): String {
-        val cookie = getCookie(url)
-        val sessionCookie = CookieManager.getSessionCookie(url)
-        val cookieMap = mergeCookiesToMap(cookie, sessionCookie)
-        return cookieMap[key] ?: ""
+    override fun getCookie(scope: String, url: String): String {
+        if (!scope.startsWith(taskCookieScopePrefix)) return ""
+        return formatCookie(cookieToMap(getTaskCookie(scope, url))) { key ->
+            removeTaskCookie(scope, url, key)
+        }
+    }
+
+    private fun formatCookie(
+        cookieMap: MutableMap<String, String>,
+        onRemove: ((String) -> Unit)? = null
+    ): String {
+        var cookie = mapToCookie(cookieMap) ?: ""
+        while (cookie.length > 4096 && cookieMap.isNotEmpty()) {
+            val key = cookieMap.keys.first()
+            cookieMap.remove(key)
+            onRemove?.invoke(key)
+            cookie = mapToCookie(cookieMap) ?: ""
+        }
+        return cookie
+    }
+
+    override fun getKey(url: String, key: String): String {
+        return cookieToMap(getCookie(url))[key].orEmpty()
     }
 
     override fun removeCookie(url: String) {

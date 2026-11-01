@@ -167,6 +167,7 @@ class ExploreAdapter(
             when (it.itemId) {
                 R.id.menu_edit -> callBack.editSource(source.bookSourceUrl)
                 R.id.menu_top -> callBack.toTop(source)
+                R.id.menu_bottom -> callBack.toBottom(source)
                 R.id.menu_search -> callBack.searchBook(source)
                 R.id.menu_login -> context.startActivity<SourceLoginActivity> {
                     putExtra("type", "bookSource")
@@ -201,6 +202,7 @@ class ExploreAdapter(
         fun openExplore(sourceUrl: String, title: String, exploreUrl: String?)
         fun editSource(sourceUrl: String)
         fun toTop(source: BookSourcePart)
+        fun toBottom(source: BookSourcePart)
         fun deleteSource(source: BookSourcePart)
         fun searchBook(bookSource: BookSourcePart)
     }
