@@ -1,6 +1,8 @@
 package io.legado.app.help
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -20,7 +22,6 @@ import io.legado.app.utils.createFolderReplace
 import io.legado.app.utils.externalCache
 import io.legado.app.utils.getFile
 import io.legado.app.utils.longToastOnUiLegacy
-import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.writeText
 import splitties.init.appCtx
 import java.io.PrintWriter
@@ -76,13 +77,29 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
     private fun handleException(ex: Throwable?) {
         if (ex == null) return
         LocalConfig.appCrash = true
-        //保存日志文件
-        saveCrashInfo2File(ex)
+        //保存日志文件并获取完整日志内容
+        val crashLog = saveCrashInfo2File(ex)
         if ((ex is OutOfMemoryError || ex.cause is OutOfMemoryError) && AppConfig.recordHeapDump) {
             doHeapDump()
         }
-        context.longToastOnUiLegacy(ex.stackTraceStr)
+        //崩溃日志自动复制到剪贴板：进程死后系统剪贴板内容仍保留，
+        //用户打开聊天软件即可直接粘贴发送，无需电脑或root
+        val copied = copyToClipboard(crashLog)
+        context.longToastOnUiLegacy(
+            if (copied) "崩溃日志已复制到剪贴板，打开聊天软件粘贴发送"
+            else "崩溃日志已保存到应用缓存目录 crash 文件夹"
+        )
         Thread.sleep(3000)
+    }
+
+    private fun copyToClipboard(text: String): Boolean {
+        return try {
+            val cm = appCtx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("crash", text))
+            true
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     companion object {
@@ -121,9 +138,9 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
         private val format = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss")
 
         /**
-         * 保存错误信息到文件中
+         * 保存错误信息到文件中，返回完整日志内容
          */
-        fun saveCrashInfo2File(ex: Throwable) {
+        fun saveCrashInfo2File(ex: Throwable): String {
             val sb = StringBuilder()
             for ((key, value) in paramsMap) {
                 sb.append(key).append("=").append(value).append("\n")
@@ -165,6 +182,7 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
                         .writeText(crashLog)
                 }
             }
+            return crashLog
         }
 
         /**
