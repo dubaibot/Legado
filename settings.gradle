@@ -7,9 +7,13 @@ pluginManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
+        // Chaquopy 构件（含 com.chaquo.python:target）托管于 Maven Central，
+        // 需在 gradlePluginPortal 之前解析，避免插件仓库 TLS 阻断导致失败
+        mavenCentral()
+        // Chaquopy 官方仓库（pip wheel 等）
+        maven { url = 'https://chaquo.com/maven' }
         //原仓库
         gradlePluginPortal()
-        mavenCentral()
         //镜像仓库,无法连接源仓库自行启用镜像仓库,不要提交修改
         //maven { url "https://maven-central-asia.storage-download.googleapis.com/maven2/" }
         //maven { url 'https://maven.aliyun.com/repository/google' }
@@ -37,6 +41,9 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+
+        // Chaquopy 运行时与 pip wheel 仓库
+        maven { url = 'https://chaquo.com/maven' }
 
         //镜像仓库,无法连接源仓库自行启用镜像仓库,不要提交修改
         //maven { url "https://maven-central-asia.storage-download.googleapis.com/maven2/" }

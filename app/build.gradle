@@ -6,6 +6,7 @@ plugins {
     alias libs.plugins.room
     alias libs.plugins.ksp
     alias libs.plugins.google.services
+    alias libs.plugins.chaquopy
 }
 apply from: 'download.gradle'
 
@@ -14,7 +15,7 @@ static def releaseTime() {
 }
 
 def name = "myreader"
-def version = "3.26.102702"
+def appVersion = "3.26.102702"
 def gitCommits = 0
 try {
     def result = 'git rev-list HEAD --count'.execute().text.trim()
@@ -52,10 +53,14 @@ android {
         // media3 1.10.1（m 视频栈）要求 minSdk 23；htmlunit-core-js fork 需 minSdk 26（MethodHandle.invokeExact），与 Legado_T 一致
         minSdk 26
         targetSdk 36
+        ndk {
+            // Chaquopy Python 3.11 同时支持 32 位与 64 位 ABI，与 release 分包保持一致
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
         versionCode Math.max(10001, 10000 + gitCommits)
-        versionName version
+        versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        project.ext.set("archivesBaseName", name + "_" + version)
+        project.ext.set("archivesBaseName", name + "_" + appVersion)
 
         buildConfigField "String", "Cronet_Version", "\"$CronetVersion\""
         buildConfigField "String", "Cronet_Main_Version", "\"$CronetMainVersion\""
@@ -182,6 +187,15 @@ android {
     }
     lint { //忽略string翻译缺失，后面需要翻译时去掉，todo
         disable 'MissingTranslation'
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        // Python 3.11：支持 armv7/arm64 双 ABI，可安装 Chaquopy 预编译的第三方库
+        version = "3.11"
+        // 构建机需提供同版本 Python（pip 安装与 pyc 编译依赖）
+        buildPython("python3.11")
     }
 }
 

@@ -51,6 +51,7 @@ import io.legado.app.help.http.ObsoleteUrlFactory
 import io.legado.app.help.http.TaskCookieContext
 import io.legado.app.help.http.TaskCookieStore
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.python.PythonEnv
 import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
@@ -100,6 +101,7 @@ class App : Application() {
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(appCtx) }
             initRhino()
+            initPython()
             //接线 CookieBridge 用于定时任务 Cookie 隔离
             CookieBridge.store = CookieStore
             CookieBridge.taskScopeProvider = TaskCookieContext::currentHeaderValue
@@ -246,6 +248,29 @@ class App : Application() {
         RhinoWrapFactory.register(ContentRule::class.java, ReadOnlyJavaObject.factory)
         RhinoWrapFactory.register(BookChapter::class.java, ReadOnlyJavaObject.factory)
         RhinoWrapFactory.register(Book.ReadConfig::class.java, ReadOnlyJavaObject.factory)
+    }
+
+    /** Chaquopy Python 引擎冒烟验证：启动解释器并调用打包的 smoke 模块 */
+    private fun initPython() {
+        try {
+            if (!PythonEnv.start()) {
+                LogUtils.d("PythonEnv", "Python engine start failed, skip smoke")
+                return
+            }
+            val smoke = PythonEnv.module("smoke") ?: run {
+                LogUtils.d("PythonEnv", "smoke module not found")
+                return
+            }
+            val ok = PythonEnv.callModuleFunc(smoke, "smoke_test", listOf(Build.MODEL))
+            LogUtils.d("PythonEnv", "smoke result: $ok")
+            val boom = PythonEnv.callModuleFunc(smoke, "boom")
+            LogUtils.d("PythonEnv", "smoke boom result: $boom (expected null)")
+            PythonEnv.execAsync("print('chaquopy async exec ok')") { r ->
+                LogUtils.d("PythonEnv", "async exec result: $r")
+            }
+        } catch (e: Exception) {
+            LogUtils.d("PythonEnv", "smoke error: ${e.message}")
+        }
     }
 
     class EventLogger : DefaultLogger() {
