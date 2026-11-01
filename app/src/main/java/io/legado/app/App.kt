@@ -79,6 +79,18 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashHandler(this)
+        // 临时崩溃捕获：在 CrashHandler 处理前先写完整堆栈到 filesDir/crash/
+        val crashHandlerRef = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val crashDir = java.io.File(filesDir, "crash")
+                if (!crashDir.exists()) crashDir.mkdirs()
+                val file = java.io.File(crashDir, "crash-${System.currentTimeMillis()}.log")
+                file.writeText(throwable.stackTraceToString())
+                android.util.Log.e("Crash", throwable.stackTraceToString())
+            } catch (_: Exception) {}
+            crashHandlerRef?.uncaughtException(thread, throwable)
+        }
         if (isDebuggable) {
             ThreadUtils.setThreadAssertsDisabledForTesting(true)
         }
