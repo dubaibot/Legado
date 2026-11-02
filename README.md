@@ -101,7 +101,8 @@ https://www.yuque.com/legado/wiki/community
 - 修复：插件加载错误在管理页可视化展示
 - 修复：启动崩溃 FileNotFoundException web/help/md/updateLog.md（复制 updateLog.md 到 web/help/md/ 路径）
 - 修复：py 插件函数返回值序列化为 Python repr 而非 JSON，导致首页/搜索/详情均无法解析（改用 plugin_entry.call_func 确保 JSON 序列化）
-- 当前快照：3.26.110205
+- 修复：home() 网络请求超时导致首页一直显示"加载中"（分类不依赖网络，视频尝试加载失败返回空；loadHome 超时兜底设空数据）
+- 当前快照：3.26.110206
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

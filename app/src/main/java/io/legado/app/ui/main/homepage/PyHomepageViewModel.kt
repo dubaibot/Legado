@@ -305,9 +305,8 @@ class PyHomepageViewModel : ViewModel() {
         selectedCategoryId = ""
         viewModelScope.launch {
             val result = bridgeHome(pluginId)
-            if (result != null) {
-                homeData = parseHomeData(result)
-            }
+            // bridge 超时或失败时兜底设置空 HomeData，避免一直显示"加载中"
+            homeData = parseHomeData(result ?: "") ?: HomeData(emptyList(), emptyList())
         }
     }
 
