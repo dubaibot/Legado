@@ -112,6 +112,8 @@ Entries discovered by the Agent during task execution should follow this format:
   - 环境默认无 java/sdkmanager，需先装 JDK 17（apt openjdk-17-jdk-headless，位于 /usr/lib/jvm/java-17-openjdk-amd64）与 Android cmdline-tools（装到 /opt/android-sdk，sdkmanager 装 platforms;android-36、build-tools;35.0.0/36.0.0、platform-tools），并写 local.properties `sdk.dir=/opt/android-sdk`
   - debug 构建走 ~/.android/debug.keystore（Android Debug 签名，包名 com.myreaderD.reader.debug），与 release 的 myreader 密钥不同
   - Maven Central 偶发 TLS 中断（Remote host terminated the handshake），重试即可，已下载依赖缓存于 ~/.gradle/caches
+  - Gradle 构建可能产生 java_pid*.hprof 崩溃堆转储（OOM 时自动生成，单文件可达 3.7GB），构建前检查 `df -h` 磁盘空间，发现 .hprof 用 `truncate -s 0` 清空而非删除
+  - `./gradlew clean` 仅释放 build 目录（~1.5GB），Gradle 缓存（~9.6GB）不可随意清理否则下次构建全量重下载；磁盘空间不足时优先处理 .hprof 和旧 APK 产物
 
 [移植 M3 分支 UI 到 AppCompat 主题项目的崩溃与修复模式]
 - Date: 2026-10-29
