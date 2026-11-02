@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -57,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.legado.app.lib.theme.eInkGrayscale
 import io.legado.app.ui.theme.pageSecondaryTextColor
@@ -782,6 +785,8 @@ private fun DetailDialog(
     detail: PyHomepageViewModel.DetailState,
     onDismiss: () -> Unit,
 ) {
+    val playUrls = remember(detail.json) { parsePlayUrls(detail.json) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -800,12 +805,34 @@ private fun DetailDialog(
                     CircularProgressIndicator()
                 }
             } else {
-                Text(
-                    text = detail.json,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 12,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = detail.json,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 8,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (playUrls.isNotEmpty()) {
+                        Text(
+                            text = "播放",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            playUrls.forEach { (name, url) ->
+                                TextButton(
+                                    onClick = { viewModel.playVideo(detail.pluginId, url) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                ) {
+                                    Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -828,6 +855,62 @@ private fun DetailDialog(
             TextButton(onClick = onDismiss) { Text("关闭") }
         },
     )
+
+    viewModel.playUrl?.let { url ->
+        VideoPlayerOverlay(url, onDismiss = { viewModel.dismissPlayer() })
+    }
+}
+
+/** 全屏视频播放浮层（VideoView 播放 m3u8） */
+@Composable
+private fun VideoPlayerOverlay(url: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color.Black),
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    android.widget.VideoView(ctx).apply {
+                        setVideoURI(android.net.Uri.parse(url))
+                        setOnCompletionListener { onDismiss() }
+                        setOnErrorListener { _, _, _ -> onDismiss(); true }
+                        start()
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "关闭",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
+    }
+}
+
+/** 解析详情 JSON 的 play_urls 数组 → [(名称, URL)] */
+private fun parsePlayUrls(json: String): List<Pair<String, String>> {
+    return try {
+        val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
+        val arr = obj.get("play_urls")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
+        arr.mapNotNull { e ->
+            val o = e.asJsonObject
+            val name = o.get("name")?.asString ?: ""
+            val url = o.get("url")?.asString ?: ""
+            if (name.isNotEmpty() && url.isNotEmpty()) name to url else null
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
 }
 
 /** 解析搜索结果 JSON（兼容数组或 {list/data/items/results} 包装） */

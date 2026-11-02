@@ -94,6 +94,10 @@ class PyHomepageViewModel : ViewModel() {
     var htmlContent by mutableStateOf<String?>(null)
         private set
 
+    /** 播放解析后的 m3u8 URL（非空时显示播放器浮层） */
+    var playUrl by mutableStateOf<String?>(null)
+        private set
+
     // ---- 导入流程状态 ----
 
     /** 已选择的待导入文件 Uri */
@@ -223,6 +227,27 @@ class PyHomepageViewModel : ViewModel() {
         detailState = null
     }
 
+    /** 播放：调用插件 play 函数解析播放页，返回真实 m3u8 URL */
+    fun playVideo(pluginId: String, playPageUrl: String) {
+        viewModelScope.launch {
+            val result = bridgePlay(pluginId, playPageUrl)
+            if (result != null) {
+                val url = try {
+                    JSONObject(result).optString("url", "")
+                } catch (e: Exception) {
+                    ""
+                }
+                if (url.isNotEmpty()) {
+                    playUrl = url
+                }
+            }
+        }
+    }
+
+    fun dismissPlayer() {
+        playUrl = null
+    }
+
     // ---- 导入 ----
 
     /** SAF 文件选择回调：记录 Uri 并弹出命名弹窗 */
@@ -340,6 +365,11 @@ class PyHomepageViewModel : ViewModel() {
     private suspend fun bridgeDetail(pluginId: String, id: String): String? =
         suspendCancellableCoroutine { cont ->
             HomeBridge.detail(pluginId, id) { cont.resume(it) }
+        }
+
+    private suspend fun bridgePlay(pluginId: String, url: String): String? =
+        suspendCancellableCoroutine { cont ->
+            HomeBridge.play(pluginId, url) { cont.resume(it) }
         }
 
     // ---- 持久化 ----
