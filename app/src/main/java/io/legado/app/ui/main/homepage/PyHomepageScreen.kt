@@ -4,15 +4,18 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,7 +23,11 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckBox
@@ -118,15 +125,13 @@ fun PyHomepageScreen(
                         .weight(1f)
                         .padding(start = 16.dp),
                 )
-                // 搜索（仅 py 源可用）
-                if (currentType == "py") {
-                    IconButton(onClick = { viewModel.toggleSearchMode() }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "搜索",
-                            tint = topBarColors.contentColor,
-                        )
-                    }
+                // 搜索
+                IconButton(onClick = { viewModel.toggleSearchMode() }) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "搜索",
+                        tint = topBarColors.contentColor,
+                    )
                 }
                 // 历史
                 IconButton(onClick = { showHistoryDialog = true }) {
@@ -191,47 +196,58 @@ fun PyHomepageScreen(
         }
 
         // ---- 内容区 ----
-        val results = parseSearchResults(viewModel.searchResults)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = bottomPaddingPx.dp)
-        ) {
-            when {
-                // HTML 自定义页面：WebView 渲染
-                currentType == "html" -> {
-                    val html = viewModel.htmlContent
-                    if (html != null) {
-                        HtmlWebView(html)
-                    } else {
-                        LoadingBox("页面加载中...")
+            val results = parseSearchResults(viewModel.searchResults)
+            val homeData = viewModel.homeData
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = bottomPaddingPx.dp)
+            ) {
+                when {
+                    // HTML 自定义页面：WebView 渲染
+                    currentType == "html" -> {
+                        val html = viewModel.htmlContent
+                        if (html != null) {
+                            HtmlWebView(html)
+                        } else {
+                            LoadingBox("页面加载中...")
+                        }
+                    }
+
+                    viewModel.isSearching -> {
+                        LoadingBox("搜索中...")
+                    }
+
+                    results.isNotEmpty() -> {
+                        SearchResultList(
+                            viewModel = viewModel,
+                            results = results,
+                        )
+                    }
+
+                    viewModel.searchMode && viewModel.searchKeyword.isNotBlank() -> {
+                        EmptyBox("暂无结果")
+                    }
+
+                    sources.isEmpty() -> {
+                        EmptyBox("暂无首页源\n点击设置，导入 py 源或 HTML 页面")
+                    }
+
+                    // py 源首页内容
+                    currentType == "py" && homeData != null -> {
+                        HomeContent(viewModel, homeData)
+                    }
+
+                    // py 源加载首页中
+                    currentType == "py" && homeData == null && !viewModel.isSearching -> {
+                        LoadingBox("首页加载中...")
+                    }
+
+                    else -> {
+                        // 空白内容区
                     }
                 }
-
-                viewModel.isSearching -> {
-                    LoadingBox("搜索中...")
-                }
-
-                results.isNotEmpty() -> {
-                    SearchResultList(
-                        viewModel = viewModel,
-                        results = results,
-                    )
-                }
-
-                viewModel.searchMode && viewModel.searchKeyword.isNotBlank() -> {
-                    EmptyBox("暂无结果")
-                }
-
-                sources.isEmpty() -> {
-                    EmptyBox("暂无首页源\n点击设置，导入 py 源或 HTML 页面")
-                }
-
-                else -> {
-                    // 空白内容区
-                }
             }
-        }
     }
 
     // ---- 导入命名弹窗 ----
@@ -487,6 +503,122 @@ private fun SearchResultList(
     }
 }
 
+/** 首页内容：分类标签栏 + 视频网格 */
+@Composable
+private fun HomeContent(
+    viewModel: PyHomepageViewModel,
+    homeData: PyHomepageViewModel.HomeData,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 分类标签栏（水平滚动）
+        if (homeData.categories.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                CategoryChip(
+                    name = "推荐",
+                    selected = viewModel.selectedCategoryId.isEmpty(),
+                    onClick = { viewModel.selectCategory("") },
+                )
+                homeData.categories.forEach { cat ->
+                    CategoryChip(
+                        name = cat.name,
+                        selected = viewModel.selectedCategoryId == cat.id,
+                        onClick = { viewModel.selectCategory(cat.id) },
+                    )
+                }
+            }
+        }
+
+        // 视频网格
+        val categoryData = viewModel.categoryData
+        val videos = categoryData?.videos ?: homeData.videos
+        if (videos.isEmpty()) {
+            EmptyBox("暂无视频")
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(videos, key = { it.id }) { video ->
+                    VideoCard(
+                        video = video,
+                        onClick = {
+                            viewModel.showDetail(viewModel.selectedSourceId, video.id, video.title)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 视频卡片 */
+@Composable
+private fun VideoCard(
+    video: PyHomepageViewModel.VideoItem,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Default.OndemandVideo,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = pageSecondaryTextColor(),
+            )
+        }
+        Text(
+            text = video.title,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
+/** 分类标签 */
+@Composable
+private fun CategoryChip(name: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary
+            else pageSecondaryTextColor(),
+        )
+    }
+}
+
 /** 历史弹窗 */
 @Composable
 private fun HistoryDialog(
@@ -645,7 +777,7 @@ private fun ManageScreen(
     sources: List<PyHomepageViewModel.HomeSource>,
     onDismiss: () -> Unit,
 ) {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
@@ -685,7 +817,9 @@ private fun ManageScreen(
         // 列表
         if (sources.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -696,7 +830,9 @@ private fun ManageScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     horizontal = 16.dp,
                     vertical = 8.dp,
@@ -805,13 +941,28 @@ private fun DetailDialog(
                     CircularProgressIndicator()
                 }
             } else {
+                val detailObj = parseDetailInfo(detail.json)
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = detail.json,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 8,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (detailObj != null) {
+                        detailObj.desc?.let { desc ->
+                            if (desc.isNotEmpty()) {
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 8,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(bottom = 8.dp),
+                                )
+                            }
+                        }
+                    } else if (detail.json.isNotBlank() && detail.json != "{}") {
+                        Text(
+                            text = detail.json,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 8,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     if (playUrls.isNotEmpty()) {
                         Text(
                             text = "播放",
@@ -910,6 +1061,18 @@ private fun parsePlayUrls(json: String): List<Pair<String, String>> {
         }
     } catch (e: Exception) {
         emptyList()
+    }
+}
+
+data class DetailInfo(val desc: String?)
+
+/** 解析详情 JSON 的描述字段 */
+private fun parseDetailInfo(json: String): DetailInfo? {
+    return try {
+        val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
+        DetailInfo(obj.get("desc")?.asString ?: "")
+    } catch (e: Exception) {
+        null
     }
 }
 

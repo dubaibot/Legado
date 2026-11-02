@@ -49,7 +49,7 @@ def detect_capabilities(module):
         JSON 字符串: {函数名: [参数名列表]}，仅包含模块中实际定义的函数
     """
     funcs = {}
-    for name in ("search", "detail", "play", "category", "enabled"):
+    for name in ("search", "detail", "play", "home", "category", "enabled"):
         func = getattr(module, name, None)
         if func is not None and callable(func):
             try:

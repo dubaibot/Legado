@@ -45,6 +45,33 @@ class PyHomepageViewModel : ViewModel() {
         val time: Long,
     )
 
+    /** 首页分类 */
+    data class Category(
+        val id: String,
+        val name: String,
+    )
+
+    /** 视频条目 */
+    data class VideoItem(
+        val id: String,
+        val title: String,
+        val pic: String,
+        val remarks: String,
+    )
+
+    /** 首页数据 */
+    data class HomeData(
+        val categories: List<Category>,
+        val videos: List<VideoItem>,
+    )
+
+    /** 分类浏览数据 */
+    data class CategoryData(
+        val page: Int,
+        val pagecount: Int,
+        val videos: List<VideoItem>,
+    )
+
     /** 详情弹窗状态 */
     data class DetailState(
         val pluginId: String,
@@ -96,6 +123,18 @@ class PyHomepageViewModel : ViewModel() {
 
     /** 播放解析后的 m3u8 URL（非空时显示播放器浮层） */
     var playUrl by mutableStateOf<String?>(null)
+        private set
+
+    /** 首页数据（分类 + 推荐视频） */
+    var homeData by mutableStateOf<HomeData?>(null)
+        private set
+
+    /** 分类浏览数据 */
+    var categoryData by mutableStateOf<CategoryData?>(null)
+        private set
+
+    /** 当前选中分类 ID（空 = 首页推荐） */
+    var selectedCategoryId by mutableStateOf("")
         private set
 
     // ---- 导入流程状态 ----
@@ -167,6 +206,10 @@ class PyHomepageViewModel : ViewModel() {
                         AppConfig.pyHomePluginId = selectedSourceId
                     }
                 }
+                // 选中 py 源时加载首页数据
+                if (currentSourceType() == "py") {
+                    loadHome(selectedSourceId)
+                }
             }
         }
     }
@@ -177,8 +220,13 @@ class PyHomepageViewModel : ViewModel() {
         AppConfig.pyHomePluginId = sourceId
         searchResults = ""
         htmlContent = null
+        homeData = null
+        categoryData = null
+        selectedCategoryId = ""
         if (currentSourceType() == "html") {
             loadHtmlContent(sourceId)
+        } else if (currentSourceType() == "py") {
+            loadHome(sourceId)
         }
     }
 
@@ -246,6 +294,89 @@ class PyHomepageViewModel : ViewModel() {
 
     fun dismissPlayer() {
         playUrl = null
+    }
+
+    // ---- 首页数据 ----
+
+    /** 加载首页数据（分类 + 推荐视频） */
+    fun loadHome(pluginId: String) {
+        homeData = null
+        categoryData = null
+        selectedCategoryId = ""
+        viewModelScope.launch {
+            val result = bridgeHome(pluginId)
+            if (result != null) {
+                homeData = parseHomeData(result)
+            }
+        }
+    }
+
+    /** 加载分类视频列表 */
+    fun loadCategory(pluginId: String, tid: String, pg: Int) {
+        selectedCategoryId = tid
+        categoryData = CategoryData(pg, 1, emptyList())
+        viewModelScope.launch {
+            val result = bridgeCategory(pluginId, tid, pg)
+            if (result != null) {
+                categoryData = parseCategoryData(result, pg)
+            }
+        }
+    }
+
+    /** 选择分类标签 */
+    fun selectCategory(tid: String) {
+        if (tid == selectedCategoryId) return
+        if (tid.isEmpty()) {
+            selectedCategoryId = ""
+            categoryData = null
+        } else {
+            loadCategory(selectedSourceId, tid, 1)
+        }
+    }
+
+    private suspend fun bridgeHome(pluginId: String): String? =
+        suspendCancellableCoroutine { cont ->
+            HomeBridge.home(pluginId) { cont.resume(it) }
+        }
+
+    private suspend fun bridgeCategory(pluginId: String, tid: String, pg: Int): String? =
+        suspendCancellableCoroutine { cont ->
+            HomeBridge.category(pluginId, tid, pg) { cont.resume(it) }
+        }
+
+    private fun parseHomeData(json: String): HomeData? {
+        return try {
+            val obj = JSONObject(json)
+            val cats = obj.optJSONArray("categories") ?: return null
+            val categories = (0 until cats.length()).mapNotNull { i ->
+                val c = cats.optJSONObject(i) ?: return@mapNotNull null
+                Category(c.optString("id"), c.optString("name"))
+            }
+            val vids = obj.optJSONArray("videos") ?: return null
+            val videos = (0 until vids.length()).mapNotNull { i ->
+                val v = vids.optJSONObject(i) ?: return@mapNotNull null
+                VideoItem(v.optString("id"), v.optString("title"), v.optString("pic"), v.optString("remarks"))
+            }
+            HomeData(categories, videos)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseCategoryData(json: String, defaultPg: Int): CategoryData {
+        return try {
+            val obj = JSONObject(json)
+            val pg = obj.optInt("page", defaultPg)
+            val pc = obj.optInt("pagecount", 1)
+            val vids = obj.optJSONArray("videos") ?: return CategoryData(pg, pc, emptyList())
+            val videos = (0 until vids.length()).mapNotNull { i ->
+                val v = vids.optJSONObject(i) ?: return@mapNotNull null
+                VideoItem(v.optString("id"), v.optString("title"), v.optString("pic"), v.optString("remarks"))
+            }
+            CategoryData(pg, pc, videos)
+        } catch (e: Exception) {
+            CategoryData(defaultPg, 1, emptyList())
+        }
     }
 
     // ---- 导入 ----

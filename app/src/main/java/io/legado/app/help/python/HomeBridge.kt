@@ -49,6 +49,20 @@ object HomeBridge {
     }
 
     /**
+     * 首页：调用插件 home 函数，返回分类与推荐视频。
+     */
+    fun home(pluginId: String, onResult: (String?) -> Unit) {
+        callPlugin(pluginId, "home", emptyList(), onResult)
+    }
+
+    /**
+     * 分类：调用插件 category 函数，返回分类视频列表。
+     */
+    fun category(pluginId: String, tid: String, pg: Int, onResult: (String?) -> Unit) {
+        callPlugin(pluginId, "category", listOf(tid, pg.toString()), onResult)
+    }
+
+    /**
      * 检测插件能力并缓存。
      */
     fun detectCapabilities(pluginId: String): Map<String, List<String>> {
