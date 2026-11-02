@@ -52,8 +52,10 @@ object HomeSourceStore {
      */
     fun importHtml(uri: Uri, displayName: String): Boolean {
         return try {
-            val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "page.html"
-            val pageId = fileName.substringBeforeLast('.')
+            val fileName = uri.lastPathSegment?.substringAfterLast('/')
+                ?: displayName.ifBlank { null }
+                ?: "page.html"
+            val pageId = fileName.substringBeforeLast('.').ifBlank { fileName }
             val content = appCtx.contentResolver.openInputStream(uri)
                 ?.use { it.readBytes().toString(Charsets.UTF_8) }
                 ?: return false

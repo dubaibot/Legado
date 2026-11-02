@@ -73,8 +73,10 @@ object PyLoader {
      */
     fun installFromUri(uri: Uri, displayName: String? = null): Boolean {
         return try {
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "plugin.py"
-            val pluginId = name.substringBeforeLast('.')
+            val name = uri.lastPathSegment?.substringAfterLast('/')
+                ?: displayName?.ifBlank { null }
+                ?: "plugin.py"
+            val pluginId = name.substringBeforeLast('.').ifBlank { "plugin" }
             val pyContent = appCtx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
                 ?: return false
 

@@ -90,9 +90,17 @@ https://www.yuque.com/legado/wiki/community
 【11-02】
 - 新增：首页源管理页（导入 py 插件 / HTML 自定义页面，支持自定义名称与删除）
 - 新增：预装 requests 库，修复 py 源导入即加载失败
+- 新增：影视源播放功能（详情弹窗显示播放按钮，点击调用插件解析并播放 m3u8）
+- 新增：首页分类标签栏 + 视频网格（调用插件 home/category 函数）
 - 优化：首页设置菜单精简为导入/管理两项
+- 优化：详情弹窗显示结构化描述而非原始 JSON
+- 修复：SAF 导入 py 文件时扩展名检测失败导致误判为 HTML（按文件内容检测类型）
+- 修复：SAF content:// URI 的 lastPathSegment 为空导致导入文件名丢失（改用 DocumentsContract 查询）
+- 修复：源管理页顶栏被列表遮挡、关闭按钮不可见
+- 修复：顶栏搜索按钮始终显示
 - 修复：插件加载错误在管理页可视化展示
-- 当前快照：3.26.110203
+- 修复：启动崩溃 FileNotFoundException web/help/md/updateLog.md（复制 updateLog.md 到 web/help/md/ 路径）
+- 当前快照：3.26.110204
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

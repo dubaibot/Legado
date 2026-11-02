@@ -1,6 +1,8 @@
 package io.legado.app.ui.main.homepage
 
 import android.os.Bundle
+import android.provider.DocumentsContract
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -44,9 +46,24 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
     /** SAF 导入 py/html 源 */
     private val importDoc = registerForActivityResult(HandleFileContract()) { result ->
         val uri = result.uri ?: return@registerForActivityResult
-        val defaultName = uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')
-            ?: ""
+        val defaultName = getDisplayName(uri).substringBeforeLast('.')
         pyViewModel.onFilePicked(uri, defaultName)
+    }
+
+    /** 从 SAF Uri 获取显示文件名（content:// URI 的 lastPathSegment 不可用） */
+    private fun getDisplayName(uri: Uri): String {
+        return try {
+            if (DocumentsContract.isDocumentUri(requireContext(), uri)) {
+                val proj = arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                requireContext().contentResolver.query(uri, proj, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) ?: "" else ""
+                } ?: ""
+            } else {
+                uri.lastPathSegment?.substringAfterLast('/') ?: ""
+            }
+        } catch (e: Exception) {
+            uri.lastPathSegment?.substringAfterLast('/') ?: ""
+        }
     }
 
     constructor(position: Int) : this() {

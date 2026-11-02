@@ -394,19 +394,21 @@ class PyHomepageViewModel : ViewModel() {
         if (uri == null) return
         showImportDialog = false
         val displayName = name.trim().ifBlank { importDefaultName }
-        val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: ""
-        val ext = fileName.substringAfterLast('.', "").lowercase()
+        val pluginId = displayName.substringBeforeLast('.')
         viewModelScope.launch(Dispatchers.IO) {
-            val ok = if (ext == "py") {
+            // 读取文件内容以检测类型（SAF content:// URI 的 lastPathSegment 不可靠）
+            val content = appCtx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
+            val isPy = content.isPythonSource()
+            val ok = if (isPy) {
                 PyLoader.installFromUri(uri, displayName)
             } else {
                 HomeSourceStore.importHtml(uri, displayName)
             }
             val msg = if (!ok) {
                 "导入失败"
-            } else if (ext == "py") {
+            } else if (isPy) {
                 // 插件可能因缺少第三方库等原因未加载，提示具体错误
-                PyLoader.getLoadError(fileName.substringBeforeLast('.'))?.let {
+                PyLoader.getLoadError(pluginId)?.let {
                     "py 源已导入，但未能加载：$it"
                 } ?: "py 源导入成功"
             } else {
@@ -420,8 +422,26 @@ class PyHomepageViewModel : ViewModel() {
         }
     }
 
+    /** 判断文件内容是否为 Python 源码 */
+    private fun String.isPythonSource(): Boolean {
+        if (isBlank()) return false
+        // Python 文件通常包含 def/import/class/@ 等关键字
+        // HTML 文件包含 <html>/<!DOCTYPE/<body 等标签
+        val hasPython = contains("def ") || contains("import ") || contains("class ") ||
+            contains("@app") || contains("#!/usr/bin/env python") || startsWith("#!")
+        val hasHtml = contains("<html") || contains("<!DOCTYPE") || contains("<body") ||
+            contains("<head") || contains("<!doctype")
+        // 如果同时包含（如 HTML 中嵌入 Python），优先判断 Python
+        if (hasPython) return true
+        // 纯 HTML 特征 → 不是 Python
+        if (hasHtml) return false
+        // 既不像 Python 也不像 HTML，保守判断为非 Python（HTML 兜底）
+        return false
+    }
+
     fun cancelImport() {
         importUri = null
+        importDefaultName = ""
         showImportDialog = false
     }
 
