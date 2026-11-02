@@ -94,4 +94,86 @@ object HomeSourceStore {
             false
         }
     }
+
+    // ---- JSON / TXT 视频源管理 ----
+
+    /** JSON/TXT 源存储目录：filesDir/video_sources/<id>/meta.json + source.<ext> */
+    private val videoSourcesDir: File by lazy {
+        File(appCtx.filesDir, "video_sources").apply { mkdirs() }
+    }
+
+    data class VideoSourceMeta(
+        val id: String,
+        val name: String,
+        val type: String, // "json" | "txt"
+    )
+
+    /** 列出全部 JSON/TXT 视频源 */
+    fun listVideoSources(): List<VideoSourceMeta> {
+        return videoSourcesDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { dir ->
+                val metaFile = File(dir, "meta.json")
+                if (!metaFile.exists()) return@mapNotNull null
+                try {
+                    val obj = org.json.JSONObject(metaFile.readText())
+                    VideoSourceMeta(
+                        id = obj.optString("id").ifBlank { dir.name },
+                        name = obj.optString("name").ifBlank { dir.name },
+                        type = obj.optString("type").ifBlank { "json" },
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            ?: emptyList()
+    }
+
+    /**
+     * 从 SAF Uri 导入 JSON/TXT 源。type 为 "json" 或 "txt"。
+     */
+    fun importVideoSource(uri: Uri, displayName: String, type: String): Boolean {
+        return try {
+            val fileName = uri.lastPathSegment?.substringAfterLast('/')
+                ?: displayName.ifBlank { null }
+                ?: "source.$type"
+            val sourceId = fileName.substringBeforeLast('.').ifBlank { fileName }
+            val content = appCtx.contentResolver.openInputStream(uri)
+                ?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: return false
+
+            val dir = File(videoSourcesDir, sourceId)
+            dir.mkdirs()
+            File(dir, "source.$type").writeText(content)
+            File(dir, "meta.json").writeText(
+                """{"id":"$sourceId","name":"${displayName.ifBlank { sourceId }}","type":"$type"}"""
+            )
+            true
+        } catch (e: Exception) {
+            LogUtils.d(TAG, "importVideoSource failed: ${e.message}")
+            false
+        }
+    }
+
+    /** 读取源文件内容，失败返回 null */
+    fun readVideoSource(sourceId: String, type: String): String? {
+        return try {
+            val file = File(File(videoSourcesDir, sourceId), "source.$type")
+            if (!file.exists()) null else file.readText()
+        } catch (e: Exception) {
+            LogUtils.d(TAG, "readVideoSource failed: $sourceId: ${e.message}")
+            null
+        }
+    }
+
+    /** 删除 JSON/TXT 源 */
+    fun deleteVideoSource(sourceId: String): Boolean {
+        return try {
+            File(videoSourcesDir, sourceId).deleteRecursively()
+            true
+        } catch (e: Exception) {
+            LogUtils.d(TAG, "deleteVideoSource failed: $sourceId: ${e.message}")
+            false
+        }
+    }
 }

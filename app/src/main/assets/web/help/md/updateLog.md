@@ -26,7 +26,14 @@
 - 优化：pyloader.py 加载日志输出到 stdout（logcat 可见）
 - 修复：PyTaskQueue 改为直接从 Java 调用 module.callAttr(func) 而非 Python getattr（绕过 Chaquopy 模块对象 getattr 兼容性问题）
 - 修复：函数调用失败时返回含 AttributeError 信息的 error JSON，UI 可见具体错误
-- 当前快照：3.26.110209
+- 新增：支持 JSON 视频源（苹果CMS 标准 API + 自定义端点两种模式，支持 home/category/search/detail/play/danmaku）
+- 新增：支持 TXT 视频源（本地文本列表，分节分类与多集格式 "集名$url#集名$url"）
+- 新增：弹幕功能（B站 XML / JSON 格式解析，Canvas 渲染，滚动/顶部/底部三种模式，进度驱动，开关按钮）
+- 新增：VideoSource 统一源接口（py/json/txt 三种源实现 home/category/search/detail/play/danmaku 六方法）
+- 新增：源导入支持 json/txt 文件（按扩展名 + 内容特征检测类型）
+- 优化：播放器浮层新增 MediaController（暂停/进度控制）
+- 优化：播放器浮层新增弹幕开关按钮与进度轮询驱动弹幕
+- 当前快照：3.26.110210
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

@@ -1,0 +1,10 @@
+{
+  "name": "示例自定义源",
+  "type": "custom",
+  "home": "https://你的接口/home",
+  "category": "https://你的接口/category?tid={tid}&pg={pg}",
+  "search": "https://你的接口/search?kw={kw}",
+  "detail": "https://你的接口/detail?id={id}",
+  "play": "https://你的接口/play?url={url}",
+  "danmaku": "https://你的接口/danmaku?id={id}"
+}

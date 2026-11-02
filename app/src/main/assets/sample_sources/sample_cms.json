@@ -1,0 +1,5 @@
+{
+  "name": "示例CMS源",
+  "type": "cms",
+  "api": "https://你的采集接口/api.php/provide/vod"
+}

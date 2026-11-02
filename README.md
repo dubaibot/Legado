@@ -102,7 +102,14 @@ https://www.yuque.com/legado/wiki/community
 - 修复：启动崩溃 FileNotFoundException web/help/md/updateLog.md（复制 updateLog.md 到 web/help/md/ 路径）
 - 修复：py 插件函数返回值序列化为 Python repr 而非 JSON，导致首页/搜索/详情均无法解析（改用 plugin_entry.call_func 确保 JSON 序列化）
 - 修复：home() 网络请求超时导致首页一直显示"加载中"（分类不依赖网络，视频尝试加载失败返回空；loadHome 超时兜底设空数据）
-- 当前快照：3.26.110209
+- 新增：支持 JSON 视频源（苹果CMS 标准 API + 自定义端点两种模式，支持 home/category/search/detail/play/danmaku）
+- 新增：支持 TXT 视频源（本地文本列表，分节分类与多集格式 "集名$url#集名$url"）
+- 新增：弹幕功能（B站 XML / JSON 格式解析，Canvas 渲染，滚动/顶部/底部三种模式，进度驱动，开关按钮）
+- 新增：VideoSource 统一源接口（py/json/txt 三种源实现 home/category/search/detail/play/danmaku 六方法）
+- 新增：源导入支持 json/txt 文件（按扩展名 + 内容特征检测类型）
+- 优化：播放器浮层新增 MediaController（暂停/进度控制）
+- 优化：播放器浮层新增弹幕开关按钮与进度轮询驱动弹幕
+- 当前快照：3.26.110210
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

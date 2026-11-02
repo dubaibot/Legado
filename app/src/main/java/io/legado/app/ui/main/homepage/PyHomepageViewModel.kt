@@ -8,6 +8,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.video.DanmakuItem
+import io.legado.app.data.video.VideoSource
+import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.python.HomeBridge
 import io.legado.app.help.python.PyLoader
@@ -26,13 +29,14 @@ import splitties.init.appCtx
 import kotlin.coroutines.resume
 
 /**
- * Python 影视首页 ViewModel。
+ * 影视首页 ViewModel。
  *
  * 职责：
- * - 统一管理首页源（py 插件源 + HTML 自定义页面）
- * - 顶栏搜索（当前选中的 py 源）
+ * - 统一管理首页源（py 插件源 + HTML 自定义页面 + JSON API 源 + TXT 列表源）
+ * - 顶栏搜索（py/json/txt 源）
  * - 搜索历史 / 收藏（SharedPreferences JSON 持久化）
- * - 导入 py/html 源（SAF 回调后在此执行文件 IO）
+ * - 导入 py/html/json/txt 源（SAF 回调后在此执行文件 IO）
+ * - 弹幕加载与开关
  */
 class PyHomepageViewModel : ViewModel() {
 
@@ -81,12 +85,12 @@ class PyHomepageViewModel : ViewModel() {
         val loading: Boolean = false,
     )
 
-    /** 首页源（py 插件 / HTML 页面统一模型） */
+    /** 首页源（py 插件 / HTML 页面 / JSON API / TXT 列表统一模型） */
     data class HomeSource(
         val id: String,
         val name: String,
-        val type: String,     // "py" | "html"
-        val loaded: Boolean,  // py 源加载状态；html 恒为 true
+        val type: String,     // "py" | "html" | "json" | "txt"
+        val loaded: Boolean,  // py 源加载状态；html/json/txt 恒为 true
     )
 
     private val _sources = MutableStateFlow<List<HomeSource>>(emptyList())
@@ -141,6 +145,14 @@ class PyHomepageViewModel : ViewModel() {
     var selectedCategoryId by mutableStateOf("")
         private set
 
+    /** 当前播放的弹幕列表（随播放器加载/清空） */
+    var danmakuItems by mutableStateOf<List<DanmakuItem>>(emptyList())
+        private set
+
+    /** 弹幕显示开关 */
+    var danmakuEnabled by mutableStateOf(true)
+        private set
+
     // ---- 导入流程状态 ----
 
     /** 已选择的待导入文件 Uri */
@@ -174,7 +186,7 @@ class PyHomepageViewModel : ViewModel() {
         }
     }
 
-    /** 当前选中源类型（"py" | "html" | null） */
+    /** 当前选中源类型（"py" | "html" | "json" | "txt" | null） */
     fun currentSourceType(): String? {
         return _sources.value.find { it.id == selectedSourceId }?.type
     }
@@ -183,6 +195,9 @@ class PyHomepageViewModel : ViewModel() {
     fun currentSourceName(): String? {
         return _sources.value.find { it.id == selectedSourceId }?.name
     }
+
+    /** 当前源类型是否支持列表式浏览（py/json/txt 走统一数据模型） */
+    fun isListSource(type: String?): Boolean = type == "py" || type == "json" || type == "txt"
 
     /** 获取指定 py 源的加载错误信息 */
     fun loadErrorFor(id: String): String? {
@@ -202,8 +217,11 @@ class PyHomepageViewModel : ViewModel() {
             val htmlList = HomeSourceStore.listHtml().map {
                 HomeSource(it.id, it.name, "html", true)
             }
+            val videoSources = HomeSourceStore.listVideoSources().map {
+                HomeSource(it.id, it.name, it.type, true)
+            }
             withContext(Dispatchers.Main) {
-                _sources.value = pyList + htmlList
+                _sources.value = pyList + videoSources + htmlList
                 if (_sources.value.none { it.id == selectedSourceId }) {
                     selectedSourceId = _sources.value.firstOrNull()?.id ?: ""
                     if (selectedSourceId.isNotEmpty()) {
@@ -212,7 +230,7 @@ class PyHomepageViewModel : ViewModel() {
                 }
                 // 选中源时加载对应内容
                 when (currentSourceType()) {
-                    "py" -> loadHome(selectedSourceId)
+                    "py", "json", "txt" -> loadHome(selectedSourceId)
                     "html" -> loadHtmlContent(selectedSourceId)
                 }
             }
@@ -228,10 +246,9 @@ class PyHomepageViewModel : ViewModel() {
         homeData = null
         categoryData = null
         selectedCategoryId = ""
-        if (currentSourceType() == "html") {
-            loadHtmlContent(sourceId)
-        } else if (currentSourceType() == "py") {
-            loadHome(sourceId)
+        when (currentSourceType()) {
+            "py", "json", "txt" -> loadHome(sourceId)
+            "html" -> loadHtmlContent(sourceId)
         }
     }
 
@@ -248,12 +265,12 @@ class PyHomepageViewModel : ViewModel() {
         searchKeyword = keyword
     }
 
-    /** 执行搜索（记录历史，仅 py 源） */
+    /** 执行搜索（记录历史，py/json/txt 源） */
     fun search(keyword: String) {
         val kw = keyword.trim()
         if (kw.isBlank() || isSearching) return
         val pluginId = selectedSourceId.ifBlank { _sources.value.firstOrNull()?.id ?: "" }
-        if (pluginId.isBlank() || currentSourceType() != "py") return
+        if (pluginId.isBlank() || !isListSource(currentSourceType())) return
         selectedSourceId = pluginId
 
         searchKeyword = kw
@@ -261,17 +278,30 @@ class PyHomepageViewModel : ViewModel() {
         isSearching = true
         searchResults = ""
         viewModelScope.launch {
-            val result = bridgeSearch(pluginId, kw)
+            val result = when (currentSourceType()) {
+                "py" -> bridgeSearch(pluginId, kw)
+                else -> {
+                    val source = sourceFor(pluginId)
+                    val items = source?.search(kw, 1) ?: emptyList()
+                    serializeSearchItems(items)
+                }
+            }
             searchResults = result ?: "[]"
             isSearching = false
         }
     }
 
-    /** 查看详情（搜索结果/收藏条目点击） */
+    /** 查看详情（搜索结果/收藏条目点击，py/json/txt 源） */
     fun showDetail(pluginId: String, id: String, title: String) {
         detailState = DetailState(pluginId, id, title, "", loading = true)
         viewModelScope.launch {
-            val json = bridgeDetail(pluginId, id)
+            val json = when (sourceTypeOf(pluginId)) {
+                "py" -> bridgeDetail(pluginId, id)
+                else -> {
+                    val detail = sourceFor(pluginId)?.detail(id)
+                    detail?.let { serializeDetail(it) }
+                }
+            }
             detailState = DetailState(pluginId, id, title, json ?: "{}", loading = false)
         }
     }
@@ -280,50 +310,125 @@ class PyHomepageViewModel : ViewModel() {
         detailState = null
     }
 
-    /** 播放：调用插件 play 函数解析播放页，返回真实 m3u8 URL */
+    /** 播放：解析播放地址（py 走插件 play，json/txt 直连），并加载弹幕 */
     fun playVideo(pluginId: String, playPageUrl: String) {
         viewModelScope.launch {
-            val result = bridgePlay(pluginId, playPageUrl)
-            if (result != null) {
-                val url = try {
-                    JSONObject(result).optString("url", "")
-                } catch (e: Exception) {
-                    ""
+            val type = sourceTypeOf(pluginId)
+            val url = when (type) {
+                "py" -> {
+                    val result = bridgePlay(pluginId, playPageUrl)
+                    try {
+                        JSONObject(result ?: "").optString("url", "")
+                    } catch (e: Exception) {
+                        ""
+                    }
                 }
-                if (url.isNotEmpty()) {
-                    playUrl = url
+                else -> {
+                    val source = sourceFor(pluginId)
+                    val result = source?.play(playPageUrl)
+                    result?.url ?: ""
                 }
+            }
+            if (url.isNotEmpty()) {
+                playUrl = url
+                danmakuItems = emptyList()
+                loadDanmaku(pluginId, playPageUrl)
             }
         }
     }
 
     fun dismissPlayer() {
         playUrl = null
+        danmakuItems = emptyList()
+    }
+
+    /** 切换弹幕显示 */
+    fun toggleDanmaku() {
+        danmakuEnabled = !danmakuEnabled
+    }
+
+    /** 加载弹幕：json/txt 源走统一接口，py 源暂不支持 */
+    private fun loadDanmaku(sourceId: String, videoId: String) {
+        if (sourceTypeOf(sourceId) == "py") return
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = try {
+                sourceFor(sourceId)?.danmaku(videoId)
+            } catch (e: Exception) {
+                null
+            }
+            withContext(Dispatchers.Main) {
+                danmakuItems = list?.items ?: emptyList()
+            }
+        }
     }
 
     // ---- 首页数据 ----
 
-    /** 加载首页数据（分类 + 推荐视频） */
+    /** 加载首页数据（分类 + 推荐视频，py/json/txt 源） */
     fun loadHome(pluginId: String) {
         homeData = null
         homeError = null
         categoryData = null
         selectedCategoryId = ""
-        viewModelScope.launch {
-            val result = bridgeHome(pluginId)
-            homeData = parseHomeData(result ?: "") ?: HomeData(emptyList(), emptyList())
+        when (sourceTypeOf(pluginId)) {
+            "py" -> {
+                viewModelScope.launch {
+                    val result = bridgeHome(pluginId)
+                    homeData = parseHomeData(result ?: "") ?: HomeData(emptyList(), emptyList())
+                }
+            }
+            else -> {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val (cats, vids) = try {
+                        sourceFor(pluginId)?.home() ?: Pair(emptyList(), emptyList())
+                    } catch (e: Exception) {
+                        homeError = e.message ?: "源加载失败"
+                        Pair(emptyList(), emptyList())
+                    }
+                    withContext(Dispatchers.Main) {
+                        homeData = HomeData(
+                            categories = cats.map { Category(it.id, it.name) },
+                            videos = vids.map {
+                                VideoItem(it.id, it.title, it.pic, it.remarks)
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 
-    /** 加载分类视频列表 */
+    /** 加载分类视频列表（py/json/txt 源） */
     fun loadCategory(pluginId: String, tid: String, pg: Int) {
         selectedCategoryId = tid
         homeError = null
         categoryData = CategoryData(pg, 1, emptyList())
-        viewModelScope.launch {
-            val result = bridgeCategory(pluginId, tid, pg)
-            if (result != null) {
-                categoryData = parseCategoryData(result, pg)
+        when (sourceTypeOf(pluginId)) {
+            "py" -> {
+                viewModelScope.launch {
+                    val result = bridgeCategory(pluginId, tid, pg)
+                    if (result != null) {
+                        categoryData = parseCategoryData(result, pg)
+                    }
+                }
+            }
+            else -> {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val result = try {
+                        sourceFor(pluginId)?.category(tid, pg)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    withContext(Dispatchers.Main) {
+                        categoryData = result?.let {
+                            CategoryData(
+                                it.page,
+                                it.pageCount,
+                                it.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
+                            )
+                        } ?: CategoryData(pg, 1, emptyList())
+                    }
+                }
             }
         }
     }
@@ -403,7 +508,7 @@ class PyHomepageViewModel : ViewModel() {
         showImportDialog = true
     }
 
-    /** 命名确认后执行导入 */
+    /** 命名确认后执行导入（py/html/json/txt 按扩展名 + 内容检测） */
     fun confirmImportName(name: String) {
         val uri = importUri
         if (uri == null) return
@@ -413,27 +518,45 @@ class PyHomepageViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             // 读取文件内容以检测类型（SAF content:// URI 的 lastPathSegment 不可靠）
             val content = appCtx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-            val isPy = content.isPythonSource()
-            val ok = if (isPy) {
-                PyLoader.installFromUri(uri, displayName)
-            } else {
-                HomeSourceStore.importHtml(uri, displayName)
+            val fileName = importDefaultName.lowercase()
+            val detect = detectSourceType(fileName, content)
+            val ok = when (detect) {
+                "py" -> PyLoader.installFromUri(uri, displayName)
+                "json" -> HomeSourceStore.importVideoSource(uri, displayName, "json")
+                "txt" -> HomeSourceStore.importVideoSource(uri, displayName, "txt")
+                else -> HomeSourceStore.importHtml(uri, displayName)
             }
             val msg = if (!ok) {
                 "导入失败"
-            } else if (isPy) {
-                // 插件可能因缺少第三方库等原因未加载，提示具体错误
-                PyLoader.getLoadError(pluginId)?.let {
+            } else when (detect) {
+                "py" -> PyLoader.getLoadError(pluginId)?.let {
                     "py 源已导入，但未能加载：$it"
                 } ?: "py 源导入成功"
-            } else {
-                "HTML 页面导入成功"
+                "json" -> "JSON 源导入成功"
+                "txt" -> "TXT 源导入成功"
+                else -> "HTML 页面导入成功"
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(appCtx, msg, Toast.LENGTH_LONG).show()
                 importUri = null
                 refreshSources()
             }
+        }
+    }
+
+    /**
+     * 检测源文件类型：扩展名优先，内容特征兜底。
+     * 返回 "py" | "json" | "txt" | "html"。
+     */
+    private fun detectSourceType(fileName: String, content: String): String {
+        val trimmed = content.trimStart()
+        return when {
+            fileName.endsWith(".py") -> "py"
+            fileName.endsWith(".json") -> "json"
+            fileName.endsWith(".txt") -> "txt"
+            fileName.endsWith(".html") || fileName.endsWith(".htm") -> "html"
+            trimmed.startsWith("{") || trimmed.startsWith("[") -> "json"
+            else -> if (content.isPythonSource()) "py" else "html"
         }
     }
 
@@ -470,13 +593,13 @@ class PyHomepageViewModel : ViewModel() {
         showManageDialog = false
     }
 
-    /** 删除源（py 卸载 / html 删除） */
+    /** 删除源（py 卸载 / html 删除 / json-txt 删除） */
     fun deleteSource(source: HomeSource) {
         viewModelScope.launch(Dispatchers.IO) {
-            if (source.type == "py") {
-                PyLoader.uninstall(source.id)
-            } else {
-                HomeSourceStore.deleteHtml(source.id)
+            when (source.type) {
+                "py" -> PyLoader.uninstall(source.id)
+                "json", "txt" -> HomeSourceStore.deleteVideoSource(source.id)
+                else -> HomeSourceStore.deleteHtml(source.id)
             }
             withContext(Dispatchers.Main) {
                 refreshSources()
@@ -537,6 +660,57 @@ class PyHomepageViewModel : ViewModel() {
         suspendCancellableCoroutine { cont ->
             HomeBridge.play(pluginId, url) { cont.resume(it) }
         }
+
+    // ---- 统一视频源辅助 ----
+
+    /** 获取指定源的类型（"py" | "html" | "json" | "txt" | null） */
+    private fun sourceTypeOf(sourceId: String): String? {
+        return _sources.value.find { it.id == sourceId }?.type
+    }
+
+    /** 创建统一源实例（py/json/txt，html 返回 null） */
+    private suspend fun sourceFor(sourceId: String): VideoSource? {
+        return withContext(Dispatchers.IO) {
+            val info = VideoSourceRegistry.getSourceInfo(sourceId) ?: return@withContext null
+            VideoSourceRegistry.createSource(info)
+        }
+    }
+
+    /** 搜索结果列表 → JSON 字符串（UI parseSearchResults 兼容格式） */
+    private fun serializeSearchItems(items: List<io.legado.app.data.video.VideoItem>): String {
+        val arr = JSONArray()
+        items.forEach {
+            arr.put(
+                JSONObject().apply {
+                    put("id", it.id)
+                    put("title", it.title)
+                    put("url", it.url)
+                }
+            )
+        }
+        return arr.toString()
+    }
+
+    /** VideoDetail → JSON 字符串（UI parsePlayUrls 兼容 play_urls 格式） */
+    private fun serializeDetail(detail: io.legado.app.data.video.VideoDetail): String {
+        return JSONObject().apply {
+            put("id", detail.id)
+            put("title", detail.title)
+            put("pic", detail.pic)
+            put("desc", detail.desc)
+            put(
+                "play_urls",
+                JSONArray().apply {
+                    detail.playLines.forEach {
+                        put(JSONObject().apply {
+                            put("name", it.name)
+                            put("url", it.url)
+                        })
+                    }
+                },
+            )
+        }.toString()
+    }
 
     // ---- 持久化 ----
 

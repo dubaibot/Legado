@@ -53,6 +53,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
@@ -74,12 +75,13 @@ import io.legado.app.ui.theme.pageTopBarBackground
 import io.legado.app.ui.theme.pageTopBarColors
 
 /**
- * Python 影视首页：订阅式顶栏 + 内容区。
+ * 影视首页：订阅式顶栏 + 内容区。
  *
  * 顶栏：当前源名称 + 搜索 / 历史 / 收藏 / 分组 / 设置（下拉菜单：导入、管理）。
  * 内容区：
- * - 选中 py 源：搜索中 spinner / 搜索结果列表 / 暂无结果 / 空白
+ * - 选中 py/json/txt 源：分类标签 + 视频网格（统一数据模型）
  * - 选中 HTML 页面：WebView 渲染该页面
+ * - 播放浮层：VideoView + 弹幕叠加层
  * - 无源：提示导入
  */
 @Composable
@@ -230,21 +232,21 @@ fun PyHomepageScreen(
                     }
 
                     sources.isEmpty() -> {
-                        EmptyBox("暂无首页源\n点击设置，导入 py 源或 HTML 页面")
+                        EmptyBox("暂无首页源\n点击设置，导入 py/json/txt 源或 HTML 页面")
                     }
 
-                    // py 源首页内容
-                    currentType == "py" && homeData != null -> {
+                    // py/json/txt 源首页内容（统一数据模型）
+                    (currentType == "py" || currentType == "json" || currentType == "txt") && homeData != null -> {
                         HomeContent(viewModel, homeData)
                     }
 
-                    // py 源加载首页中
-                    currentType == "py" && homeData == null && !viewModel.isSearching -> {
+                    // py/json/txt 源加载首页中
+                    (currentType == "py" || currentType == "json" || currentType == "txt") && homeData == null && !viewModel.isSearching -> {
                         val homeError = viewModel.homeError
                         val loadError = viewModel.loadErrorFor(viewModel.selectedSourceId)
                         when {
-                            homeError != null -> EmptyBox("插件调用失败:\n$homeError")
-                            loadError != null -> EmptyBox("插件加载失败:\n$loadError")
+                            homeError != null -> EmptyBox("源调用失败:\n$homeError")
+                            loadError != null -> EmptyBox("源加载失败:\n$loadError")
                             else -> LoadingBox("首页加载中...")
                         }
                     }
@@ -547,11 +549,11 @@ private fun HomeContent(
             val loadError = viewModel.loadErrorFor(viewModel.selectedSourceId)
             when {
                 homeError != null -> {
-                    EmptyBox("插件调用失败:\n$homeError")
+                    EmptyBox("源调用失败:\n$homeError")
                     return@Column
                 }
                 loadError != null -> {
-                    EmptyBox("插件加载失败:\n$loadError")
+                    EmptyBox("源加载失败:\n$loadError")
                     return@Column
                 }
             }
@@ -566,7 +568,7 @@ private fun HomeContent(
             } else {
                 val catError = viewModel.homeError
                 if (catError != null) {
-                    EmptyBox("插件调用失败:\n$catError")
+                    EmptyBox("源调用失败:\n$catError")
                 } else {
                     EmptyBox("该分类暂无视频或加载失败\n请检查网络后重试")
                 }
@@ -1039,30 +1041,74 @@ private fun DetailDialog(
     )
 
     viewModel.playUrl?.let { url ->
-        VideoPlayerOverlay(url, onDismiss = { viewModel.dismissPlayer() })
+        // key(url)：换集时强制重建播放器，确保 VideoView 加载新地址
+        key(url) {
+            VideoPlayerOverlay(
+                url = url,
+                danmakuItems = viewModel.danmakuItems,
+                danmakuEnabled = viewModel.danmakuEnabled,
+                onToggleDanmaku = { viewModel.toggleDanmaku() },
+                onDismiss = { viewModel.dismissPlayer() },
+            )
+        }
     }
 }
 
-/** 全屏视频播放浮层（VideoView 播放 m3u8） */
+/** 全屏视频播放浮层（VideoView 播放 m3u8 + 弹幕叠加层） */
 @Composable
-private fun VideoPlayerOverlay(url: String, onDismiss: () -> Unit) {
+private fun VideoPlayerOverlay(
+    url: String,
+    danmakuItems: List<io.legado.app.data.video.DanmakuItem>,
+    danmakuEnabled: Boolean,
+    onToggleDanmaku: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(androidx.compose.ui.graphics.Color.Black),
         ) {
+            var videoView by remember { mutableStateOf<android.widget.VideoView?>(null) }
             AndroidView(
                 factory = { ctx ->
                     android.widget.VideoView(ctx).apply {
+                        val controller = android.widget.MediaController(ctx)
+                        controller.setAnchorView(this)
+                        setMediaController(controller)
                         setVideoURI(android.net.Uri.parse(url))
                         setOnCompletionListener { onDismiss() }
                         setOnErrorListener { _, _, _ -> onDismiss(); true }
                         start()
+                        videoView = this
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+            // 弹幕叠加层：始终创建，用 renderEnabled 控制显示（切换时保留弹幕数据）
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val overlay = remember { io.legado.app.data.video.DanmakuOverlay(context) }
+            LaunchedEffect(danmakuEnabled) {
+                overlay.renderEnabled = danmakuEnabled
+            }
+            AndroidView(
+                factory = { overlay },
+                modifier = Modifier.fillMaxSize(),
+            )
+            LaunchedEffect(danmakuItems) {
+                overlay.setDanmaku(danmakuItems)
+            }
+            // 播放进度轮询驱动弹幕
+            LaunchedEffect(videoView) {
+                val vv = videoView ?: return@LaunchedEffect
+                while (true) {
+                    if (vv.isPlaying) {
+                        overlay.updateTime(vv.currentPosition.toLong())
+                    }
+                    kotlinx.coroutines.delay(100)
+                }
+            }
+            // 关闭按钮
             TextButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -1073,6 +1119,18 @@ private fun VideoPlayerOverlay(url: String, onDismiss: () -> Unit) {
                     imageVector = Icons.Default.Close,
                     contentDescription = "关闭",
                     tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            // 弹幕开关
+            TextButton(
+                onClick = onToggleDanmaku,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+            ) {
+                Text(
+                    text = if (danmakuEnabled) "弹幕开" else "弹幕关",
+                    color = if (danmakuEnabled) MaterialTheme.colorScheme.primary else pageSecondaryTextColor(),
                 )
             }
         }

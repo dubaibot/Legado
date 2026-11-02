@@ -1,0 +1,7 @@
+# 示例视频列表
+[电影]
+示例电影一|https://example.com/play1.m3u8|https://example.com/pic1.jpg
+示例电影二|https://example.com/play2.m3u8
+
+[电视剧]
+示例剧|第1集$https://example.com/ep1.m3u8#第2集$https://example.com/ep2.m3u8|https://example.com/pic3.jpg
