@@ -139,7 +139,6 @@ import kotlinx.coroutines.withContext
 fun HomepageScreen(
     viewModel: HomepageViewModel = viewModel(),
     bottomPaddingPx: Int = 0,
-    hideTopBar: Boolean = false,
     onBookClick: (name: String?, author: String?, bookUrl: String, origin: String?, coverPath: String?) -> Unit,
     onModuleHeaderClick: (title: String?, sourceUrl: String, exploreUrl: String?) -> Unit,
 ) {
@@ -216,7 +215,6 @@ fun HomepageScreen(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            if (hideTopBar) return@Scaffold
             val topBarColors = pageTopBarColors()
             Box(
                 modifier = Modifier

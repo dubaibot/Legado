@@ -15,7 +15,7 @@ static def releaseTime() {
 }
 
 def name = "myreader"
-def appVersion = "3.26.102702"
+def appVersion = "3.26.110201"
 def gitCommits = 0
 try {
     def result = 'git rev-list HEAD --count'.execute().text.trim()
@@ -196,6 +196,10 @@ chaquopy {
         version = "3.11"
         // 构建机需提供同版本 Python（pip 安装与 pyc 编译依赖）
         buildPython("python3.11")
+        // 预装常用库：用户 py 源普遍依赖 requests（网络请求），不预装会加载失败
+        pip {
+            install("requests")
+        }
     }
 }
 

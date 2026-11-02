@@ -10,6 +10,7 @@ import sys
 
 _plugin_dirs = []
 _loaded_plugins = {}
+_load_errors = {}
 
 
 def add_plugin_dir(dir_path):
@@ -34,6 +35,7 @@ def clear_plugin_modules():
         sys.path_importer_cache.pop(d, None)
 
     _loaded_plugins.clear()
+    _load_errors.clear()
 
 
 def load_plugin(plugin_id, file_path):
@@ -78,6 +80,17 @@ def reload_all(plugin_dir):
             try:
                 load_plugin(entry, plugin_path)
             except Exception as e:
+                _load_errors[entry] = str(e)
                 print("Failed to load plugin " + entry + ": " + str(e))
 
     return dict(_loaded_plugins)
+
+
+def get_load_error(plugin_id):
+    """获取单个插件的加载错误信息，无错误返回 None。"""
+    return _load_errors.get(plugin_id)
+
+
+def get_load_errors():
+    """获取所有插件的加载错误信息副本。"""
+    return dict(_load_errors)

@@ -401,7 +401,6 @@ object PreferKey {
     const val homepageLayoutMode = "homepageLayoutMode"
     const val homepagePreload = "homepagePreload"
     const val homepageSourceHidden = "homepageSourceHidden"
-    const val customHomepageEnabled = "customHomepageEnabled"
     const val pyHomePluginId = "pyHomePluginId"
     const val pySearchHistory = "pySearchHistory"
     const val pyFavorites = "pyFavorites"

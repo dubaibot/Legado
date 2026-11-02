@@ -74,13 +74,16 @@ Entries discovered by the Agent during task execution should follow this format:
   - Release APK：universal 31.9MB / arm64-v8a 23.3MB / armeabi-v7a 22.5MB
   - worktree 构建：`git worktree add --detach <dir> origin/test`，worktree 需补 local.properties（sdk.dir）；test 分支 gradle.properties 改 -Xmx4g + in-process + workers.max=2 防 R8 OOM
   - applicationId 改 com.myreaderD.reader 需为 google-services.json 增 com.myreaderD.reader.release 客户端条目
-  - JS 引擎换件约束：engine 用 org.htmlunit:htmlunit-core-js:5.3.0，其 SlotMapOwner 使用 MethodHandle.invokeExact（min-api 26），app 与 modules/rhino 的 minSdk 必须保持 26（回退 23 会在 mergeExtDexAppDebug 报 D8 错）
-  - APK 下载预览：复制产物到 /tmp/opencode，由后台终端 `python3 -m http.server 8902` 对外提供
-  - 构建日志经 `| tail` 缓冲时文件为 0 字节，必须等命令结束再读
+   - JS 引擎换件约束：engine 用 org.htmlunit:htmlunit-core-js:5.3.0，其 SlotMapOwner 使用 MethodHandle.invokeExact（min-api 26），app 与 modules/rhino 的 minSdk 必须保持 26（回退 23 会在 mergeExtDexAppDebug 报 D8 错）
+   - Chaquopy 约束：build.gradle defaultConfig 内 `pip { install("requests") }` 预装 requests（Chaquopy 17.x 用 PipExtension 的 install()，`requirements=` 属性不存在会构建报错；用户 py 源普遍 import requests，未预装会 ModuleNotFoundError 加载失败）；py 插件接口约定：插件模块须定义 search(keyword)/detail(id)/play(url)，返回 JSON 字符串，search 须返回 `[{"id","title","url"}]` 数组（也兼容 {list/data/items} 包装）；HomeBridge 15s 超时；插件加载失败原因经 pyloader.py 的 `get_load_error(pluginId)` 暴露，PyLoader.getLoadError() 读取并展示到管理页
+   - Release 签名：signingConfigs 仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效，属性缺失产出未签名 APK 安装必报「安装包无效」；属性写在 ~/.gradle/gradle.properties（不进仓库，用户级优先级高于项目级）；密钥库 /workspace/keystore/myreader-release.jks（alias myreader）；验证用 apksigner verify --print-certs；换签名密钥后旧版必须先卸载
+   - Release APK：universal 31.9MB / arm64-v8a 23.3MB / armeabi-v7a 22.5MB
+   - APK 下载预览：复制产物到 /tmp/opencode，由后台终端 `python3 -m http.server 8902` 对外提供
+   - 构建日志经 `| tail` 缓冲时文件为 0 字节，必须等命令结束再读
 
-[死代码审计方法教训]
-- Date: 2026-10-24
-- Context: 分支全面检测中误判 data/entities/readRecord/ReadRecord.kt 为死代码（grep head -5 截断漏掉 BackupFileValidator.kt:17 的 import），删除后 compileAppDebugKotlin 失败，恢复后通过
+[死代码审计与 edit 工具模糊匹配风险]
+- Date: 2026-11-02（合并 2026-10-24 与 2026-10-29 条目）
+- Context: 分支全面检测中误判死代码（grep head -5 截断漏掉引用）；编辑 RssParserByRule.kt 导入区时 oldString 误写仍"成功"，实际破坏 import
 - Category: Troubleshooting & Debugging
 - Instructions:
   - 引用完整性审计禁止对 grep 结果用 head/N 截断采样——截断处之外的真实引用会漏检，必须全量输出
@@ -88,6 +91,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - 同名文件在不同包是合法的（style1/style2 书架适配器等 26 对同名文件均为正常），判定死代码看引用看包名，看文件名
   - Launcher1-7 等类可定义在同名外文件中（WelcomeActivity.kt 内含 7 个 Launcher 顶级类），按类名全树 grep 而非按文件名找
   - Kotlin 词法扫描需正确处理 raw string 的 `""""` 四引号结尾（末尾 3 引号是终止符，第 4 个是内容），否则误报花括号不平衡
+  - edit 工具对 oldString 存在模糊匹配，oldString 与文件有差异时可能静默按近似内容替换；对 import 区等精细位置的编辑，编辑后必须立即回读验证关键行
 
 [分支与 MR 工作流]
 - Date: 2026-10-24（MR 推送知识 2026-10-29 补充）
@@ -99,18 +103,6 @@ Entries discovered by the Agent during task execution should follow this format:
   - 收编前先验拓扑（merge-base --is-ancestor 两两比对找链式超集末端），只需合并超集分支一个即可覆盖全链
   - 删除远程分支后跑 `git fetch --prune origin` 清理本地跟踪引用
   - MR 创建：remote 是 GitHub，`git push -o merge_request.create` 会 HTTP 500，gh CLI 未认证；MR 需用户手动从 GitHub 创建
-
-[Release APK 签名配置]
-- Date: 2026-10-25
-- Context: 用户安装 release APK 报「安装包无效」，根因为 RELEASE_STORE_FILE 属性缺失导致签名配置被跳过，产出未签名 APK
-- Category: Build Methods
-- Instructions:
-  - release 签名仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效（app/build.gradle signingConfigs 条件块），属性缺失时产出未签名 APK，安装必报「安装包无效」
-  - 签名属性写在 ~/.gradle/gradle.properties（不进仓库）：RELEASE_STORE_FILE/RELEASE_STORE_PASSWORD/RELEASE_KEY_ALIAS/RELEASE_KEY_PASSWORD
-  - 用户级（GRADLE_USER_HOME）gradle.properties 优先级高于项目级：在项目 gradle.properties 里重复写 RELEASE_* 不会生效，构建始终用 ~/.gradle 那份（曾误配项目级 legado.jks 被静默覆盖，APK 仍用 myreader 密钥签名）
-  - 密钥库 /workspace/keystore/myreader-release.jks（alias myreader，密码在上述属性文件），已 gitignore /keystore/
-  - 签名验证命令：/opt/android-sdk/build-tools/36.0.0/apksigner verify --print-certs <apk>
-  - 换签名密钥后旧版本必须先卸载才能装新包（签名冲突）
 
 [环境无预装 JDK/Android SDK 时的构建前置]
 - Date: 2026-10-27
@@ -130,15 +122,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - 修复模式：values/styles.xml 定义 `ThemeOverlay.App.MaterialWidget`（parent=Theme.Material3.DayNight + colorPrimary/colorAccent 覆盖为 app 色板），在每个 Material 控件标签上加 `android:theme="@style/ThemeOverlay.App.MaterialWidget"`，只作用单棵子树不动全局主题
   - android:theme 会传播到子视图（LayoutInflater 子节点用 parent.getContext()），布局级修复对全部消费方生效
   - 从 Legado_T 再移植布局时，凡见 MaterialCardView/MaterialButton 必须挂此 overlay；项目已修：item_manage.xml、dialog_recycler_view_adaptive.xml、dialog_ai_purify_confirm.xml
-  - 全量排查方法：`rg -ln "com.google.android.material.(card|button)" app/src/main/res/layout*`，layout-land 等变体目录也要扫
-
-[edit 工具模糊匹配风险]
-- Date: 2026-10-29
-- Context: 编辑 RssParserByRule.kt 导入区时 oldString 把 coroutineScope 误写成 coroutineContext，编辑仍然"成功"，实际破坏了 import
-- Category: Troubleshooting & Debugging
-- Instructions:
-- edit 工具对 oldString 存在模糊匹配，oldString 与文件有差异时可能静默按近似内容替换
-- 对 import 区等精细位置的编辑，编辑后必须立即回读验证关键行；出现"oldString 不完全一致却编辑成功"的情况优先怀疑模糊匹配
+   - 全量排查方法：`rg -ln "com.google.android.material.(card|button)" app/src/main/res/layout*`，layout-land 等变体目录也要扫
 
 [RedirectCacheInterceptor 仅缓存 GET 请求的重定向映射]
 - Date: 2026-10-29

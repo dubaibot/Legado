@@ -69,15 +69,16 @@ object PyLoader {
     /**
      * 从 SAF Uri 安装插件。
      * 文件名作为 pluginId（去除 .py 扩展名）。
+     * 自定义显示名称写入 meta.json。
      */
-    fun installFromUri(uri: Uri): Boolean {
+    fun installFromUri(uri: Uri, displayName: String? = null): Boolean {
         return try {
-            val name = uri.lastPathSegment ?: "plugin.py"
+            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "plugin.py"
             val pluginId = name.substringBeforeLast('.')
             val pyContent = appCtx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
                 ?: return false
 
-            var metaJson = """{"id":"$pluginId","name":"$pluginId","type":"video"}"""
+            var metaJson = """{"id":"$pluginId","name":"${displayName?.ifBlank { pluginId } ?: pluginId}","type":"video"}"""
 
             // 如果 uri 指向一个目录（rar/zip），需要解压后读取 plugin.py
             // 简化实现：仅支持单个 .py 文件
@@ -178,6 +179,19 @@ object PyLoader {
             helper.callAttr("get_plugin", pluginId)
         } catch (e: Exception) {
             LogUtils.d(TAG, "getModule failed: $pluginId: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * 获取插件加载错误信息（如 ModuleNotFoundError 等），无错误返回 null。
+     */
+    fun getLoadError(pluginId: String): String? {
+        return try {
+            val helper = PythonEnv.module("pyloader") ?: return null
+            val result = helper.callAttr("get_load_error", pluginId)?.toString()
+            if (result == null || result == "None") null else result
+        } catch (e: Exception) {
             null
         }
     }

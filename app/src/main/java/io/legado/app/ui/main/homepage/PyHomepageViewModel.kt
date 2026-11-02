@@ -1,5 +1,7 @@
 package io.legado.app.ui.main.homepage
 
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -12,6 +14,7 @@ import io.legado.app.help.python.PyLoader
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefString
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -26,10 +29,10 @@ import kotlin.coroutines.resume
  * Python 影视首页 ViewModel。
  *
  * 职责：
- * - 管理已安装 py 源列表（IO 线程加载）
- * - 顶栏搜索（单一选中源）
+ * - 统一管理首页源（py 插件源 + HTML 自定义页面）
+ * - 顶栏搜索（当前选中的 py 源）
  * - 搜索历史 / 收藏（SharedPreferences JSON 持久化）
- * - 自定义首页开关（开启后内容区显示原首页推荐模块）
+ * - 导入 py/html 源（SAF 回调后在此执行文件 IO）
  */
 class PyHomepageViewModel : ViewModel() {
 
@@ -51,10 +54,18 @@ class PyHomepageViewModel : ViewModel() {
         val loading: Boolean = false,
     )
 
-    private val _plugins = MutableStateFlow<List<PyLoader.PyPlugin>>(emptyList())
-    val plugins = _plugins.asStateFlow()
+    /** 首页源（py 插件 / HTML 页面统一模型） */
+    data class HomeSource(
+        val id: String,
+        val name: String,
+        val type: String,     // "py" | "html"
+        val loaded: Boolean,  // py 源加载状态；html 恒为 true
+    )
 
-    var selectedPluginId by mutableStateOf(AppConfig.pyHomePluginId)
+    private val _sources = MutableStateFlow<List<HomeSource>>(emptyList())
+    val sources = _sources.asStateFlow()
+
+    var selectedSourceId by mutableStateOf("")
         private set
 
     var searchKeyword by mutableStateOf("")
@@ -70,10 +81,6 @@ class PyHomepageViewModel : ViewModel() {
     var searchMode by mutableStateOf(false)
         private set
 
-    /** 自定义首页开关（镜像 AppConfig.customHomepageEnabled） */
-    var customHomepageEnabled by mutableStateOf(AppConfig.customHomepageEnabled)
-        private set
-
     var searchHistory by mutableStateOf<List<String>>(emptyList())
         private set
 
@@ -83,52 +90,92 @@ class PyHomepageViewModel : ViewModel() {
     var detailState by mutableStateOf<DetailState?>(null)
         private set
 
+    /** 当前选中 HTML 页面的内容（WebView 渲染用） */
+    var htmlContent by mutableStateOf<String?>(null)
+        private set
+
+    // ---- 导入流程状态 ----
+
+    /** 已选择的待导入文件 Uri */
+    var importUri by mutableStateOf<Uri?>(null)
+        private set
+
+    /** 待导入文件的默认名称（文件名） */
+    var importDefaultName by mutableStateOf("")
+        private set
+
+    /** 导入命名弹窗 */
+    var showImportDialog by mutableStateOf(false)
+        private set
+
     /** 源管理弹窗 */
     var showManageDialog by mutableStateOf(false)
         private set
 
     init {
-        refreshPlugins()
+        refreshSources()
         searchHistory = loadHistory()
         favorites = loadFavorites()
         // 首启自动安装内置源为异步完成，延迟后再刷一次兜底
         viewModelScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(8000)
+            delay(8000)
             withContext(Dispatchers.Main) {
-                if (_plugins.value.isEmpty()) {
-                    refreshPlugins()
+                if (_sources.value.isEmpty()) {
+                    refreshSources()
                 }
             }
         }
+    }
+
+    /** 当前选中源类型（"py" | "html" | null） */
+    fun currentSourceType(): String? {
+        return _sources.value.find { it.id == selectedSourceId }?.type
     }
 
     /** 当前选中源显示名（标题用） */
     fun currentSourceName(): String? {
-        if (selectedPluginId.isBlank()) return null
-        return _plugins.value.find { it.meta.id == selectedPluginId }?.meta?.name
+        return _sources.value.find { it.id == selectedSourceId }?.name
     }
 
-    /** 从磁盘重载插件列表（导入/卸载后调用） */
-    fun refreshPlugins() {
+    /** 获取指定 py 源的加载错误信息 */
+    fun loadErrorFor(id: String): String? {
+        return if (_sources.value.any { it.id == id && it.type == "py" }) {
+            PyLoader.getLoadError(id)
+        } else null
+    }
+
+    /** 从磁盘重载源列表（导入/删除后调用） */
+    fun refreshSources() {
         viewModelScope.launch(Dispatchers.IO) {
             HomeBridge.clearCache()
-            val list = PyLoader.listInstalled()
+            val pyList = PyLoader.listInstalled().map {
+                HomeSource(it.meta.id, it.meta.name, "py", it.loaded)
+            }
             HomeBridge.refreshAllMeta()
+            val htmlList = HomeSourceStore.listHtml().map {
+                HomeSource(it.id, it.name, "html", true)
+            }
             withContext(Dispatchers.Main) {
-                _plugins.value = list
-                if (list.none { it.meta.id == selectedPluginId }) {
-                    selectedPluginId = list.firstOrNull()?.meta?.id ?: ""
-                    AppConfig.pyHomePluginId = selectedPluginId
+                _sources.value = pyList + htmlList
+                if (_sources.value.none { it.id == selectedSourceId }) {
+                    selectedSourceId = _sources.value.firstOrNull()?.id ?: ""
+                    if (selectedSourceId.isNotEmpty()) {
+                        AppConfig.pyHomePluginId = selectedSourceId
+                    }
                 }
             }
         }
     }
 
-    /** 切换当前源（分组选择） */
-    fun selectPlugin(pluginId: String) {
-        selectedPluginId = pluginId
-        AppConfig.pyHomePluginId = pluginId
+    /** 切换当前源 */
+    fun selectSource(sourceId: String) {
+        selectedSourceId = sourceId
+        AppConfig.pyHomePluginId = sourceId
         searchResults = ""
+        htmlContent = null
+        if (currentSourceType() == "html") {
+            loadHtmlContent(sourceId)
+        }
     }
 
     /** 顶栏搜索按钮：切换搜索模式 */
@@ -144,19 +191,13 @@ class PyHomepageViewModel : ViewModel() {
         searchKeyword = keyword
     }
 
-    /** 切换自定义首页开关 */
-    fun toggleCustomHomepage() {
-        customHomepageEnabled = !customHomepageEnabled
-        AppConfig.customHomepageEnabled = customHomepageEnabled
-    }
-
-    /** 执行搜索（记录历史） */
+    /** 执行搜索（记录历史，仅 py 源） */
     fun search(keyword: String) {
         val kw = keyword.trim()
         if (kw.isBlank() || isSearching) return
-        val pluginId = selectedPluginId.ifBlank { _plugins.value.firstOrNull()?.meta?.id ?: "" }
-        if (pluginId.isBlank()) return
-        selectedPluginId = pluginId
+        val pluginId = selectedSourceId.ifBlank { _sources.value.firstOrNull()?.id ?: "" }
+        if (pluginId.isBlank() || currentSourceType() != "py") return
+        selectedSourceId = pluginId
 
         searchKeyword = kw
         addHistory(kw)
@@ -180,6 +221,83 @@ class PyHomepageViewModel : ViewModel() {
 
     fun dismissDetail() {
         detailState = null
+    }
+
+    // ---- 导入 ----
+
+    /** SAF 文件选择回调：记录 Uri 并弹出命名弹窗 */
+    fun onFilePicked(uri: Uri, defaultName: String) {
+        importUri = uri
+        importDefaultName = defaultName
+        showImportDialog = true
+    }
+
+    /** 命名确认后执行导入 */
+    fun confirmImportName(name: String) {
+        val uri = importUri
+        if (uri == null) return
+        showImportDialog = false
+        val displayName = name.trim().ifBlank { importDefaultName }
+        val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: ""
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = if (ext == "py") {
+                PyLoader.installFromUri(uri, displayName)
+            } else {
+                HomeSourceStore.importHtml(uri, displayName)
+            }
+            val msg = if (!ok) {
+                "导入失败"
+            } else if (ext == "py") {
+                // 插件可能因缺少第三方库等原因未加载，提示具体错误
+                PyLoader.getLoadError(fileName.substringBeforeLast('.'))?.let {
+                    "py 源已导入，但未能加载：$it"
+                } ?: "py 源导入成功"
+            } else {
+                "HTML 页面导入成功"
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(appCtx, msg, Toast.LENGTH_LONG).show()
+                importUri = null
+                refreshSources()
+            }
+        }
+    }
+
+    fun cancelImport() {
+        importUri = null
+        showImportDialog = false
+    }
+
+    // ---- 管理 ----
+
+    fun showManageDialog() {
+        showManageDialog = true
+    }
+
+    fun dismissManageDialog() {
+        showManageDialog = false
+    }
+
+    /** 删除源（py 卸载 / html 删除） */
+    fun deleteSource(source: HomeSource) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (source.type == "py") {
+                PyLoader.uninstall(source.id)
+            } else {
+                HomeSourceStore.deleteHtml(source.id)
+            }
+            withContext(Dispatchers.Main) {
+                refreshSources()
+            }
+        }
+    }
+
+    /** 加载选中 HTML 页面内容 */
+    fun loadHtmlContent(sourceId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            htmlContent = HomeSourceStore.readHtml(sourceId)
+        }
     }
 
     // ---- 收藏 ----
@@ -210,25 +328,6 @@ class PyHomepageViewModel : ViewModel() {
         val updated = (listOf(word) + searchHistory.filter { it != word }).take(20)
         searchHistory = updated
         saveHistory(updated)
-    }
-
-    // ---- 管理 ----
-
-    fun showManageDialog() {
-        showManageDialog = true
-    }
-
-    fun dismissManageDialog() {
-        showManageDialog = false
-    }
-
-    fun uninstallPlugin(pluginId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            PyLoader.uninstall(pluginId)
-            withContext(Dispatchers.Main) {
-                refreshPlugins()
-            }
-        }
     }
 
     // ---- HomeBridge 异步包装（回调 -> 挂起） ----
