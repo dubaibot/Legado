@@ -163,7 +163,7 @@ object PyTaskQueue {
 
             val pluginEntry = PythonEnv.module("plugin_entry")
             val jsonResult: String? = if (pluginEntry != null) {
-                pluginEntry.callAttr("call_func_json", module, task.func, task.args)?.toString()
+                callPluginFunc(module, pluginEntry, task.func, task.args)
             } else {
                 LogUtils.d("PyTaskQueue", "plugin_entry not available, fallback to callModuleFunc")
                 PythonEnv.callModuleFunc(module, task.func, task.args)
@@ -176,6 +176,49 @@ object PyTaskQueue {
         } finally {
             activeTasks.remove(taskKey(task.plugin, task.func, task.args))
         }
+    }
+
+    /**
+     * 直接从 Java 调用插件函数，再用 plugin_entry._to_json 序列化为 JSON 字符串。
+     * 绕过 Python getattr 在 Chaquopy 模块对象上的兼容性问题。
+     */
+    private fun callPluginFunc(
+        module: com.chaquo.python.PyObject,
+        pluginEntry: com.chaquo.python.PyObject,
+        func: String,
+        args: List<Any?>,
+    ): String? {
+        return try {
+            val result = module.callAttr(func, *args.toTypedArray())
+            pluginEntry.callAttr("_to_json", result)?.toString()
+        } catch (e: Exception) {
+            // TypeError fallback：参数不匹配时尝试单参数调用
+            if (args.isNotEmpty()) {
+                try {
+                    val result = module.callAttr(func, args[0])
+                    return pluginEntry.callAttr("_to_json", result)?.toString()
+                } catch (e2: Exception) {
+                    // fall through
+                }
+            }
+            val errMsg = getErrorMessage(e, func)
+            LogUtils.d("PyTaskQueue", "callPluginFunc error: $errMsg")
+            buildErrorJson(errMsg)
+        }
+    }
+
+    private fun getErrorMessage(e: Exception, func: String): String {
+        val msg = e.message ?: e.toString()
+        return if (msg.contains("AttributeError") || msg.contains("has no attribute")) {
+            "function not found: $func"
+        } else {
+            "$func: $msg"
+        }
+    }
+
+    private fun buildErrorJson(errMsg: String): String {
+        val escaped = errMsg.replace("\\", "\\\\").replace("\"", "\\\"")
+        return "{\"error\": \"$escaped\"}"
     }
 
     private fun taskKey(plugin: String, func: String, args: List<Any?>): String {

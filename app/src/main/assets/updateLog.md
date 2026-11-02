@@ -24,7 +24,9 @@
 - 修复：HomeBridge.callPlugin 能力检测失败时 fallback 直接调用插件函数（绕过能力检测直接提交任务）
 - 修复：call_func_json 调用失败时返回 {"error": "..."} 而非 "null"，UI 可见错误信息
 - 优化：pyloader.py 加载日志输出到 stdout（logcat 可见）
-- 当前快照：3.26.110208
+- 修复：PyTaskQueue 改为直接从 Java 调用 module.callAttr(func) 而非 Python getattr（绕过 Chaquopy 模块对象 getattr 兼容性问题）
+- 修复：函数调用失败时返回含 AttributeError 信息的 error JSON，UI 可见具体错误
+- 当前快照：3.26.110209
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」
