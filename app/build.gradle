@@ -15,7 +15,7 @@ static def releaseTime() {
 }
 
 def name = "myreader"
-def appVersion = "3.26.110206"
+def appVersion = "3.26.110207"
 def gitCommits = 0
 try {
     def result = 'git rev-list HEAD --count'.execute().text.trim()

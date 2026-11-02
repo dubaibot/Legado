@@ -539,7 +539,11 @@ private fun HomeContent(
         val categoryData = viewModel.categoryData
         val videos = categoryData?.videos ?: homeData.videos
         if (videos.isEmpty()) {
-            EmptyBox("暂无视频")
+            if (viewModel.selectedCategoryId.isEmpty()) {
+                EmptyBox("点击下方分类标签浏览视频")
+            } else {
+                EmptyBox("该分类暂无视频或加载失败\n请检查网络后重试")
+            }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),

@@ -17,7 +17,10 @@
 - 修复：启动崩溃 FileNotFoundException web/help/md/updateLog.md（复制 updateLog.md 到 web/help/md/ 路径）
 - 修复：py 插件函数返回值序列化为 Python repr 而非 JSON，导致首页/搜索/详情均无法解析（改用 plugin_entry.call_func 确保 JSON 序列化）
 - 修复：home() 网络请求超时导致首页一直显示"加载中"（分类不依赖网络，视频尝试加载失败返回空；loadHome 超时兜底设空数据）
-- 当前快照：3.26.110206
+- 修复：HTML 源导入后页面一直显示"加载中"（refreshSources 未调用 loadHtmlContent，已修复）
+- 优化：py 源网络请求失败时打印错误日志（_fetch/home/category/search/detail/play 均输出异常信息）
+- 优化：首页视频为空时显示引导提示而非"暂无视频"
+- 当前快照：3.26.110207
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

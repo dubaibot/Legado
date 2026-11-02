@@ -206,9 +206,10 @@ class PyHomepageViewModel : ViewModel() {
                         AppConfig.pyHomePluginId = selectedSourceId
                     }
                 }
-                // 选中 py 源时加载首页数据
-                if (currentSourceType() == "py") {
-                    loadHome(selectedSourceId)
+                // 选中源时加载对应内容
+                when (currentSourceType()) {
+                    "py" -> loadHome(selectedSourceId)
+                    "html" -> loadHtmlContent(selectedSourceId)
                 }
             }
         }
