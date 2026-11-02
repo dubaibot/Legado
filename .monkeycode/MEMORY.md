@@ -65,6 +65,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - Kotlin 编译约 5-10min，Java+打包约 1-2min，assembleDebug 全量约 10-11min；assembleRelease（含 R8+lintVital）约 23min
   - `-x lintVitalAnalyzeAppRelease -x lintVitalAnalyzeRelease` 不跳过 `lintVitalAppRelease`（不同任务名）
   - soundtouch-jni 需 proguard keep：`-keep class com.tianscar.soundtouch.** { *; }`
+  - GSON 反射反序列化的 Kotlin data class 必须加 `@Keep`（androidx.annotation.Keep）或在 proguard-rules.pro 加 `-keep class pkg.ClassName { *; }`，否则 R8 剥离构造函数导致运行时 "Abstract classes can't be instantiated! Class name: xxx" 崩溃；崩溃调用链特征：Fragment onCreateView → Gson.fromJson → ReflectiveTypeAdapterFactory → ConstructorConstructor 抛 JsonIOException；已修 PyLoader.PyPluginMeta/PyPlugin（HomepageFragment.onCreateView 启动即崩）
   - 缺失视图类占位策略：布局引用但无代码直接访问的自定义视图，创建 FrameLayout/TextView 子类桩即可通过编译（BatteryViewOrgin、EpubReadView、ReadAiFloatingPanel、ReadAiSummaryPanel、ReadAloudPlayerPanel）；StableLiquidGlassView 用无依赖 FrameLayout 桩替代
   - exo_icon_* drawable 来自 media3-ui 1.10.1 AAR；video_* 和 unlock drawable 在所有 fork 和 git 历史中均不存在，创建占位版本
   - Room 迁移链合并为 90→96 单步（ws 的 91-94 中间 schema 不可考）

@@ -195,6 +195,7 @@ fun PyHomepageScreen(
         }
 
         // ---- 内容区 ----
+        val results = parseSearchResults(viewModel.searchResults)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -218,10 +219,10 @@ fun PyHomepageScreen(
                     }
                 }
 
-                parseSearchResults(viewModel.searchResults).isNotEmpty() -> {
+                results.isNotEmpty() -> {
                     SearchResultList(
                         viewModel = viewModel,
-                        results = parseSearchResults(viewModel.searchResults),
+                        results = results,
                     )
                 }
 
