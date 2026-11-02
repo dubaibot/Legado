@@ -159,8 +159,16 @@ object PyTaskQueue {
                 return
             }
 
-            val result = PythonEnv.callModuleFunc(module, task.func, task.args)
-            task.complete(result)
+            // 通过 plugin_entry.call_func_json 调用插件函数，确保返回值序列化为 JSON 字符串
+            // （直接 callAttr().toString() 会输出 Python repr，单引号，非合法 JSON）
+            val pluginEntry = PythonEnv.module("plugin_entry")
+            val jsonResult: String? = if (pluginEntry != null) {
+                pluginEntry.callAttr("call_func_json", module, task.func, task.args)?.toString()
+            } else {
+                // plugin_entry 不可用时回退到直接调用（输出 Python repr，可能非 JSON）
+                PythonEnv.callModuleFunc(module, task.func, task.args)
+            }
+            task.complete(jsonResult)
         } catch (e: Exception) {
             LogUtils.d("PyTaskQueue", "execute task error: ${e.message}")
             task.complete(null)

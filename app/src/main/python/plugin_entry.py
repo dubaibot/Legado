@@ -42,6 +42,35 @@ def call_func(module, func_name, args):
         return None, str(e)
 
 
+def call_func_json(module, func_name, args):
+    """调用插件函数，仅返回 JSON 字符串（不返回错误信息）。
+
+    供 PyTaskQueue 使用：避免 Java 侧处理 Python tuple。
+    调用失败时返回 "null" 并打印错误到 stdout。
+    """
+    func = getattr(module, func_name, None)
+    if func is None or not callable(func):
+        print("[call_func_json] function not found: " + func_name)
+        return "null"
+    try:
+        result = func(*args)
+        return _to_json(result)
+    except TypeError as e:
+        try:
+            sig = inspect.signature(func)
+            param_names = list(sig.parameters.keys())
+            if len(param_names) == 1 and len(args) >= 1:
+                result = func(args[0])
+                return _to_json(result)
+        except Exception:
+            pass
+        print("[call_func_json] TypeError for " + func_name + ": " + str(e))
+        return "null"
+    except Exception as e:
+        print("[call_func_json] " + func_name + ": " + str(e))
+        return "null"
+
+
 def detect_capabilities(module):
     """检测插件模块的能力。
 

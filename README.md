@@ -100,7 +100,8 @@ https://www.yuque.com/legado/wiki/community
 - 修复：顶栏搜索按钮始终显示
 - 修复：插件加载错误在管理页可视化展示
 - 修复：启动崩溃 FileNotFoundException web/help/md/updateLog.md（复制 updateLog.md 到 web/help/md/ 路径）
-- 当前快照：3.26.110204
+- 修复：py 插件函数返回值序列化为 Python repr 而非 JSON，导致首页/搜索/详情均无法解析（改用 plugin_entry.call_func 确保 JSON 序列化）
+- 当前快照：3.26.110205
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」
