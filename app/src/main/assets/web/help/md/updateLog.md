@@ -20,7 +20,11 @@
 - 修复：HTML 源导入后页面一直显示"加载中"（refreshSources 未调用 loadHtmlContent，已修复）
 - 优化：py 源网络请求失败时打印错误日志（_fetch/home/category/search/detail/play 均输出异常信息）
 - 优化：首页视频为空时显示引导提示而非"暂无视频"
-- 当前快照：3.26.110207
+- 修复：plugin_entry.detect_capabilities 移除 inspect.signature 依赖（Chaquopy 兼容性问题可能导致能力检测失败）
+- 修复：HomeBridge.callPlugin 能力检测失败时 fallback 直接调用插件函数（绕过能力检测直接提交任务）
+- 修复：call_func_json 调用失败时返回 {"error": "..."} 而非 "null"，UI 可见错误信息
+- 优化：pyloader.py 加载日志输出到 stdout（logcat 可见）
+- 当前快照：3.26.110208
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

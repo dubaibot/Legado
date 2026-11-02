@@ -107,7 +107,9 @@ object PyLoader {
                 return false
             }
 
+            LogUtils.d(TAG, "reloading plugins from: ${pluginsDir.absolutePath}")
             val result = helper.callAttr("reload_all", pluginsDir.absolutePath)
+            LogUtils.d(TAG, "reload result: ${result?.size ?: 0} plugins")
 
             // 注册插件解析器到 PythonEnv
             PythonEnv.setPluginResolver { pluginId ->
@@ -120,7 +122,6 @@ object PyLoader {
             // 恢复任务队列
             PyTaskQueue.resume()
 
-            LogUtils.d(TAG, "reload done: ${result?.size ?: 0} plugins")
             true
         } catch (e: Exception) {
             LogUtils.d(TAG, "reload failed: ${e.message}")
@@ -178,7 +179,11 @@ object PyLoader {
     fun getModule(pluginId: String): PyObject? {
         return try {
             val helper = PythonEnv.module("pyloader") ?: return null
-            helper.callAttr("get_plugin", pluginId)
+            val module = helper.callAttr("get_plugin", pluginId)
+            if (module == null) {
+                LogUtils.d(TAG, "getModule: plugin not loaded: $pluginId")
+            }
+            module
         } catch (e: Exception) {
             LogUtils.d(TAG, "getModule failed: $pluginId: ${e.message}")
             null

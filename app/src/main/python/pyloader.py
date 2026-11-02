@@ -41,19 +41,28 @@ def clear_plugin_modules():
 def load_plugin(plugin_id, file_path):
     """按文件路径加载单个插件模块。"""
     module_name = "plugin_" + plugin_id
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None or spec.loader is None:
-        raise ImportError("Cannot load plugin: " + file_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    _loaded_plugins[plugin_id] = module
-    return module
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("Cannot load plugin: " + file_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        _loaded_plugins[plugin_id] = module
+        print("[pyloader] Plugin loaded: " + plugin_id)
+        return module
+    except Exception as e:
+        _load_errors[plugin_id] = str(e)
+        print("[pyloader] Failed to load plugin " + plugin_id + ": " + str(e))
+        raise
 
 
 def get_plugin(plugin_id):
     """获取已加载的插件模块，未加载返回 None。"""
-    return _loaded_plugins.get(plugin_id)
+    module = _loaded_plugins.get(plugin_id)
+    if module is None:
+        print("[pyloader] Plugin not loaded: " + plugin_id)
+    return module
 
 
 def is_plugin_loaded(plugin_id):
@@ -72,8 +81,10 @@ def reload_all(plugin_dir):
 
     plugin_dir = str(plugin_dir)
     if not os.path.isdir(plugin_dir):
+        print("[pyloader] Plugin dir not found: " + plugin_dir)
         return {}
 
+    print("[pyloader] Reloading plugins from: " + plugin_dir)
     for entry in os.listdir(plugin_dir):
         plugin_path = os.path.join(plugin_dir, entry, "plugin.py")
         if os.path.isfile(plugin_path):
@@ -81,8 +92,11 @@ def reload_all(plugin_dir):
                 load_plugin(entry, plugin_path)
             except Exception as e:
                 _load_errors[entry] = str(e)
-                print("Failed to load plugin " + entry + ": " + str(e))
+                print("[pyloader] Failed to load plugin " + entry + ": " + str(e))
+        else:
+            print("[pyloader] Skipping " + entry + " (no plugin.py)")
 
+    print("[pyloader] Reload complete: " + str(len(_loaded_plugins)) + " plugins loaded")
     return dict(_loaded_plugins)
 
 

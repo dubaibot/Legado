@@ -67,7 +67,11 @@ object PythonEnv {
             if (plugin != null) return plugin
         }
         return try {
-            get()?.getModule(name)
+            val module = get()?.getModule(name)
+            if (module == null) {
+                LogUtils.d("PythonEnv", "module not found: $name")
+            }
+            module
         } catch (e: Exception) {
             LogUtils.d("PythonEnv", "getModule $name error: ${e.message}")
             null

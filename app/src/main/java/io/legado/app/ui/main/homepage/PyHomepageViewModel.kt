@@ -129,6 +129,10 @@ class PyHomepageViewModel : ViewModel() {
     var homeData by mutableStateOf<HomeData?>(null)
         private set
 
+    /** 首页/分类加载错误信息（非空时 UI 显示） */
+    var homeError by mutableStateOf<String?>(null)
+        private set
+
     /** 分类浏览数据 */
     var categoryData by mutableStateOf<CategoryData?>(null)
         private set
@@ -302,11 +306,11 @@ class PyHomepageViewModel : ViewModel() {
     /** 加载首页数据（分类 + 推荐视频） */
     fun loadHome(pluginId: String) {
         homeData = null
+        homeError = null
         categoryData = null
         selectedCategoryId = ""
         viewModelScope.launch {
             val result = bridgeHome(pluginId)
-            // bridge 超时或失败时兜底设置空 HomeData，避免一直显示"加载中"
             homeData = parseHomeData(result ?: "") ?: HomeData(emptyList(), emptyList())
         }
     }
@@ -314,6 +318,7 @@ class PyHomepageViewModel : ViewModel() {
     /** 加载分类视频列表 */
     fun loadCategory(pluginId: String, tid: String, pg: Int) {
         selectedCategoryId = tid
+        homeError = null
         categoryData = CategoryData(pg, 1, emptyList())
         viewModelScope.launch {
             val result = bridgeCategory(pluginId, tid, pg)
@@ -347,6 +352,11 @@ class PyHomepageViewModel : ViewModel() {
     private fun parseHomeData(json: String): HomeData? {
         return try {
             val obj = JSONObject(json)
+            val errorMsg = obj.optString("error", "")
+            if (errorMsg.isNotEmpty()) {
+                homeError = errorMsg
+                return null
+            }
             val cats = obj.optJSONArray("categories") ?: return null
             val categories = (0 until cats.length()).mapNotNull { i ->
                 val c = cats.optJSONObject(i) ?: return@mapNotNull null
@@ -366,6 +376,11 @@ class PyHomepageViewModel : ViewModel() {
     private fun parseCategoryData(json: String, defaultPg: Int): CategoryData {
         return try {
             val obj = JSONObject(json)
+            val errorMsg = obj.optString("error", "")
+            if (errorMsg.isNotEmpty()) {
+                homeError = errorMsg
+                return CategoryData(defaultPg, 1, emptyList())
+            }
             val pg = obj.optInt("page", defaultPg)
             val pc = obj.optInt("pagecount", 1)
             val vids = obj.optJSONArray("videos") ?: return CategoryData(pg, pc, emptyList())

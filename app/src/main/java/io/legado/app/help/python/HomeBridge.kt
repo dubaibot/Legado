@@ -135,7 +135,20 @@ object HomeBridge {
         // 能力缓存检查
         val caps = detectCapabilities(pluginId)
         if (!caps.containsKey(func)) {
-            LogUtils.d(TAG, "function not in capabilities: $pluginId.$func")
+            // 能力检测可能因 Chaquopy 兼容问题失败，尝试直接调用作为 fallback
+            val module = PyLoader.getModule(pluginId)
+            if (module != null) {
+                LogUtils.d(TAG, "capability check failed, calling directly: $pluginId.$func")
+                val task = PyTaskQueue.submit(pluginId, func, args)
+                if (task != null) {
+                    callbackExecutor.execute {
+                        val result = task.await(TIMEOUT_MS)
+                        onResult(result)
+                    }
+                    return
+                }
+            }
+            LogUtils.d(TAG, "function not in capabilities and fallback failed: $pluginId.$func")
             callbackExecutor.execute { onResult(null) }
             return
         }

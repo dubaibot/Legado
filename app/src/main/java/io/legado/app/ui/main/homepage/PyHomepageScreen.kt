@@ -240,7 +240,13 @@ fun PyHomepageScreen(
 
                     // py 源加载首页中
                     currentType == "py" && homeData == null && !viewModel.isSearching -> {
-                        LoadingBox("首页加载中...")
+                        val homeError = viewModel.homeError
+                        val loadError = viewModel.loadErrorFor(viewModel.selectedSourceId)
+                        when {
+                            homeError != null -> EmptyBox("插件调用失败:\n$homeError")
+                            loadError != null -> EmptyBox("插件加载失败:\n$loadError")
+                            else -> LoadingBox("首页加载中...")
+                        }
                     }
 
                     else -> {
@@ -535,6 +541,22 @@ private fun HomeContent(
             }
         }
 
+        // 分类为空时检查错误
+        if (homeData.categories.isEmpty()) {
+            val homeError = viewModel.homeError
+            val loadError = viewModel.loadErrorFor(viewModel.selectedSourceId)
+            when {
+                homeError != null -> {
+                    EmptyBox("插件调用失败:\n$homeError")
+                    return@Column
+                }
+                loadError != null -> {
+                    EmptyBox("插件加载失败:\n$loadError")
+                    return@Column
+                }
+            }
+        }
+
         // 视频网格
         val categoryData = viewModel.categoryData
         val videos = categoryData?.videos ?: homeData.videos
@@ -542,7 +564,12 @@ private fun HomeContent(
             if (viewModel.selectedCategoryId.isEmpty()) {
                 EmptyBox("点击下方分类标签浏览视频")
             } else {
-                EmptyBox("该分类暂无视频或加载失败\n请检查网络后重试")
+                val catError = viewModel.homeError
+                if (catError != null) {
+                    EmptyBox("插件调用失败:\n$catError")
+                } else {
+                    EmptyBox("该分类暂无视频或加载失败\n请检查网络后重试")
+                }
             }
         } else {
             LazyVerticalGrid(
