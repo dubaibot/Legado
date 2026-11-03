@@ -53,7 +53,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
@@ -62,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,6 +69,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
+import com.bumptech.glide.integration.compose.GlideImage
 import io.legado.app.lib.theme.eInkGrayscale
 import io.legado.app.ui.theme.pageSecondaryTextColor
 import io.legado.app.ui.theme.pageTopBarBackground
@@ -77,11 +79,11 @@ import io.legado.app.ui.theme.pageTopBarColors
 /**
  * 影视首页：订阅式顶栏 + 内容区。
  *
- * 顶栏：当前源名称 + 搜索 / 历史 / 收藏 / 分组 / 设置（下拉菜单：导入、管理）。
+ * 顶栏：搜索 / 历史 / 收藏 / 分组 / 设置（下拉菜单：导入、管理）。
  * 内容区：
- * - 选中 py/json/txt 源：分类标签 + 视频网格（统一数据模型）
+ * - 选中 py/json/txt 源：分类标签 + 视频网格（统一数据模型，支持翻页）
  * - 选中 HTML 页面：WebView 渲染该页面
- * - 播放浮层：VideoView + 弹幕叠加层
+ * - 播放：启动 VideoPlayerActivity
  * - 无源：提示导入
  */
 @Composable
@@ -117,16 +119,7 @@ fun PyHomepageScreen(
                     .height(48.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = viewModel.currentSourceName() ?: "首页",
-                    fontWeight = FontWeight.Bold,
-                    color = topBarColors.contentColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 16.dp),
-                )
+                Spacer(modifier = Modifier.weight(1f))
                 // 搜索
                 IconButton(onClick = { viewModel.toggleSearchMode() }) {
                     Icon(
@@ -511,7 +504,7 @@ private fun SearchResultList(
     }
 }
 
-/** 首页内容：分类标签栏 + 视频网格 */
+/** 首页内容：分类标签栏 + 视频网格 + 翻页控件 */
 @Composable
 private fun HomeContent(
     viewModel: PyHomepageViewModel,
@@ -524,7 +517,6 @@ private fun HomeContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -559,35 +551,68 @@ private fun HomeContent(
             }
         }
 
-        // 视频网格
+        // 视频内容区（占满剩余空间）
         val categoryData = viewModel.categoryData
         val videos = categoryData?.videos ?: homeData.videos
-        if (videos.isEmpty()) {
-            if (viewModel.selectedCategoryId.isEmpty()) {
-                EmptyBox("点击下方分类标签浏览视频")
-            } else {
-                val catError = viewModel.homeError
-                if (catError != null) {
-                    EmptyBox("源调用失败:\n$catError")
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (videos.isEmpty()) {
+                if (viewModel.selectedCategoryId.isEmpty()) {
+                    EmptyBox("点击分类标签浏览视频")
                 } else {
-                    EmptyBox("该分类暂无视频或加载失败\n请检查网络后重试")
+                    val catError = viewModel.homeError
+                    if (catError != null) {
+                        EmptyBox("源调用失败:\n$catError")
+                    } else {
+                        EmptyBox("该分类暂无视频或加载失败\n请检查网络后重试")
+                    }
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(videos, key = { it.id }) { video ->
+                        VideoCard(
+                            video = video,
+                            onClick = {
+                                viewModel.showDetail(viewModel.selectedSourceId, video.id, video.title)
+                            },
+                        )
+                    }
                 }
             }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+        }
+
+        // 翻页控件（分类浏览时显示）
+        if (viewModel.selectedCategoryId.isNotEmpty() && viewModel.totalPages > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(videos, key = { it.id }) { video ->
-                    VideoCard(
-                        video = video,
-                        onClick = {
-                            viewModel.showDetail(viewModel.selectedSourceId, video.id, video.title)
-                        },
-                    )
+                TextButton(
+                    onClick = { viewModel.loadPrevPage() },
+                    enabled = viewModel.currentPage > 1,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Text("上一页")
+                }
+                Text(
+                    text = "${viewModel.currentPage}/${viewModel.totalPages}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = pageSecondaryTextColor(),
+                )
+                TextButton(
+                    onClick = { viewModel.loadNextPage() },
+                    enabled = viewModel.currentPage < viewModel.totalPages,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Text("下一页")
                 }
             }
         }
@@ -595,6 +620,7 @@ private fun HomeContent(
 }
 
 /** 视频卡片 */
+@OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 private fun VideoCard(
     video: PyHomepageViewModel.VideoItem,
@@ -608,17 +634,30 @@ private fun VideoCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(3f/4f)
                 .clip(RoundedCornerShape(4.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = Icons.Default.OndemandVideo,
-                contentDescription = null,
-                modifier = Modifier.size(28.dp),
-                tint = pageSecondaryTextColor(),
-            )
+            if (video.pic.isNotEmpty()) {
+                GlideImage(
+                    model = video.pic,
+                    contentDescription = video.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.OndemandVideo,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = pageSecondaryTextColor(),
+                    )
+                }
+            }
         }
         Text(
             text = video.title,
@@ -1003,12 +1042,14 @@ private fun DetailDialog(
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                         )
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             playUrls.forEach { (name, url) ->
                                 TextButton(
-                                    onClick = { viewModel.playVideo(detail.pluginId, url) },
+                                    onClick = { viewModel.playVideo(detail.pluginId, url, detail.title) },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                 ) {
                                     Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1039,102 +1080,6 @@ private fun DetailDialog(
             TextButton(onClick = onDismiss) { Text("关闭") }
         },
     )
-
-    viewModel.playUrl?.let { url ->
-        // key(url)：换集时强制重建播放器，确保 VideoView 加载新地址
-        key(url) {
-            VideoPlayerOverlay(
-                url = url,
-                danmakuItems = viewModel.danmakuItems,
-                danmakuEnabled = viewModel.danmakuEnabled,
-                onToggleDanmaku = { viewModel.toggleDanmaku() },
-                onDismiss = { viewModel.dismissPlayer() },
-            )
-        }
-    }
-}
-
-/** 全屏视频播放浮层（VideoView 播放 m3u8 + 弹幕叠加层） */
-@Composable
-private fun VideoPlayerOverlay(
-    url: String,
-    danmakuItems: List<io.legado.app.data.video.DanmakuItem>,
-    danmakuEnabled: Boolean,
-    onToggleDanmaku: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(androidx.compose.ui.graphics.Color.Black),
-        ) {
-            var videoView by remember { mutableStateOf<android.widget.VideoView?>(null) }
-            AndroidView(
-                factory = { ctx ->
-                    android.widget.VideoView(ctx).apply {
-                        val controller = android.widget.MediaController(ctx)
-                        controller.setAnchorView(this)
-                        setMediaController(controller)
-                        setVideoURI(android.net.Uri.parse(url))
-                        setOnCompletionListener { onDismiss() }
-                        setOnErrorListener { _, _, _ -> onDismiss(); true }
-                        start()
-                        videoView = this
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-            // 弹幕叠加层：始终创建，用 renderEnabled 控制显示（切换时保留弹幕数据）
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val overlay = remember { io.legado.app.data.video.DanmakuOverlay(context) }
-            LaunchedEffect(danmakuEnabled) {
-                overlay.renderEnabled = danmakuEnabled
-            }
-            AndroidView(
-                factory = { overlay },
-                modifier = Modifier.fillMaxSize(),
-            )
-            LaunchedEffect(danmakuItems) {
-                overlay.setDanmaku(danmakuItems)
-            }
-            // 播放进度轮询驱动弹幕
-            LaunchedEffect(videoView) {
-                val vv = videoView ?: return@LaunchedEffect
-                while (true) {
-                    if (vv.isPlaying) {
-                        overlay.updateTime(vv.currentPosition.toLong())
-                    }
-                    kotlinx.coroutines.delay(100)
-                }
-            }
-            // 关闭按钮
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "关闭",
-                    tint = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-            // 弹幕开关
-            TextButton(
-                onClick = onToggleDanmaku,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-            ) {
-                Text(
-                    text = if (danmakuEnabled) "弹幕开" else "弹幕关",
-                    color = if (danmakuEnabled) MaterialTheme.colorScheme.primary else pageSecondaryTextColor(),
-                )
-            }
-        }
-    }
 }
 
 /** 解析详情 JSON 的 play_urls 数组 → [(名称, URL)] */

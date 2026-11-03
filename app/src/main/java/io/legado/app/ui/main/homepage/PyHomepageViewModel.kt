@@ -8,14 +8,15 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.video.DanmakuItem
 import io.legado.app.data.video.VideoSource
 import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.python.HomeBridge
 import io.legado.app.help.python.PyLoader
+import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.startActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -125,12 +126,16 @@ class PyHomepageViewModel : ViewModel() {
     var htmlContent by mutableStateOf<String?>(null)
         private set
 
-    /** 播放解析后的 m3u8 URL（非空时显示播放器浮层） */
-    var playUrl by mutableStateOf<String?>(null)
-        private set
-
     /** 首页数据（分类 + 推荐视频） */
     var homeData by mutableStateOf<HomeData?>(null)
+        private set
+
+    /** 当前分类页码（首页推荐时为 0） */
+    var currentPage by mutableStateOf(1)
+        private set
+
+    /** 分类总页数 */
+    var totalPages by mutableStateOf(1)
         private set
 
     /** 首页/分类加载错误信息（非空时 UI 显示） */
@@ -143,14 +148,6 @@ class PyHomepageViewModel : ViewModel() {
 
     /** 当前选中分类 ID（空 = 首页推荐） */
     var selectedCategoryId by mutableStateOf("")
-        private set
-
-    /** 当前播放的弹幕列表（随播放器加载/清空） */
-    var danmakuItems by mutableStateOf<List<DanmakuItem>>(emptyList())
-        private set
-
-    /** 弹幕显示开关 */
-    var danmakuEnabled by mutableStateOf(true)
         private set
 
     // ---- 导入流程状态 ----
@@ -209,7 +206,6 @@ class PyHomepageViewModel : ViewModel() {
     /** 从磁盘重载源列表（导入/删除后调用） */
     fun refreshSources() {
         viewModelScope.launch(Dispatchers.IO) {
-            HomeBridge.clearCache()
             val pyList = PyLoader.listInstalled().map {
                 HomeSource(it.meta.id, it.meta.name, "py", it.loaded)
             }
@@ -246,6 +242,8 @@ class PyHomepageViewModel : ViewModel() {
         homeData = null
         categoryData = null
         selectedCategoryId = ""
+        currentPage = 1
+        totalPages = 1
         when (currentSourceType()) {
             "py", "json", "txt" -> loadHome(sourceId)
             "html" -> loadHtmlContent(sourceId)
@@ -310,8 +308,8 @@ class PyHomepageViewModel : ViewModel() {
         detailState = null
     }
 
-    /** 播放：解析播放地址（py 走插件 play，json/txt 直连），并加载弹幕 */
-    fun playVideo(pluginId: String, playPageUrl: String) {
+    /** 播放：解析播放地址（py 走插件 play，json/txt 直连），启动 VideoPlayerActivity */
+    fun playVideo(pluginId: String, playPageUrl: String, title: String) {
         viewModelScope.launch {
             val type = sourceTypeOf(pluginId)
             val url = when (type) {
@@ -330,34 +328,10 @@ class PyHomepageViewModel : ViewModel() {
                 }
             }
             if (url.isNotEmpty()) {
-                playUrl = url
-                danmakuItems = emptyList()
-                loadDanmaku(pluginId, playPageUrl)
-            }
-        }
-    }
-
-    fun dismissPlayer() {
-        playUrl = null
-        danmakuItems = emptyList()
-    }
-
-    /** 切换弹幕显示 */
-    fun toggleDanmaku() {
-        danmakuEnabled = !danmakuEnabled
-    }
-
-    /** 加载弹幕：json/txt 源走统一接口，py 源暂不支持 */
-    private fun loadDanmaku(sourceId: String, videoId: String) {
-        if (sourceTypeOf(sourceId) == "py") return
-        viewModelScope.launch(Dispatchers.IO) {
-            val list = try {
-                sourceFor(sourceId)?.danmaku(videoId)
-            } catch (e: Exception) {
-                null
-            }
-            withContext(Dispatchers.Main) {
-                danmakuItems = list?.items ?: emptyList()
+                appCtx.startActivity<VideoPlayerActivity> {
+                    putExtra("videoUrl", url)
+                    putExtra("videoTitle", title)
+                }
             }
         }
     }
@@ -370,6 +344,8 @@ class PyHomepageViewModel : ViewModel() {
         homeError = null
         categoryData = null
         selectedCategoryId = ""
+        currentPage = 1
+        totalPages = 1
         when (sourceTypeOf(pluginId)) {
             "py" -> {
                 viewModelScope.launch {
@@ -402,6 +378,8 @@ class PyHomepageViewModel : ViewModel() {
     fun loadCategory(pluginId: String, tid: String, pg: Int) {
         selectedCategoryId = tid
         homeError = null
+        currentPage = pg
+        totalPages = 1
         categoryData = CategoryData(pg, 1, emptyList())
         when (sourceTypeOf(pluginId)) {
             "py" -> {
@@ -409,6 +387,8 @@ class PyHomepageViewModel : ViewModel() {
                     val result = bridgeCategory(pluginId, tid, pg)
                     if (result != null) {
                         categoryData = parseCategoryData(result, pg)
+                        currentPage = categoryData?.page ?: pg
+                        totalPages = categoryData?.pagecount ?: 1
                     }
                 }
             }
@@ -427,9 +407,25 @@ class PyHomepageViewModel : ViewModel() {
                                 it.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
                             )
                         } ?: CategoryData(pg, 1, emptyList())
+                        currentPage = categoryData?.page ?: pg
+                        totalPages = categoryData?.pagecount ?: 1
                     }
                 }
             }
+        }
+    }
+
+    /** 加载下一页 */
+    fun loadNextPage() {
+        if (currentPage < totalPages) {
+            loadCategory(selectedSourceId, selectedCategoryId, currentPage + 1)
+        }
+    }
+
+    /** 加载上一页 */
+    fun loadPrevPage() {
+        if (currentPage > 1) {
+            loadCategory(selectedSourceId, selectedCategoryId, currentPage - 1)
         }
     }
 
@@ -439,6 +435,8 @@ class PyHomepageViewModel : ViewModel() {
         if (tid.isEmpty()) {
             selectedCategoryId = ""
             categoryData = null
+            currentPage = 1
+            totalPages = 1
         } else {
             loadCategory(selectedSourceId, tid, 1)
         }

@@ -5,6 +5,12 @@
 【11-03】
 - 新增：Spider 类兼容层，支持 FongMi/TV 约定的 py 源（无模块级函数时自动实例化 Spider 子类调用 homeContent/categoryContent/detailContent/searchContent/playerContent）
 - 新增：插件调用结果归一化（Spider 类方法输出统一转换为 App 数据格式，兼容 CMS vod_play_from/vod_play_url 格式）
+- 修复：首页顶栏移除源名称显示，内容区域满屏显示
+- 新增：视频卡片封面图显示（Glide 加载，3:4 比例）
+- 新增：分类浏览翻页控件（上一页/下一页 + 页码指示）
+- 修复：详情弹窗选集列表横向滚动
+- 修复：播放页面改用 VideoPlayerActivity（GSY 播放器），替换原简易 VideoView 浮层
+- 优化：refreshSources 不再清空 HomeBridge 缓存，减少重复能力检测开销
 
 【11-02】
 - 新增：首页源管理页（导入 py 插件 / HTML 自定义页面，支持自定义名称与删除）
