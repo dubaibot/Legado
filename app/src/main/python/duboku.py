@@ -16,7 +16,6 @@ class Spider(Spider):
 
     def init(self, extend=""):
         self.host = "https://www.dbku.tv"
-        self.session = None
         self.categories = [
             {"type_id": "1", "type_name": "电影"},
             {"type_id": "2", "type_name": "连续剧"},
@@ -32,19 +31,10 @@ class Spider(Spider):
             "Referer": self.host,
         }
 
-    def _get_session(self):
-        if self.session is None:
-            import requests
-            self.session = requests.Session()
-            self.session.headers.update(self.headers)
-        return self.session
-
     def _fetch(self, url):
-        session = self._get_session()
         try:
-            resp = session.get(url, timeout=8, proxies=session.proxies or None)
-            resp.encoding = "utf-8"
-            return resp.text
+            html = self.fetch(url, headers=self.headers)
+            return html or ""
         except Exception as e:
             print(f"[_fetch error] {url}: {e}")
             return ""

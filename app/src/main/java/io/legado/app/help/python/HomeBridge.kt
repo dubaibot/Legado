@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
  */
 object HomeBridge {
 
-    private const val TIMEOUT_MS = 15_000L
+    private const val TIMEOUT_MS = 30_000L
     private const val TAG = "HomeBridge"
 
     /** 插件能力缓存：pluginId -> {func: [paramNames]} */
