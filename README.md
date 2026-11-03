@@ -116,6 +116,11 @@ https://www.yuque.com/legado/wiki/community
 - 新增：VideoHttpClient 共享 HTTP 客户端（连接池 + 响应缓存 TTL 5 分钟）
 - 新增：JsonVideoSource 支持 FongMi Config 多站点 + CMS V10 + 自定义端点
 - 重写：VideoSourceRegistry 支持 PY/JSON/TXT/HTML 四类源创建与展开
+- 新增：源实例缓存（VideoSourceRegistry ConcurrentHashMap，避免重复读盘+创建）
+- 新增：py 源结果缓存（home/category/search TTL 5 分钟，减少 Python 解释器重复执行）
+- 新增：后台预热机制（refreshSources 时并发预加载所有源 home 数据，切换源直接命中）
+- 优化：切换源不清空缓存，切回来直接命中 homeCache/categoryCache
+- 重构：ViewModel 统一走 VideoSource 接口，删除 bridge*/parse* 分叉逻辑（py/json/txt 一套代码）
 - 当前快照：3.26.110310
 
 【10-27】
