@@ -150,6 +150,15 @@ class PyHomepageViewModel : ViewModel() {
     var categoryData by mutableStateOf<CategoryData?>(null)
         private set
 
+    /** 首页结果缓存（key=pluginId），切换源时清空 */
+    private val homeCache = mutableMapOf<String, HomeData>()
+
+    /** 分类结果缓存（key=pluginId|tid|pg），切换源时清空 */
+    private val categoryCache = mutableMapOf<String, CategoryData>()
+
+    /** 生成分类缓存键 */
+    private fun categoryCacheKey(pluginId: String, tid: String, pg: Int): String = "$pluginId|$tid|$pg"
+
     /** 当前选中分类 ID（空 = 首页推荐） */
     var selectedCategoryId by mutableStateOf("")
         private set
@@ -249,6 +258,9 @@ class PyHomepageViewModel : ViewModel() {
         currentPage = 1
         totalPages = 1
         isLoadingMore = false
+        // 切换源时清空缓存
+        homeCache.clear()
+        categoryCache.clear()
         when (currentSourceType()) {
             "py", "json", "txt" -> loadHome(sourceId)
             "html" -> loadHtmlContent(sourceId)
@@ -313,13 +325,15 @@ class PyHomepageViewModel : ViewModel() {
         detailState = null
     }
 
-    /** 播放：解析播放地址（py 走插件 play，json/txt 直连），启动 VideoPlayerActivity */
-    fun playVideo(pluginId: String, playPageUrl: String, title: String) {
+    /** 播放：解析播放地址（py 走插件 play，json/txt 直连），启动 VideoPlayerActivity，传完整集数列表 */
+    fun playVideo(pluginId: String, playUrls: List<Pair<String, String>>, title: String, initialIndex: Int = 0) {
         viewModelScope.launch {
             val type = sourceTypeOf(pluginId)
-            val url = when (type) {
+            val initialPair = playUrls.getOrNull(initialIndex)
+            val initialUrl = initialPair?.second ?: ""
+            val resolvedUrl = when (type) {
                 "py" -> {
-                    val result = bridgePlay(pluginId, playPageUrl)
+                    val result = bridgePlay(pluginId, initialUrl)
                     try {
                         JSONObject(result ?: "").optString("url", "")
                     } catch (e: Exception) {
@@ -328,14 +342,26 @@ class PyHomepageViewModel : ViewModel() {
                 }
                 else -> {
                     val source = sourceFor(pluginId)
-                    val result = source?.play(playPageUrl)
-                    result?.url ?: ""
+                    val result = source?.play(initialUrl)
+                    result?.url ?: initialUrl
                 }
             }
-            if (url.isNotEmpty()) {
+            if (resolvedUrl.isNotEmpty()) {
+                // 构建集数列表 JSON（传完整列表给播放器，支持集数切换）
+                val episodesJson = JSONArray().apply {
+                    playUrls.forEach { (name, url) ->
+                        put(JSONObject().apply {
+                            put("title", name)
+                            put("url", url)
+                        })
+                    }
+                }.toString()
                 appCtx.startActivity<VideoPlayerActivity> {
-                    putExtra("videoUrl", url)
+                    putExtra("videoUrl", resolvedUrl)
                     putExtra("videoTitle", title)
+                    putExtra("episodesJson", episodesJson)
+                    putExtra("pyPluginId", pluginId)
+                    putExtra("initialEpisodeIndex", initialIndex)
                 }
             }
         }
@@ -352,11 +378,18 @@ class PyHomepageViewModel : ViewModel() {
         currentPage = 1
         totalPages = 1
         isLoadingMore = false
+        // 缓存命中直接返回
+        homeCache[pluginId]?.let { cached ->
+            homeData = cached
+            return
+        }
         when (sourceTypeOf(pluginId)) {
             "py" -> {
                 viewModelScope.launch {
                     val result = bridgeHome(pluginId)
-                    homeData = parseHomeData(result ?: "") ?: HomeData(emptyList(), emptyList())
+                    val data = parseHomeData(result ?: "") ?: HomeData(emptyList(), emptyList())
+                    homeData = data
+                    homeCache[pluginId] = data
                 }
             }
             else -> {
@@ -368,12 +401,14 @@ class PyHomepageViewModel : ViewModel() {
                         Pair(emptyList(), emptyList())
                     }
                     withContext(Dispatchers.Main) {
-                        homeData = HomeData(
+                        val data = HomeData(
                             categories = cats.map { Category(it.id, it.name) },
                             videos = vids.map {
                                 VideoItem(it.id, it.title, it.pic, it.remarks)
                             },
                         )
+                        homeData = data
+                        homeCache[pluginId] = data
                     }
                 }
             }
@@ -388,14 +423,24 @@ class PyHomepageViewModel : ViewModel() {
         totalPages = 1
         categoryData = CategoryData(pg, 1, emptyList())
         isLoadingMore = false
+        // 缓存命中直接返回
+        val cacheKey = categoryCacheKey(pluginId, tid, pg)
+        categoryCache[cacheKey]?.let { cached ->
+            categoryData = cached
+            currentPage = cached.page
+            totalPages = cached.pagecount
+            return
+        }
         when (sourceTypeOf(pluginId)) {
             "py" -> {
                 viewModelScope.launch {
                     val result = bridgeCategory(pluginId, tid, pg)
                     if (result != null) {
-                        categoryData = parseCategoryData(result, pg)
-                        currentPage = categoryData?.page ?: pg
-                        totalPages = categoryData?.pagecount ?: 1
+                        val data = parseCategoryData(result, pg)
+                        categoryData = data
+                        currentPage = data.page
+                        totalPages = data.pagecount
+                        categoryCache[cacheKey] = data
                     }
                 }
             }
@@ -407,15 +452,17 @@ class PyHomepageViewModel : ViewModel() {
                         null
                     }
                     withContext(Dispatchers.Main) {
-                        categoryData = result?.let {
+                        val data = result?.let {
                             CategoryData(
                                 it.page,
                                 it.pageCount,
                                 it.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
                             )
                         } ?: CategoryData(pg, 1, emptyList())
-                        currentPage = categoryData?.page ?: pg
-                        totalPages = categoryData?.pagecount ?: 1
+                        categoryData = data
+                        currentPage = data.page
+                        totalPages = data.pagecount
+                        categoryCache[cacheKey] = data
                     }
                 }
             }
@@ -443,6 +490,7 @@ class PyHomepageViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val nextPg = currentPage + 1
+                val cacheKey = categoryCacheKey(selectedSourceId, selectedCategoryId, nextPg)
                 when (sourceTypeOf(selectedSourceId)) {
                     "py" -> {
                         val result = bridgeCategory(selectedSourceId, selectedCategoryId, nextPg)
@@ -458,6 +506,7 @@ class PyHomepageViewModel : ViewModel() {
                             }
                             currentPage = newData.page
                             totalPages = newData.pagecount
+                            categoryCache[cacheKey] = newData
                         }
                     }
                     else -> {
@@ -481,6 +530,11 @@ class PyHomepageViewModel : ViewModel() {
                             }
                             currentPage = result.page
                             totalPages = result.pageCount
+                            categoryCache[cacheKey] = CategoryData(
+                                result.page,
+                                result.pageCount,
+                                result.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
+                            )
                         }
                     }
                 }

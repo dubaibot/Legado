@@ -53,6 +53,7 @@ import io.legado.app.ui.video.VideoBookPreloader
 import io.legado.app.help.video.engine.HeaderResolver
 import io.legado.app.help.video.engine.SniffEngine
 import io.legado.app.help.video.engine.SniffRequest
+import io.legado.app.help.python.HomeBridge
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
 import io.legado.app.model.webBook.WebBook
@@ -70,16 +71,19 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.connectivityManager
 import org.json.JSONArray
+import org.json.JSONObject
 import io.legado.app.data.PlayHistoryStore
 import io.legado.app.help.dlna.CastTuner
 import io.legado.app.help.dlna.CastTuning
 import io.legado.app.help.dlna.DlnaConstants
 import io.legado.app.help.exoplayer.DeviceInfoHelper
 import java.io.File
+import kotlin.coroutines.resume
 
 object VideoPlay : CoroutineScope by MainScope(){
     private const val VIDEO_POS_NAME = "video_pos_" //单链接播放进度
@@ -593,6 +597,8 @@ object VideoPlay : CoroutineScope by MainScope(){
     var rssEpisodes: List<RssEpisode>? = null
     /**  当前订阅源集索引（R1 多集选择播放）  **/
     var rssEpisodeIndex: Int = 0
+    /**  py 源集数插件 ID（py 源集数 URL 需经 bridgePlay 解析后播放）  **/
+    var pyEpisodesPluginId: String? = null
     /**  订阅源多线路列表（R3 多线路支持，ruleContent 返回嵌套 JSON 时解析）  **/
     var rssRoutes: List<RssRoute>? = null
     /**  当前线路索引（R3 多线路支持）  **/
@@ -1293,6 +1299,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         isPortraitVideo = false
         rssEpisodes = null
         rssEpisodeIndex = 0
+        pyEpisodesPluginId = null
         rssRoutes = null
         rssRouteIndex = 0
         if (!preserveRssArticlesContext) {
@@ -2167,6 +2174,25 @@ object VideoPlay : CoroutineScope by MainScope(){
      * 采集链已委托 VideoPlaybackPipeline.playEpisode（AnalyzeUrl/setUp/startPlayLogic 由 Pipeline 统一实现）
      */
     fun playRssEpisode(player: GSYBaseVideoPlayer, episode: RssEpisode) {
+        // py 源集数模式：source 为空，URL 需经 bridgePlay 解析后播放
+        val pyPluginId = pyEpisodesPluginId
+        if (pyPluginId != null && source == null) {
+            playPyEpisode(player, episode, pyPluginId)
+            return
+        }
+        // json/txt 源集数模式：source 为空，URL 可能是直链，直接 singleUrl 播放
+        if (source == null && pyPluginId == null && !rssEpisodes.isNullOrEmpty()) {
+            originalPlayUrl = episode.url
+            videoUrl = episode.url
+            videoTitle = episode.title
+            singleUrl = true
+            val stdPlayer = player as? StandardGSYVideoPlayer
+            if (stdPlayer != null) {
+                startPlay(stdPlayer)
+            }
+            postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1))
+            return
+        }
         // video-booksource-multiroute：视频书源分派——episode 来自卷章映射，按索引走章节播放链
         val bookSource = source as? BookSource
         if (bookSource.isVideoSource(book?.type)) {
@@ -2211,6 +2237,60 @@ object VideoPlay : CoroutineScope by MainScope(){
                 onStarted = { triggerPreload() }
             )
         )
+    }
+
+    /**
+     * py 源集数播放：URL 经 bridgePlay 解析为直链后走 singleUrl 播放链。
+     *
+     * 适用场景：py 插件源（无 source 对象）的集数列表点击切换。
+     * 解析成功后设置 videoUrl + singleUrl=true，复用 startPlay 的 singleUrl 分支播放。
+     *
+     * @param player 播放器实例
+     * @param episode 集数模型（title/url 来自 rssEpisodes，url 为原始页面 URL）
+     * @param pluginId py 插件 ID（bridgePlay 解析用）
+     */
+    private fun playPyEpisode(player: GSYBaseVideoPlayer, episode: RssEpisode, pluginId: String) {
+        originalPlayUrl = episode.url
+        videoTitle = episode.title
+        playEpisodeJob?.cancel()
+        val token = switchTokenCounter.incrementAndGet()
+        currentSwitchToken = token
+        AppLog.put("playPyEpisode: start, episode=${episode.title}, token=$token, pluginId=${pluginId.take(2)}")
+        playEpisodeJob = Coroutine.async(loadScope, IO) {
+            val resolved = suspendCancellableCoroutine<String?> { cont ->
+                HomeBridge.play(pluginId, episode.url) { cont.resume(it) }
+            }
+            val resolvedUrl = try {
+                JSONObject(resolved ?: "").optString("url", "")
+            } catch (e: Exception) { "" }
+            if (resolvedUrl.isNotEmpty()) {
+                withContext(Main) {
+                    if (currentSwitchToken != token) {
+                        AppLog.put("playPyEpisode: token expired, drop late callback")
+                        return@withContext
+                    }
+                    videoUrl = resolvedUrl
+                    singleUrl = true
+                    val stdPlayer = player as? StandardGSYVideoPlayer
+                    if (stdPlayer != null) {
+                        startPlay(stdPlayer)
+                    }
+                }
+            } else {
+                AppLog.put("playPyEpisode: resolvedUrl empty, episode=${episode.title}")
+                withContext(Main) {
+                    if (currentSwitchToken == token) {
+                        postEvent(EventBus.VIDEO_PLAY_ERROR, "播放失败：视频链接解析失败")
+                    }
+                }
+            }
+        }.onError {
+            if (currentSwitchToken != token) return@onError
+            AppLog.put("playPyEpisode: error, episode=${episode.title}", it)
+            withContext(Main) {
+                postEvent(EventBus.VIDEO_PLAY_ERROR, "播放失败：视频链接解析异常")
+            }
+        }
     }
 
     /**

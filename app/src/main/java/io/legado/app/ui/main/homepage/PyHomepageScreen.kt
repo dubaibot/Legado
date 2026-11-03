@@ -1069,7 +1069,10 @@ private fun DetailDialog(
                         ) {
                             playUrls.forEach { (name, url) ->
                                 TextButton(
-                                    onClick = { viewModel.playVideo(detail.pluginId, url, detail.title) },
+                                    onClick = {
+                                        val idx = playUrls.indexOfFirst { it.second == url }
+                                        viewModel.playVideo(detail.pluginId, playUrls, detail.title, idx.coerceAtLeast(0))
+                                    },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                 ) {
                                     Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)

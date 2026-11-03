@@ -135,6 +135,7 @@ import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.openUrl
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setMarkdown
@@ -478,6 +479,30 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             intent.getStringExtra("videoTitle")?.let {
                 VideoPlay.videoTitle = it
             }
+            // py 源集数列表：解析 episodesJson 设置 rssEpisodes + pyEpisodesPluginId
+            intent.getStringExtra("episodesJson")?.let { json ->
+                try {
+                    val arr = org.json.JSONArray(json)
+                    val episodes = (0 until arr.length()).mapNotNull { i ->
+                        val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                        RssEpisode(
+                            title = obj.optString("title"),
+                            url = obj.optString("url"),
+                            duration = 0L,
+                            cover = "",
+                        )
+                    }
+                    if (episodes.isNotEmpty()) {
+                        VideoPlay.rssEpisodes = episodes
+                        val idx = intent.getIntExtra("initialEpisodeIndex", 0).coerceIn(0, episodes.size - 1)
+                        VideoPlay.rssEpisodeIndex = idx
+                        intent.getStringExtra("pyPluginId")?.let { VideoPlay.pyEpisodesPluginId = it }
+                        AppLog.put("initFromIntent: episodes set, size=${episodes.size}, idx=$idx, pyPlugin=${VideoPlay.pyEpisodesPluginId?.take(2)}")
+                    }
+                } catch (e: Exception) {
+                    AppLog.put("initFromIntent: parse episodesJson failed", e)
+                }
+            }
             val sourceKey = intent.getStringExtra("sourceKey")
             val sourceType = intent.getIntExtra("sourceType", 0)
             val bookUrl = intent.getStringExtra("bookUrl")
@@ -514,13 +539,12 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 dispatchLayoutMode()
                 initView()
                 upView()
-                // video-live-favorite-fix AD-03：首次进入即刷新收藏按钮状态
-                // （修复「顶栏星标此前只在收藏增删改后才刷新 ⇒ 首次进入恒不显示」）
+                // py 源集数列表：触发 UI 显示集数选择器
+                if (VideoPlay.rssEpisodes.isNullOrEmpty().not()) {
+                    postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1))
+                }
                 upStarMenu()
-                // AD-04: 恢复播放进度
                 restorePlayHistory()
-                // video-source-multiline-l0-preload AD-02：进入播放器即步进预取"前方一部"目录
-                // （书源场景：使首次上滑切换命中 DB 缓存秒起播；非书源 prefetchNextNeighbor 内部 guard 跳过）
                 VideoPlay.prefetchNextNeighbor()
             }
         } else {
