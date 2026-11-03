@@ -37,7 +37,7 @@ import kotlin.coroutines.resume
  * - 顶栏搜索（py/json/txt 源）
  * - 搜索历史 / 收藏（SharedPreferences JSON 持久化）
  * - 导入 py/html/json/txt 源（SAF 回调后在此执行文件 IO）
- * - 分类浏览翻页
+ * - 分类浏览滚动翻页
  */
 class PyHomepageViewModel : ViewModel() {
 
@@ -136,6 +136,10 @@ class PyHomepageViewModel : ViewModel() {
 
     /** 分类总页数 */
     var totalPages by mutableStateOf(1)
+        private set
+
+    /** 是否正在加载更多（滚动翻页防重复触发） */
+    var isLoadingMore by mutableStateOf(false)
         private set
 
     /** 首页/分类加载错误信息（非空时 UI 显示） */
@@ -244,6 +248,7 @@ class PyHomepageViewModel : ViewModel() {
         selectedCategoryId = ""
         currentPage = 1
         totalPages = 1
+        isLoadingMore = false
         when (currentSourceType()) {
             "py", "json", "txt" -> loadHome(sourceId)
             "html" -> loadHtmlContent(sourceId)
@@ -346,6 +351,7 @@ class PyHomepageViewModel : ViewModel() {
         selectedCategoryId = ""
         currentPage = 1
         totalPages = 1
+        isLoadingMore = false
         when (sourceTypeOf(pluginId)) {
             "py" -> {
                 viewModelScope.launch {
@@ -381,6 +387,7 @@ class PyHomepageViewModel : ViewModel() {
         currentPage = pg
         totalPages = 1
         categoryData = CategoryData(pg, 1, emptyList())
+        isLoadingMore = false
         when (sourceTypeOf(pluginId)) {
             "py" -> {
                 viewModelScope.launch {
@@ -429,6 +436,60 @@ class PyHomepageViewModel : ViewModel() {
         }
     }
 
+    /** 滚动翻页：加载下一页并追加到现有列表（不重置分类数据） */
+    fun loadMorePage() {
+        if (isLoadingMore || currentPage >= totalPages || selectedCategoryId.isEmpty()) return
+        isLoadingMore = true
+        viewModelScope.launch {
+            try {
+                val nextPg = currentPage + 1
+                when (sourceTypeOf(selectedSourceId)) {
+                    "py" -> {
+                        val result = bridgeCategory(selectedSourceId, selectedCategoryId, nextPg)
+                        if (result != null) {
+                            val newData = parseCategoryData(result, nextPg)
+                            val existing = categoryData
+                            if (existing != null && newData.videos.isNotEmpty()) {
+                                categoryData = CategoryData(
+                                    newData.page,
+                                    newData.pagecount,
+                                    existing.videos + newData.videos
+                                )
+                            }
+                            currentPage = newData.page
+                            totalPages = newData.pagecount
+                        }
+                    }
+                    else -> {
+                        val result = withContext(Dispatchers.IO) {
+                            try {
+                                sourceFor(selectedSourceId)?.category(selectedCategoryId, nextPg)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                        if (result != null && result.videos.isNotEmpty()) {
+                            val existing = categoryData
+                            if (existing != null) {
+                                categoryData = CategoryData(
+                                    result.page,
+                                    result.pageCount,
+                                    existing.videos + result.videos.map { v ->
+                                        VideoItem(v.id, v.title, v.pic, v.remarks)
+                                    }
+                                )
+                            }
+                            currentPage = result.page
+                            totalPages = result.pageCount
+                        }
+                    }
+                }
+            } finally {
+                isLoadingMore = false
+            }
+        }
+    }
+
     /** 选择分类标签 */
     fun selectCategory(tid: String) {
         if (tid == selectedCategoryId) return
@@ -437,6 +498,7 @@ class PyHomepageViewModel : ViewModel() {
             categoryData = null
             currentPage = 1
             totalPages = 1
+            isLoadingMore = false
         } else {
             loadCategory(selectedSourceId, tid, 1)
         }

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,8 +23,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +54,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
@@ -75,6 +77,7 @@ import io.legado.app.lib.theme.eInkGrayscale
 import io.legado.app.ui.theme.pageSecondaryTextColor
 import io.legado.app.ui.theme.pageTopBarBackground
 import io.legado.app.ui.theme.pageTopBarColors
+import kotlinx.coroutines.delay
 
 /**
  * 影视首页：订阅式顶栏 + 内容区。
@@ -504,116 +507,125 @@ private fun SearchResultList(
     }
 }
 
-/** 首页内容：分类标签栏 + 视频网格 + 翻页控件 */
+/** 首页内容：分类标签栏 + 视频网格（滚动翻页） */
 @Composable
 private fun HomeContent(
     viewModel: PyHomepageViewModel,
     homeData: PyHomepageViewModel.HomeData,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        // 分类标签栏（水平滚动）
-        if (homeData.categories.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                CategoryChip(
-                    name = "推荐",
-                    selected = viewModel.selectedCategoryId.isEmpty(),
-                    onClick = { viewModel.selectCategory("") },
-                )
-                homeData.categories.forEach { cat ->
-                    CategoryChip(
-                        name = cat.name,
-                        selected = viewModel.selectedCategoryId == cat.id,
-                        onClick = { viewModel.selectCategory(cat.id) },
-                    )
-                }
-            }
-        }
+    key(viewModel.selectedCategoryId) {
+        val listState = rememberLazyGridState()
 
-        // 分类为空时检查错误
-        if (homeData.categories.isEmpty()) {
-            val homeError = viewModel.homeError
-            val loadError = viewModel.loadErrorFor(viewModel.selectedSourceId)
-            when {
-                homeError != null -> {
-                    EmptyBox("源调用失败:\n$homeError")
-                    return@Column
-                }
-                loadError != null -> {
-                    EmptyBox("源加载失败:\n$loadError")
-                    return@Column
-                }
-            }
-        }
-
-        // 视频内容区（占满剩余空间）
-        val categoryData = viewModel.categoryData
-        val videos = categoryData?.videos ?: homeData.videos
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (videos.isEmpty()) {
-                if (viewModel.selectedCategoryId.isEmpty()) {
-                    EmptyBox("点击分类标签浏览视频")
-                } else {
-                    val catError = viewModel.homeError
-                    if (catError != null) {
-                        EmptyBox("源调用失败:\n$catError")
-                    } else {
-                        EmptyBox("该分类暂无视频或加载失败\n请检查网络后重试")
-                    }
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 分类标签栏（水平滚动）
+            if (homeData.categories.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    items(videos, key = { it.id }) { video ->
-                        VideoCard(
-                            video = video,
-                            onClick = {
-                                viewModel.showDetail(viewModel.selectedSourceId, video.id, video.title)
-                            },
+                    CategoryChip(
+                        name = "推荐",
+                        selected = viewModel.selectedCategoryId.isEmpty(),
+                        onClick = { viewModel.selectCategory("") },
+                    )
+                    homeData.categories.forEach { cat ->
+                        CategoryChip(
+                            name = cat.name,
+                            selected = viewModel.selectedCategoryId == cat.id,
+                            onClick = { viewModel.selectCategory(cat.id) },
                         )
                     }
                 }
             }
+
+            // 分类为空时检查错误
+            if (homeData.categories.isEmpty()) {
+                val homeError = viewModel.homeError
+                val loadError = viewModel.loadErrorFor(viewModel.selectedSourceId)
+                when {
+                    homeError != null -> {
+                        EmptyBox("源调用失败:\n$homeError")
+                        return@Column
+                    }
+                    loadError != null -> {
+                        EmptyBox("源加载失败:\n$loadError")
+                        return@Column
+                    }
+                }
+            }
+
+            // 视频内容区（占满剩余空间，滚动到底部自动加载更多）
+            val categoryData = viewModel.categoryData
+            val videos = categoryData?.videos ?: homeData.videos
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (videos.isEmpty()) {
+                    val emptyText = if (viewModel.selectedCategoryId.isEmpty()) {
+                        "点击分类标签浏览视频"
+                    } else {
+                        val err = viewModel.homeError
+                        if (err != null) "源调用失败:\n$err"
+                        else "该分类暂无视频或加载失败\n请检查网络后重试"
+                    }
+                    EmptyBox(emptyText)
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        modifier = Modifier.fillMaxSize(),
+                        state = listState,
+                        contentPadding = PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(videos, key = { it.id }) { video ->
+                            VideoCard(
+                                video = video,
+                                onClick = {
+                                    viewModel.showDetail(viewModel.selectedSourceId, video.id, video.title)
+                                },
+                            )
+                        }
+                        // 加载更多指示器
+                        if (viewModel.selectedCategoryId.isNotEmpty() &&
+                            viewModel.currentPage < viewModel.totalPages
+                        ) {
+                            item(span = { GridItemSpan(3) }) {
+                                if (viewModel.isLoadingMore) {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        // 翻页控件（分类浏览时显示）
-        if (viewModel.selectedCategoryId.isNotEmpty() && viewModel.totalPages > 1) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(
-                    onClick = { viewModel.loadPrevPage() },
-                    enabled = viewModel.currentPage > 1,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    Text("上一页")
+        // 滚动到底部时自动加载更多
+        LaunchedEffect(listState) {
+            if (viewModel.selectedCategoryId.isEmpty()) return@LaunchedEffect
+            while (true) {
+                val layoutInfo = listState.layoutInfo
+                val totalItems = layoutInfo.totalItemsCount
+                if (totalItems > 0) {
+                    val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                    if (lastVisibleIndex >= totalItems - 5) {
+                        if (viewModel.currentPage < viewModel.totalPages && !viewModel.isLoadingMore) {
+                            viewModel.loadMorePage()
+                            break
+                        }
+                    }
                 }
-                Text(
-                    text = "${viewModel.currentPage}/${viewModel.totalPages}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = pageSecondaryTextColor(),
-                )
-                TextButton(
-                    onClick = { viewModel.loadNextPage() },
-                    enabled = viewModel.currentPage < viewModel.totalPages,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    Text("下一页")
-                }
+                delay(100)
             }
         }
     }
