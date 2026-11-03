@@ -11,7 +11,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.video.VideoSource
 import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.python.HomeBridge
 import io.legado.app.help.python.PyLoader
 import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.utils.getPrefString
@@ -22,12 +21,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
-import kotlin.coroutines.resume
 
 /**
  * 影视首页 ViewModel。
@@ -222,7 +219,6 @@ class PyHomepageViewModel : ViewModel() {
             val pyList = PyLoader.listInstalled().map {
                 HomeSource(it.meta.id, it.meta.name, "py", it.loaded)
             }
-            HomeBridge.refreshAllMeta()
             // WebView HTML 页面（type=web）
             val webList = HomeSourceStore.listHtml().map {
                 HomeSource(it.id, it.name, "web", true)
@@ -245,10 +241,36 @@ class PyHomepageViewModel : ViewModel() {
                     "web" -> loadHtmlContent(selectedSourceId)
                 }
             }
+            // 后台预加载所有列表源的首页数据
+            preloadSources()
         }
     }
 
-    /** 切换当前源 */
+    /** 后台预加载所有列表源的首页数据（切换源时直接命中缓存） */
+    private fun preloadSources() {
+        val sources = _sources.value
+        viewModelScope.launch(Dispatchers.IO) {
+            sources.filter { isListSource(it.type) }.forEach { source ->
+                if (homeCache.containsKey(source.id)) return@forEach
+                try {
+                    val info = VideoSourceRegistry.getSourceInfo(source.id) ?: return@forEach
+                    val src = VideoSourceRegistry.createSource(info) ?: return@forEach
+                    val (cats, vids) = src.home()
+                    // 只缓存非空结果（避免把"源未加载"缓存为空数据）
+                    if (cats.isNotEmpty() || vids.isNotEmpty()) {
+                        homeCache[source.id] = HomeData(
+                            categories = cats.map { Category(it.id, it.name) },
+                            videos = vids.map { VideoItem(it.id, it.title, it.pic, it.remarks) },
+                        )
+                    }
+                } catch (e: Exception) {
+                    // 忽略预热错误
+                }
+            }
+        }
+    }
+
+    /** 切换当前源（不清空缓存，切换回来直接命中） */
     fun selectSource(sourceId: String) {
         selectedSourceId = sourceId
         AppConfig.pyHomePluginId = sourceId
@@ -260,9 +282,6 @@ class PyHomepageViewModel : ViewModel() {
         currentPage = 1
         totalPages = 1
         isLoadingMore = false
-        // 切换源时清空缓存
-        homeCache.clear()
-        categoryCache.clear()
         when (currentSourceType()) {
             "py", "json", "txt", "html" -> loadHome(sourceId)
             "web" -> loadHtmlContent(sourceId)
@@ -282,7 +301,7 @@ class PyHomepageViewModel : ViewModel() {
         searchKeyword = keyword
     }
 
-    /** 执行搜索（记录历史，py/json/txt 源） */
+    /** 执行搜索（记录历史，统一走 VideoSource 接口） */
     fun search(keyword: String) {
         val kw = keyword.trim()
         if (kw.isBlank() || isSearching) return
@@ -295,31 +314,21 @@ class PyHomepageViewModel : ViewModel() {
         isSearching = true
         searchResults = ""
         viewModelScope.launch {
-            val result = when (currentSourceType()) {
-                "py" -> bridgeSearch(pluginId, kw)
-                else -> {
-                    val source = sourceFor(pluginId)
-                    val items = source?.search(kw, 1) ?: emptyList()
-                    serializeSearchItems(items)
-                }
-            }
-            searchResults = result ?: "[]"
+            val source = sourceFor(pluginId)
+            val items = source?.search(kw, 1) ?: emptyList()
+            searchResults = serializeSearchItems(items)
             isSearching = false
         }
     }
 
-    /** 查看详情（搜索结果/收藏条目点击，py/json/txt 源） */
+    /** 查看详情（搜索结果/收藏条目点击，统一走 VideoSource 接口） */
     fun showDetail(pluginId: String, id: String, title: String) {
         detailState = DetailState(pluginId, id, title, "", loading = true)
         viewModelScope.launch {
-            val json = when (sourceTypeOf(pluginId)) {
-                "py" -> bridgeDetail(pluginId, id)
-                else -> {
-                    val detail = sourceFor(pluginId)?.detail(id)
-                    detail?.let { serializeDetail(it) }
-                }
-            }
-            detailState = DetailState(pluginId, id, title, json ?: "{}", loading = false)
+            val source = sourceFor(pluginId)
+            val detail = source?.detail(id)
+            val json = detail?.let { serializeDetail(it) } ?: "{}"
+            detailState = DetailState(pluginId, id, title, json, loading = false)
         }
     }
 
@@ -327,27 +336,14 @@ class PyHomepageViewModel : ViewModel() {
         detailState = null
     }
 
-    /** 播放：解析播放地址（py 走插件 play，json/txt 直连），启动 VideoPlayerActivity，传完整集数列表 */
+    /** 播放：统一走 VideoSource 接口解析播放地址，启动 VideoPlayerActivity，传完整集数列表 */
     fun playVideo(pluginId: String, playUrls: List<Pair<String, String>>, title: String, initialIndex: Int = 0) {
         viewModelScope.launch {
-            val type = sourceTypeOf(pluginId)
             val initialPair = playUrls.getOrNull(initialIndex)
             val initialUrl = initialPair?.second ?: ""
-            val resolvedUrl = when (type) {
-                "py" -> {
-                    val result = bridgePlay(pluginId, initialUrl)
-                    try {
-                        JSONObject(result ?: "").optString("url", "")
-                    } catch (e: Exception) {
-                        ""
-                    }
-                }
-                else -> {
-                    val source = sourceFor(pluginId)
-                    val result = source?.play(initialUrl)
-                    result?.url ?: initialUrl
-                }
-            }
+            val source = sourceFor(pluginId)
+            val result = source?.play(initialUrl)
+            val resolvedUrl = result?.url ?: initialUrl
             if (resolvedUrl.isNotEmpty()) {
                 // 构建集数列表 JSON（传完整列表给播放器，支持集数切换）
                 val episodesJson = JSONArray().apply {
@@ -371,7 +367,7 @@ class PyHomepageViewModel : ViewModel() {
 
     // ---- 首页数据 ----
 
-    /** 加载首页数据（分类 + 推荐视频，py/json/txt 源） */
+    /** 加载首页数据（分类 + 推荐视频，统一走 VideoSource 接口） */
     fun loadHome(pluginId: String) {
         homeData = null
         homeError = null
@@ -385,39 +381,29 @@ class PyHomepageViewModel : ViewModel() {
             homeData = cached
             return
         }
-        when (sourceTypeOf(pluginId)) {
-            "py" -> {
-                viewModelScope.launch {
-                    val result = bridgeHome(pluginId)
-                    val data = parseHomeData(result ?: "") ?: HomeData(emptyList(), emptyList())
+        viewModelScope.launch(Dispatchers.IO) {
+            val source = sourceFor(pluginId)
+            if (source == null) {
+                withContext(Dispatchers.Main) { homeError = "源不存在" }
+                return@launch
+            }
+            try {
+                val (cats, vids) = source.home()
+                withContext(Dispatchers.Main) {
+                    val data = HomeData(
+                        categories = cats.map { Category(it.id, it.name) },
+                        videos = vids.map { VideoItem(it.id, it.title, it.pic, it.remarks) },
+                    )
                     homeData = data
                     homeCache[pluginId] = data
                 }
-            }
-            else -> {
-                viewModelScope.launch(Dispatchers.IO) {
-                    val (cats, vids) = try {
-                        sourceFor(pluginId)?.home() ?: Pair(emptyList(), emptyList())
-                    } catch (e: Exception) {
-                        homeError = e.message ?: "源加载失败"
-                        Pair(emptyList(), emptyList())
-                    }
-                    withContext(Dispatchers.Main) {
-                        val data = HomeData(
-                            categories = cats.map { Category(it.id, it.name) },
-                            videos = vids.map {
-                                VideoItem(it.id, it.title, it.pic, it.remarks)
-                            },
-                        )
-                        homeData = data
-                        homeCache[pluginId] = data
-                    }
-                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { homeError = e.message ?: "源加载失败" }
             }
         }
     }
 
-    /** 加载分类视频列表（py/json/txt 源） */
+    /** 加载分类视频列表（统一走 VideoSource 接口） */
     fun loadCategory(pluginId: String, tid: String, pg: Int) {
         selectedCategoryId = tid
         homeError = null
@@ -433,40 +419,24 @@ class PyHomepageViewModel : ViewModel() {
             totalPages = cached.pagecount
             return
         }
-        when (sourceTypeOf(pluginId)) {
-            "py" -> {
-                viewModelScope.launch {
-                    val result = bridgeCategory(pluginId, tid, pg)
-                    if (result != null) {
-                        val data = parseCategoryData(result, pg)
-                        categoryData = data
-                        currentPage = data.page
-                        totalPages = data.pagecount
-                        categoryCache[cacheKey] = data
-                    }
+        viewModelScope.launch(Dispatchers.IO) {
+            val source = sourceFor(pluginId)
+            if (source == null) return@launch
+            try {
+                val result = source.category(tid, pg)
+                withContext(Dispatchers.Main) {
+                    val data = CategoryData(
+                        result.page,
+                        result.pageCount,
+                        result.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
+                    )
+                    categoryData = data
+                    currentPage = data.page
+                    totalPages = data.pagecount
+                    categoryCache[cacheKey] = data
                 }
-            }
-            else -> {
-                viewModelScope.launch(Dispatchers.IO) {
-                    val result = try {
-                        sourceFor(pluginId)?.category(tid, pg)
-                    } catch (e: Exception) {
-                        null
-                    }
-                    withContext(Dispatchers.Main) {
-                        val data = result?.let {
-                            CategoryData(
-                                it.page,
-                                it.pageCount,
-                                it.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
-                            )
-                        } ?: CategoryData(pg, 1, emptyList())
-                        categoryData = data
-                        currentPage = data.page
-                        totalPages = data.pagecount
-                        categoryCache[cacheKey] = data
-                    }
-                }
+            } catch (e: Exception) {
+                // ignore
             }
         }
     }
@@ -485,7 +455,7 @@ class PyHomepageViewModel : ViewModel() {
         }
     }
 
-    /** 滚动翻页：加载下一页并追加到现有列表（不重置分类数据） */
+    /** 滚动翻页：加载下一页并追加到现有列表（统一走 VideoSource 接口） */
     fun loadMorePage() {
         if (isLoadingMore || currentPage >= totalPages || selectedCategoryId.isEmpty()) return
         isLoadingMore = true
@@ -493,52 +463,31 @@ class PyHomepageViewModel : ViewModel() {
             try {
                 val nextPg = currentPage + 1
                 val cacheKey = categoryCacheKey(selectedSourceId, selectedCategoryId, nextPg)
-                when (sourceTypeOf(selectedSourceId)) {
-                    "py" -> {
-                        val result = bridgeCategory(selectedSourceId, selectedCategoryId, nextPg)
-                        if (result != null) {
-                            val newData = parseCategoryData(result, nextPg)
-                            val existing = categoryData
-                            if (existing != null && newData.videos.isNotEmpty()) {
-                                categoryData = CategoryData(
-                                    newData.page,
-                                    newData.pagecount,
-                                    existing.videos + newData.videos
-                                )
-                            }
-                            currentPage = newData.page
-                            totalPages = newData.pagecount
-                            categoryCache[cacheKey] = newData
-                        }
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        sourceFor(selectedSourceId)?.category(selectedCategoryId, nextPg)
+                    } catch (e: Exception) {
+                        null
                     }
-                    else -> {
-                        val result = withContext(Dispatchers.IO) {
-                            try {
-                                sourceFor(selectedSourceId)?.category(selectedCategoryId, nextPg)
-                            } catch (e: Exception) {
-                                null
+                }
+                if (result != null && result.videos.isNotEmpty()) {
+                    val existing = categoryData
+                    if (existing != null) {
+                        categoryData = CategoryData(
+                            result.page,
+                            result.pageCount,
+                            existing.videos + result.videos.map { v ->
+                                VideoItem(v.id, v.title, v.pic, v.remarks)
                             }
-                        }
-                        if (result != null && result.videos.isNotEmpty()) {
-                            val existing = categoryData
-                            if (existing != null) {
-                                categoryData = CategoryData(
-                                    result.page,
-                                    result.pageCount,
-                                    existing.videos + result.videos.map { v ->
-                                        VideoItem(v.id, v.title, v.pic, v.remarks)
-                                    }
-                                )
-                            }
-                            currentPage = result.page
-                            totalPages = result.pageCount
-                            categoryCache[cacheKey] = CategoryData(
-                                result.page,
-                                result.pageCount,
-                                result.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
-                            )
-                        }
+                        )
                     }
+                    currentPage = result.page
+                    totalPages = result.pageCount
+                    categoryCache[cacheKey] = CategoryData(
+                        result.page,
+                        result.pageCount,
+                        result.videos.map { v -> VideoItem(v.id, v.title, v.pic, v.remarks) },
+                    )
                 }
             } finally {
                 isLoadingMore = false
@@ -557,61 +506,6 @@ class PyHomepageViewModel : ViewModel() {
             isLoadingMore = false
         } else {
             loadCategory(selectedSourceId, tid, 1)
-        }
-    }
-
-    private suspend fun bridgeHome(pluginId: String): String? =
-        suspendCancellableCoroutine { cont ->
-            HomeBridge.home(pluginId) { cont.resume(it) }
-        }
-
-    private suspend fun bridgeCategory(pluginId: String, tid: String, pg: Int): String? =
-        suspendCancellableCoroutine { cont ->
-            HomeBridge.category(pluginId, tid, pg) { cont.resume(it) }
-        }
-
-    private fun parseHomeData(json: String): HomeData? {
-        return try {
-            val obj = JSONObject(json)
-            val errorMsg = obj.optString("error", "")
-            if (errorMsg.isNotEmpty()) {
-                homeError = errorMsg
-                return null
-            }
-            val cats = obj.optJSONArray("categories") ?: return null
-            val categories = (0 until cats.length()).mapNotNull { i ->
-                val c = cats.optJSONObject(i) ?: return@mapNotNull null
-                Category(c.optString("id"), c.optString("name"))
-            }
-            val vids = obj.optJSONArray("videos") ?: return null
-            val videos = (0 until vids.length()).mapNotNull { i ->
-                val v = vids.optJSONObject(i) ?: return@mapNotNull null
-                VideoItem(v.optString("id"), v.optString("title"), v.optString("pic"), v.optString("remarks"))
-            }
-            HomeData(categories, videos)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun parseCategoryData(json: String, defaultPg: Int): CategoryData {
-        return try {
-            val obj = JSONObject(json)
-            val errorMsg = obj.optString("error", "")
-            if (errorMsg.isNotEmpty()) {
-                homeError = errorMsg
-                return CategoryData(defaultPg, 1, emptyList())
-            }
-            val pg = obj.optInt("page", defaultPg)
-            val pc = obj.optInt("pagecount", 1)
-            val vids = obj.optJSONArray("videos") ?: return CategoryData(pg, pc, emptyList())
-            val videos = (0 until vids.length()).mapNotNull { i ->
-                val v = vids.optJSONObject(i) ?: return@mapNotNull null
-                VideoItem(v.optString("id"), v.optString("title"), v.optString("pic"), v.optString("remarks"))
-            }
-            CategoryData(pg, pc, videos)
-        } catch (e: Exception) {
-            CategoryData(defaultPg, 1, emptyList())
         }
     }
 
@@ -774,31 +668,9 @@ class PyHomepageViewModel : ViewModel() {
         saveHistory(updated)
     }
 
-    // ---- HomeBridge 异步包装（回调 -> 挂起） ----
-
-    private suspend fun bridgeSearch(pluginId: String, keyword: String): String? =
-        suspendCancellableCoroutine { cont ->
-            HomeBridge.search(pluginId, keyword) { cont.resume(it) }
-        }
-
-    private suspend fun bridgeDetail(pluginId: String, id: String): String? =
-        suspendCancellableCoroutine { cont ->
-            HomeBridge.detail(pluginId, id) { cont.resume(it) }
-        }
-
-    private suspend fun bridgePlay(pluginId: String, url: String): String? =
-        suspendCancellableCoroutine { cont ->
-            HomeBridge.play(pluginId, url) { cont.resume(it) }
-        }
-
     // ---- 统一视频源辅助 ----
 
-    /** 获取指定源的类型（"py" | "html" | "json" | "txt" | null） */
-    private fun sourceTypeOf(sourceId: String): String? {
-        return _sources.value.find { it.id == sourceId }?.type
-    }
-
-    /** 创建统一源实例（py/json/txt，html 返回 null） */
+    /** 创建统一源实例（py/json/txt/html，利用 VideoSourceRegistry 实例缓存） */
     private suspend fun sourceFor(sourceId: String): VideoSource? {
         return withContext(Dispatchers.IO) {
             val info = VideoSourceRegistry.getSourceInfo(sourceId) ?: return@withContext null

@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 统一视频源注册表：聚合 py 插件源、json/txt/html 静态源。
@@ -34,6 +35,19 @@ object VideoSourceRegistry {
         val type: SourceType,
         val parentId: String = "",  // 父源 ID（Config/TXT 展开时使用）
     )
+
+    /** 已创建的源实例缓存（避免重复读盘+创建） */
+    private val instanceCache = ConcurrentHashMap<String, VideoSource>()
+
+    /** 清空所有缓存的源实例 */
+    fun invalidateAll() {
+        instanceCache.clear()
+    }
+
+    /** 清除指定源的实例缓存（删除/更新源时调用） */
+    fun invalidateSource(id: String) {
+        instanceCache.remove(id)
+    }
 
     /** 列出全部可用视频源 */
     fun listSources(): List<SourceInfo> {
@@ -127,9 +141,10 @@ object VideoSourceRegistry {
     /** 按类型获取源信息 */
     fun getSourceInfo(id: String): SourceInfo? = listSources().find { it.id == id }
 
-    /** 创建 VideoSource 实例（py/json/txt/html） */
+    /** 创建 VideoSource 实例（py/json/txt/html），已缓存则直接返回 */
     fun createSource(info: SourceInfo): VideoSource? {
-        return when (info.type) {
+        instanceCache[info.id]?.let { return it }
+        val source = when (info.type) {
             SourceType.PY -> PyVideoSource(info.id, info.name)
             SourceType.JSON -> {
                 // FongMi Config 展开的源：读取原始 Config 后选择指定站点
@@ -156,6 +171,8 @@ object VideoSourceRegistry {
                 HtmlVideoSource(info.id, configJson)
             }
         }
+        if (source != null) instanceCache[info.id] = source
+        return source
     }
 
     /** 删除任意类型源（py 走 PyLoader，json/txt/html 走 HomeSourceStore） */
@@ -163,16 +180,21 @@ object VideoSourceRegistry {
         val info = getSourceInfo(id) ?: return false
         // FongMi Config/TXT 展开的源：删除父源
         if (info.parentId.isNotBlank()) {
+            invalidateSource(info.parentId)
             return HomeSourceStore.deleteVideoSource(info.parentId)
         }
         return when (info.type) {
             SourceType.PY -> try {
                 PyLoader.uninstall(id)
+                invalidateSource(id)
                 true
             } catch (e: Exception) {
                 false
             }
-            else -> HomeSourceStore.deleteVideoSource(id)
+            else -> {
+                invalidateSource(id)
+                HomeSourceStore.deleteVideoSource(id)
+            }
         }
     }
 }
@@ -180,6 +202,10 @@ object VideoSourceRegistry {
 /**
  * py 源适配器：把 HomeBridge 异步回调桥接为 suspend 调用。
  * 返回 JSON 字符串后统一解析为数据模型。
+ *
+ * 性能优化：
+ * - home/category/search 结果缓存 TTL 5 分钟（Python 解释器执行慢，缓存收益大）
+ * - detail/play 不缓存（每次点播不同视频，缓存无意义）
  */
 class PyVideoSource(
     override val sourceId: String,
@@ -187,6 +213,16 @@ class PyVideoSource(
 ) : VideoSource {
 
     override val sourceType = SourceType.PY
+
+    private val cacheTtlMs = 5 * 60 * 1000L
+
+    private data class CacheEntry<T>(val timestamp: Long, val value: T)
+    private fun isValid(entry: CacheEntry<*>): Boolean =
+        System.currentTimeMillis() - entry.timestamp < cacheTtlMs
+
+    private var homeCache: CacheEntry<Pair<List<VideoCategory>, List<VideoItem>>>? = null
+    private val categoryCache = mutableMapOf<String, CacheEntry<CategoryResult>>()
+    private val searchCache = mutableMapOf<String, CacheEntry<List<VideoItem>>>()
 
     private suspend fun call(func: String, vararg args: String): String? =
         withContext(Dispatchers.IO) {
@@ -206,18 +242,29 @@ class PyVideoSource(
         }
 
     override suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>> {
+        homeCache?.let { if (isValid(it)) return it.value }
         val json = call("home") ?: return Pair(emptyList(), emptyList())
-        return PyResultParser.parseHome(json)
+        val result = PyResultParser.parseHome(json)
+        homeCache = CacheEntry(System.currentTimeMillis(), result)
+        return result
     }
 
     override suspend fun category(tid: String, pg: Int): CategoryResult {
+        val key = "$tid|$pg"
+        categoryCache[key]?.let { if (isValid(it)) return it.value }
         val json = call("category", tid, pg.toString()) ?: return CategoryResult()
-        return PyResultParser.parseCategory(json, pg)
+        val result = PyResultParser.parseCategory(json, pg)
+        categoryCache[key] = CacheEntry(System.currentTimeMillis(), result)
+        return result
     }
 
     override suspend fun search(keyword: String, pg: Int): List<VideoItem> {
+        val key = "$keyword|$pg"
+        searchCache[key]?.let { if (isValid(it)) return it.value }
         val json = call("search", keyword) ?: return emptyList()
-        return PyResultParser.parseVideoList(json)
+        val result = PyResultParser.parseVideoList(json)
+        searchCache[key] = CacheEntry(System.currentTimeMillis(), result)
+        return result
     }
 
     override suspend fun detail(id: String): VideoDetail {
