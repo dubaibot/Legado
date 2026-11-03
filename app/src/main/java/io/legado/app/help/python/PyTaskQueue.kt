@@ -201,9 +201,44 @@ object PyTaskQueue {
                     // fall through
                 }
             }
-            val errMsg = getErrorMessage(e, func)
-            LogUtils.d("PyTaskQueue", "callPluginFunc error: $errMsg")
-            buildErrorJson(errMsg)
+            // Spider 类兼容层：仅当函数不存在（AttributeError）时回退
+            // 避免掩盖网络异常等真实错误
+            val errMsg = e.message ?: e.toString()
+            if (errMsg.contains("AttributeError") || errMsg.contains("has no attribute")) {
+                val spiderResult = callSpiderFunc(module, pluginEntry, func, args)
+                if (spiderResult != null) {
+                    return spiderResult
+                }
+            }
+            val finalMsg = getErrorMessage(e, func)
+            LogUtils.d("PyTaskQueue", "callPluginFunc error: $finalMsg")
+            buildErrorJson(finalMsg)
+        }
+    }
+
+    /**
+     * Spider 类兼容层调用：通过 plugin_entry.call_spider_func 实例化 Spider 子类并调用对应方法。
+     * 用于 FongMi/TV 约定的 py 源（无模块级函数，仅 Spider 类方法）。
+     */
+    private fun callSpiderFunc(
+        module: com.chaquo.python.PyObject,
+        pluginEntry: com.chaquo.python.PyObject,
+        func: String,
+        args: List<Any?>,
+    ): String? {
+        return try {
+            val result = pluginEntry.callAttr(
+                "call_spider_func",
+                module,
+                func,
+                args.toTypedArray(),
+            )
+            val str = result?.toString()
+            // Python None → "None"，视为无 Spider 类，返回 null 走原始错误路径
+            if (str == null || str == "None") null else str
+        } catch (e: Exception) {
+            LogUtils.d("PyTaskQueue", "call_spider_func fallback failed: ${e.message}")
+            null
         }
     }
 

@@ -2,6 +2,10 @@
 
 ## cronet版本: 128.0.6613.40
 
+【11-03】
+- 新增：Spider 类兼容层，支持 FongMi/TV 约定的 py 源（无模块级函数时自动实例化 Spider 子类调用 homeContent/categoryContent/detailContent/searchContent/playerContent）
+- 新增：插件调用结果归一化（Spider 类方法输出统一转换为 App 数据格式，兼容 CMS vod_play_from/vod_play_url 格式）
+
 【11-02】
 - 新增：首页源管理页（导入 py 插件 / HTML 自定义页面，支持自定义名称与删除）
 - 新增：预装 requests 库，修复 py 源导入即加载失败
