@@ -80,7 +80,8 @@ Entries discovered by the Agent during task execution should follow this format:
    - Chaquopy PyObject 无 hasAttr/getAttr 方法（编译报 Unresolved reference），检查属性存在只能用 try-catch 调 callAttr 或 Python 侧 getattr；Python None 经 callAttr 返回后 toString() 为 "None" 字符串，需手动判空
    - Spider 类兼容层：FongMi/TV 约定的 py 源仅定义 `class Spider(Spider)` 子类方法（homeContent/categoryContent/detailContent/searchContent/playerContent），无模块级函数；plugin_entry.py 新增 call_spider_func 在模块级函数不存在（AttributeError）时自动实例化 Spider 子类调用对应方法，返回 None 表示无 Spider 类让 Kotlin 走原始错误；结果经 _normalize_home/category/search/detail/play 归一化为 App 数据格式（CMS vod_play_from/vod_play_url → play_urls[{"name","url"}]，header → headers）
    - Release 签名：signingConfigs 仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效，属性缺失产出未签名 APK 安装必报「安装包无效」；属性写在 ~/.gradle/gradle.properties（不进仓库，用户级优先级高于项目级）；密钥库 /workspace/keystore/myreader-release.jks（alias myreader）；验证用 apksigner verify --print-certs；换签名密钥后旧版必须先卸载
-   - Release APK：universal 31.9MB / arm64-v8a 23.3MB / armeabi-v7a 22.5MB
+   - VideoPlayerActivity 单 URL 播放：传入 videoUrl + videoTitle extra 即设 VideoPlay.singleUrl=true 直接播放（无需 sourceKey/sourceType）；PyHomepageViewModel.playVideo 已用此模式启动 GSY 播放器
+   - Glide Compose 集成可用：GlideImage + ContentScale.Crop + @OptIn(ExperimentalGlideComposeApi::class)，参考 HomepageBookCover.kt
    - APK 下载预览：复制产物到 /tmp/opencode，由后台终端 `python3 -m http.server 8902` 对外提供
    - 构建日志经 `| tail` 缓冲时文件为 0 字节，必须等命令结束再读
 
