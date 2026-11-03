@@ -199,7 +199,6 @@ fun PyHomepageScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = bottomPaddingPx.dp)
             ) {
                 when {
                     // HTML 自定义页面：WebView 渲染
@@ -220,6 +219,7 @@ fun PyHomepageScreen(
                         SearchResultList(
                             viewModel = viewModel,
                             results = results,
+                            bottomPaddingPx = bottomPaddingPx,
                         )
                     }
 
@@ -233,7 +233,7 @@ fun PyHomepageScreen(
 
                     // py/json/txt 源首页内容（统一数据模型）
                     (currentType == "py" || currentType == "json" || currentType == "txt") && homeData != null -> {
-                        HomeContent(viewModel, homeData)
+                        HomeContent(viewModel, homeData, bottomPaddingPx)
                     }
 
                     // py/json/txt 源加载首页中
@@ -440,12 +440,15 @@ private fun SearchInputRow(viewModel: PyHomepageViewModel) {
 private fun SearchResultList(
     viewModel: PyHomepageViewModel,
     results: List<SearchItem>,
+    bottomPaddingPx: Int,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            horizontal = 12.dp,
-            vertical = 8.dp,
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            end = 12.dp,
+            top = 8.dp,
+            bottom = 8.dp + with(androidx.compose.ui.platform.LocalDensity.current) { bottomPaddingPx.toDp() },
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -512,6 +515,7 @@ private fun SearchResultList(
 private fun HomeContent(
     viewModel: PyHomepageViewModel,
     homeData: PyHomepageViewModel.HomeData,
+    bottomPaddingPx: Int,
 ) {
     key(viewModel.selectedCategoryId) {
         val listState = rememberLazyGridState()
@@ -575,7 +579,12 @@ private fun HomeContent(
                         columns = GridCells.Fixed(3),
                         modifier = Modifier.fillMaxSize(),
                         state = listState,
-                        contentPadding = PaddingValues(8.dp),
+                        contentPadding = PaddingValues(
+                            start = 8.dp,
+                            end = 8.dp,
+                            top = 8.dp,
+                            bottom = 8.dp + with(androidx.compose.ui.platform.LocalDensity.current) { bottomPaddingPx.toDp() },
+                        ),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -621,7 +630,6 @@ private fun HomeContent(
                     if (lastVisibleIndex >= totalItems - 5) {
                         if (viewModel.currentPage < viewModel.totalPages && !viewModel.isLoadingMore) {
                             viewModel.loadMorePage()
-                            break
                         }
                     }
                 }
