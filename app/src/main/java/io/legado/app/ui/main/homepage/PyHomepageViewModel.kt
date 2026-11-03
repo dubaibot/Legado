@@ -37,7 +37,7 @@ import kotlin.coroutines.resume
  * - 顶栏搜索（py/json/txt 源）
  * - 搜索历史 / 收藏（SharedPreferences JSON 持久化）
  * - 导入 py/html/json/txt 源（SAF 回调后在此执行文件 IO）
- * - 弹幕加载与开关
+ * - 分类浏览翻页
  */
 class PyHomepageViewModel : ViewModel() {
 
