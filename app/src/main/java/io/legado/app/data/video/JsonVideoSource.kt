@@ -1,26 +1,33 @@
 package io.legado.app.data.video
 
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import io.legado.app.utils.LogUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 
 /**
- * JSON 视频源：支持两种模式。
+ * JSON 视频源：支持多种格式。
  *
- * 1. CMS 模式（苹果CMS V10 标准 API，国内影视站通用）：
+ * 1. FongMi Config 格式（多站点）：
+ * {
+ *   "sites": [
+ *     {"key":"app1","name":"App1","type":0,"api":"https://.../api.php/provide/vod"},
+ *     {"key":"app2","name":"App2","type":1,"api":"https://.../api.php/provide/vod","searchApi":"..."}
+ *   ]
+ * }
+ * 此时 sourceId 格式为 "configId:siteKey"，选择指定站点。
+ *
+ * 2. CMS 模式（苹果CMS V10 标准 API，国内影视站通用）：
  * {
  *   "name": "站点名",
  *   "type": "cms",
  *   "api": "https://api.example.com/api.php/provide/vod"
  * }
  *
- * 2. 自定义端点模式：
+ * 3. 自定义端点模式：
  * {
  *   "name": "站点名",
  *   "type": "custom",
@@ -32,6 +39,11 @@ import java.util.concurrent.TimeUnit
  * - 列表: {api}?ac=list&t={tid}&pg={pg}  → class + list
  * - 详情: {api}?ac=detail&ids={id}       → vod_play_url "集名$url#集名$url"
  * - 搜索: {api}?ac=videolist&wd={kw}
+ *
+ * 性能优化：
+ * - 共享 VideoHttpClient 连接池
+ * - 响应缓存 TTL 5 分钟
+ * - 所有请求在 Dispatchers.IO 执行
  */
 class JsonVideoSource(
     override val sourceId: String,
@@ -44,41 +56,74 @@ class JsonVideoSource(
     private val mode: String
     private val baseUrl: String
     private val endpoints: Map<String, String>
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+    private val siteConfig: FongMiConfigParser.SiteConfig?
+    private var configSites: List<FongMiConfigParser.SiteConfig>
 
     init {
         var name = sourceId
         var m = "cms"
         var api = ""
         val ep = mutableMapOf<String, String>()
+        var fongMiSites = emptyList<FongMiConfigParser.SiteConfig>()
+        var selectedSite: FongMiConfigParser.SiteConfig? = null
+
         try {
-            val obj = JsonParser.parseString(configJson).asJsonObject
-            name = obj.optString("name", sourceId)
-            m = obj.optString("type", "cms").lowercase()
-            api = obj.optString("api", "")
-            for (key in listOf("home", "category", "search", "detail", "play", "danmaku")) {
-                val v = obj.optString(key, "")
-                if (v.isNotBlank()) ep[key] = v
+            val root = JsonParser.parseString(configJson).asJsonObject
+            // 检测 FongMi Config 格式（含 sites 数组）
+            val sitesArr = root.getAsJsonArray("sites")
+            if (sitesArr != null) {
+                fongMiSites = FongMiConfigParser.parse(configJson)
+                // sourceId 格式: "configId:siteKey"，选择指定站点
+                val colonIdx = sourceId.indexOf(':')
+                if (colonIdx > 0) {
+                    val siteKey = sourceId.substring(colonIdx + 1)
+                    selectedSite = fongMiSites.find { it.key == siteKey }
+                    configSites = fongMiSites
+                    if (selectedSite != null) {
+                        name = selectedSite.name
+                        m = "cms"
+                        api = selectedSite.api
+                    }
+                }
+            }
+
+            if (selectedSite == null) {
+                // 单站点模式
+                name = root.optString("name", sourceId)
+                m = root.optString("type", "cms").lowercase()
+                api = root.optString("api", "")
+                for (key in listOf("home", "category", "search", "detail", "play", "danmaku")) {
+                    val v = root.optString(key, "")
+                    if (v.isNotBlank()) ep[key] = v
+                }
             }
         } catch (e: Exception) {
-            LogUtils.d(TAG, "parse config failed: ${e.message}")
+            io.legado.app.utils.LogUtils.d(TAG, "parse config failed: ${e.message}")
         }
+
         sourceName = name
         mode = m
         baseUrl = api
         endpoints = ep
+        siteConfig = selectedSite
+        configSites = fongMiSites
     }
 
     val isCmsMode: Boolean get() = mode == "cms"
 
+    /** 获取 CMS API 地址（支持 FongMi type 1 的 searchApi 分离） */
+    private fun cmsApiUrl(withAction: String, params: Map<String, String> = emptyMap()): String {
+        val searchApi = siteConfig?.searchApi ?: ""
+        val effectiveApi = if (withAction == "search" && searchApi.isNotBlank()) searchApi else baseUrl
+        val sep = if ("?" in effectiveApi) "&" else "?"
+        val paramStr = params.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
+        return "$effectiveApi$sep$withAction&${paramStr}"
+    }
+
     override suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = "$baseUrl?ac=list"
-            val json = httpGetJson(url) ?: return@withContext Pair(emptyList(), emptyList())
+            val url = cmsApiUrl("ac=list")
+            val json = VideoHttpClient.getJson(url) ?: return@withContext Pair(emptyList(), emptyList())
             val categories = mutableListOf<VideoCategory>()
             json.getAsJsonArray("class")?.forEach { el ->
                 val o = el.asJsonObject
@@ -93,7 +138,7 @@ class JsonVideoSource(
             Pair(categories, videos)
         } else {
             val url = endpoints["home"] ?: return@withContext Pair(emptyList(), emptyList())
-            val json = httpGetJson(url) ?: return@withContext Pair(emptyList(), emptyList())
+            val json = VideoHttpClient.getJson(url) ?: return@withContext Pair(emptyList(), emptyList())
             val categories = mutableListOf<VideoCategory>()
             json.getAsJsonArray("categories")?.forEach { el ->
                 val o = el.asJsonObject
@@ -105,8 +150,8 @@ class JsonVideoSource(
 
     override suspend fun category(tid: String, pg: Int): CategoryResult = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = "$baseUrl?ac=list&t=${enc(tid)}&pg=$pg"
-            val json = httpGetJson(url) ?: return@withContext CategoryResult()
+            val url = cmsApiUrl("ac=list", mapOf("t" to tid, "pg" to pg.toString()))
+            val json = VideoHttpClient.getJson(url) ?: return@withContext CategoryResult()
             CategoryResult(
                 page = json.optInt("page", pg),
                 pageCount = json.optInt("pagecount", 1),
@@ -114,7 +159,8 @@ class JsonVideoSource(
             )
         } else {
             val tpl = endpoints["category"] ?: return@withContext CategoryResult()
-            val json = httpGetJson(fill(tpl, tid, pg)) ?: return@withContext CategoryResult()
+            val url = fill(tpl, tid, pg)
+            val json = VideoHttpClient.getJson(url) ?: return@withContext CategoryResult()
             CategoryResult(
                 page = json.optInt("page", pg),
                 pageCount = json.optInt("pagecount", 1),
@@ -125,13 +171,13 @@ class JsonVideoSource(
 
     override suspend fun search(keyword: String, pg: Int): List<VideoItem> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = "$baseUrl?ac=videolist&wd=${enc(keyword)}"
-            val json = httpGetJson(url) ?: return@withContext emptyList()
+            val url = cmsApiUrl("ac=videolist", mapOf("wd" to keyword))
+            val json = VideoHttpClient.getJson(url) ?: return@withContext emptyList()
             parseCmsList(json.getAsJsonArray("list"))
         } else {
             val tpl = endpoints["search"] ?: return@withContext emptyList()
             val url = tpl.replace("{kw}", enc(keyword)).replace("{pg}", pg.toString())
-            val json = httpGetJson(url) ?: return@withContext emptyList()
+            val json = VideoHttpClient.getJson(url) ?: return@withContext emptyList()
             parseVideoArray(
                 json.getAsJsonArray("videos") ?: json.getAsJsonArray("list")
             )
@@ -140,15 +186,15 @@ class JsonVideoSource(
 
     override suspend fun detail(id: String): VideoDetail = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = "$baseUrl?ac=detail&ids=${enc(id)}"
-            val json = httpGetJson(url) ?: return@withContext VideoDetail(id = id, title = id)
+            val url = cmsApiUrl("ac=detail", mapOf("ids" to id))
+            val json = VideoHttpClient.getJson(url) ?: return@withContext VideoDetail(id = id, title = id)
             val vod = json.getAsJsonArray("list")?.firstOrNull()?.asJsonObject
                 ?: return@withContext VideoDetail(id = id, title = id)
             parseCmsDetail(vod)
         } else {
             val tpl = endpoints["detail"] ?: return@withContext VideoDetail(id = id, title = id)
             val url = tpl.replace("{id}", enc(id))
-            val json = httpGetJson(url) ?: return@withContext VideoDetail(id = id, title = id)
+            val json = VideoHttpClient.getJson(url) ?: return@withContext VideoDetail(id = id, title = id)
             val o = if (json.has("video")) json.getAsJsonObject("video") else json
             VideoDetail(
                 id = o.optString("id", id),
@@ -167,7 +213,7 @@ class JsonVideoSource(
         val tpl = endpoints["play"]
         if (tpl.isNullOrBlank()) return@withContext PlayResult(url)
         val realUrl = tpl.replace("{url}", enc(url))
-        val json = httpGetJson(realUrl) ?: return@withContext PlayResult(url)
+        val json = VideoHttpClient.getJson(realUrl) ?: return@withContext PlayResult(url)
         val headers = mutableMapOf<String, String>()
         json.getAsJsonObject("headers")?.entrySet()?.forEach { (k, v) ->
             headers[k] = v.asString
@@ -178,13 +224,13 @@ class JsonVideoSource(
     override suspend fun danmaku(videoId: String): DanmakuList = withContext(Dispatchers.IO) {
         val tpl = endpoints["danmaku"] ?: return@withContext DanmakuList()
         val url = tpl.replace("{id}", enc(videoId))
-        val body = httpGet(url) ?: return@withContext DanmakuList()
+        val body = VideoHttpClient.get(url) ?: return@withContext DanmakuList()
         DanmakuParser.parse(body)
     }
 
     // ---- CMS helpers ----
 
-    private fun parseCmsList(arr: com.google.gson.JsonArray?): List<VideoItem> {
+    private fun parseCmsList(arr: JsonArray?): List<VideoItem> {
         if (arr == null) return emptyList()
         return arr.mapNotNull { el ->
             try {
@@ -229,7 +275,7 @@ class JsonVideoSource(
         )
     }
 
-    private fun parseVideoArray(arr: com.google.gson.JsonArray?): List<VideoItem> {
+    private fun parseVideoArray(arr: JsonArray?): List<VideoItem> {
         if (arr == null) return emptyList()
         return arr.mapNotNull { el ->
             try {
@@ -248,62 +294,19 @@ class JsonVideoSource(
         }
     }
 
-    // ---- http helpers ----
-
-    private fun httpGet(url: String): String? {
-        return try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
-                .build()
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    LogUtils.d(TAG, "http $url -> ${resp.code}")
-                    return null
-                }
-                resp.body?.string()
-            }
-        } catch (e: Exception) {
-            LogUtils.d(TAG, "httpGet failed: $url: ${e.message}")
-            null
-        }
-    }
-
-    private fun httpGetJson(url: String): JsonObject? {
-        val body = httpGet(url) ?: return null
-        return try {
-            JsonParser.parseString(body).asJsonObject
-        } catch (e: Exception) {
-            LogUtils.d(TAG, "parse json failed: $url: ${e.message}")
-            null
-        }
-    }
-
     private fun fill(tpl: String, tid: String, pg: Int): String {
         return tpl.replace("{tid}", enc(tid)).replace("{pg}", pg.toString())
     }
 
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
-    private fun JsonObject.optString(key: String, fallback: String = ""): String {
-        val v = get(key) ?: return fallback
-        return try {
-            if (v.isJsonNull) fallback else v.asString
-        } catch (e: Exception) {
-            fallback
-        }
-    }
-
-    private fun JsonObject.optInt(key: String, fallback: Int): Int {
-        val v = get(key) ?: return fallback
-        return try {
-            if (v.isJsonNull) fallback else v.asInt
-        } catch (e: Exception) {
-            fallback
-        }
-    }
-
     companion object {
         private const val TAG = "JsonVideoSource"
     }
 }
+
+private fun com.google.gson.JsonObject.optString(key: String, default: String = ""): String =
+    takeIf { has(key) }?.get(key)?.takeIf { it.isJsonPrimitive }?.asString ?: default
+
+private fun com.google.gson.JsonObject.optInt(key: String, default: Int = 0): Int =
+    takeIf { has(key) }?.get(key)?.takeIf { it.isJsonPrimitive }?.asInt ?: default

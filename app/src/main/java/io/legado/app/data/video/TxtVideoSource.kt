@@ -21,6 +21,9 @@ import kotlinx.coroutines.withContext
  * - 视频行格式：标题|URL|封面（封面可省略）
  * - URL 含 $ 时为多集（集名$地址，# 分隔），同苹果CMS 约定
  * - 第一个 [ 前的 # 注释行可作为站点名
+ *
+ * 注意：FongMi 逐行格式（名称$接口地址）由 VideoSourceRegistry 处理，
+ * 每行创建一个 CMS JsonVideoSource。本类仅处理静态列表格式。
  */
 class TxtVideoSource(
     override val sourceId: String,

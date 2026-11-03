@@ -206,8 +206,8 @@ class PyHomepageViewModel : ViewModel() {
         return _sources.value.find { it.id == selectedSourceId }?.name
     }
 
-    /** 当前源类型是否支持列表式浏览（py/json/txt 走统一数据模型） */
-    fun isListSource(type: String?): Boolean = type == "py" || type == "json" || type == "txt"
+    /** 当前源类型是否支持列表式浏览（py/json/txt/html 走统一数据模型） */
+    fun isListSource(type: String?): Boolean = type == "py" || type == "json" || type == "txt" || type == "html"
 
     /** 获取指定 py 源的加载错误信息 */
     fun loadErrorFor(id: String): String? {
@@ -223,14 +223,16 @@ class PyHomepageViewModel : ViewModel() {
                 HomeSource(it.meta.id, it.meta.name, "py", it.loaded)
             }
             HomeBridge.refreshAllMeta()
-            val htmlList = HomeSourceStore.listHtml().map {
-                HomeSource(it.id, it.name, "html", true)
+            // WebView HTML 页面（type=web）
+            val webList = HomeSourceStore.listHtml().map {
+                HomeSource(it.id, it.name, "web", true)
             }
+            // JSON/TXT/HTML 配置源（统一 VideoSource 接口）
             val videoSources = HomeSourceStore.listVideoSources().map {
                 HomeSource(it.id, it.name, it.type, true)
             }
             withContext(Dispatchers.Main) {
-                _sources.value = pyList + videoSources + htmlList
+                _sources.value = pyList + videoSources + webList
                 if (_sources.value.none { it.id == selectedSourceId }) {
                     selectedSourceId = _sources.value.firstOrNull()?.id ?: ""
                     if (selectedSourceId.isNotEmpty()) {
@@ -239,8 +241,8 @@ class PyHomepageViewModel : ViewModel() {
                 }
                 // 选中源时加载对应内容
                 when (currentSourceType()) {
-                    "py", "json", "txt" -> loadHome(selectedSourceId)
-                    "html" -> loadHtmlContent(selectedSourceId)
+                    "py", "json", "txt", "html" -> loadHome(selectedSourceId)
+                    "web" -> loadHtmlContent(selectedSourceId)
                 }
             }
         }
@@ -262,8 +264,8 @@ class PyHomepageViewModel : ViewModel() {
         homeCache.clear()
         categoryCache.clear()
         when (currentSourceType()) {
-            "py", "json", "txt" -> loadHome(sourceId)
-            "html" -> loadHtmlContent(sourceId)
+            "py", "json", "txt", "html" -> loadHome(sourceId)
+            "web" -> loadHtmlContent(sourceId)
         }
     }
 
@@ -638,6 +640,7 @@ class PyHomepageViewModel : ViewModel() {
                 "py" -> PyLoader.installFromUri(uri, displayName)
                 "json" -> HomeSourceStore.importVideoSource(uri, displayName, "json")
                 "txt" -> HomeSourceStore.importVideoSource(uri, displayName, "txt")
+                "html" -> HomeSourceStore.importVideoSource(uri, displayName, "html")
                 else -> HomeSourceStore.importHtml(uri, displayName)
             }
             val msg = if (!ok) {
@@ -648,6 +651,7 @@ class PyHomepageViewModel : ViewModel() {
                 } ?: "py 源导入成功"
                 "json" -> "JSON 源导入成功"
                 "txt" -> "TXT 源导入成功"
+                "html" -> "HTML 源导入成功"
                 else -> "HTML 页面导入成功"
             }
             withContext(Dispatchers.Main) {
@@ -660,18 +664,30 @@ class PyHomepageViewModel : ViewModel() {
 
     /**
      * 检测源文件类型：扩展名优先，内容特征兜底。
-     * 返回 "py" | "json" | "txt" | "html"。
+     * 返回 "py" | "json" | "txt" | "html" | "web"。
+     * "html" = HTML 配置源（JSON 含 rules，走 VideoSource 接口）
+     * "web" = WebView HTML 页面（直接渲染）
      */
     private fun detectSourceType(fileName: String, content: String): String {
         val trimmed = content.trimStart()
         return when {
             fileName.endsWith(".py") -> "py"
-            fileName.endsWith(".json") -> "json"
+            fileName.endsWith(".html") || fileName.endsWith(".htm") -> "web"
             fileName.endsWith(".txt") -> "txt"
-            fileName.endsWith(".html") || fileName.endsWith(".htm") -> "html"
-            trimmed.startsWith("{") || trimmed.startsWith("[") -> "json"
-            else -> if (content.isPythonSource()) "py" else "html"
+            fileName.endsWith(".json") -> {
+                if (isHtmlConfig(content)) "html" else "json"
+            }
+            trimmed.startsWith("{") || trimmed.startsWith("[") -> {
+                if (isHtmlConfig(content)) "html" else "json"
+            }
+            else -> if (content.isPythonSource()) "py" else "web"
         }
+    }
+
+    /** 判断是否为 HTML 配置源（JSON 含 "type":"html" 或 "rules" 字段） */
+    private fun isHtmlConfig(content: String): Boolean {
+        return content.contains("\"type\":\"html\"") || content.contains("\"type\": \"html\"") ||
+            content.contains("\"rules\"")
     }
 
     /** 判断文件内容是否为 Python 源码 */
@@ -699,7 +715,7 @@ class PyHomepageViewModel : ViewModel() {
 
     // ---- 管理 ----
 
-    fun showManageDialog() {
+    fun openManageDialog() {
         showManageDialog = true
     }
 
@@ -707,12 +723,12 @@ class PyHomepageViewModel : ViewModel() {
         showManageDialog = false
     }
 
-    /** 删除源（py 卸载 / html 删除 / json-txt 删除） */
+    /** 删除源（py 卸载 / html 配置删除 / json-txt 删除 / web 页面删除） */
     fun deleteSource(source: HomeSource) {
         viewModelScope.launch(Dispatchers.IO) {
             when (source.type) {
                 "py" -> PyLoader.uninstall(source.id)
-                "json", "txt" -> HomeSourceStore.deleteVideoSource(source.id)
+                "json", "txt", "html" -> HomeSourceStore.deleteVideoSource(source.id)
                 else -> HomeSourceStore.deleteHtml(source.id)
             }
             withContext(Dispatchers.Main) {

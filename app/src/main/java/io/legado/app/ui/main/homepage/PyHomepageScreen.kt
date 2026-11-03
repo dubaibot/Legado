@@ -180,7 +180,7 @@ fun PyHomepageScreen(
                             text = { Text("管理") },
                             onClick = {
                                 showSettingsMenu = false
-                                viewModel.showManageDialog()
+                                viewModel.openManageDialog()
                             },
                         )
                     }
@@ -201,8 +201,8 @@ fun PyHomepageScreen(
                     .fillMaxSize()
             ) {
                 when {
-                    // HTML 自定义页面：WebView 渲染
-                    currentType == "html" -> {
+                    // WebView HTML 页面：直接渲染
+                    currentType == "web" -> {
                         val html = viewModel.htmlContent
                         if (html != null) {
                             HtmlWebView(html)
@@ -228,16 +228,16 @@ fun PyHomepageScreen(
                     }
 
                     sources.isEmpty() -> {
-                        EmptyBox("暂无首页源\n点击设置，导入 py/json/txt 源或 HTML 页面")
+                        EmptyBox("暂无首页源\n点击设置，导入 py/json/txt/html 源或 HTML 页面")
                     }
 
-                    // py/json/txt 源首页内容（统一数据模型）
-                    (currentType == "py" || currentType == "json" || currentType == "txt") && homeData != null -> {
+                    // py/json/txt/html 源首页内容（统一数据模型）
+                    (currentType == "py" || currentType == "json" || currentType == "txt" || currentType == "html") && homeData != null -> {
                         HomeContent(viewModel, homeData, bottomPaddingPx)
                     }
 
-                    // py/json/txt 源加载首页中
-                    (currentType == "py" || currentType == "json" || currentType == "txt") && homeData == null && !viewModel.isSearching -> {
+                    // py/json/txt/html 源加载首页中
+                    (currentType == "py" || currentType == "json" || currentType == "txt" || currentType == "html") && homeData == null && !viewModel.isSearching -> {
                         val homeError = viewModel.homeError
                         val loadError = viewModel.loadErrorFor(viewModel.selectedSourceId)
                         when {
@@ -825,7 +825,7 @@ private fun GroupDialog(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
-                                imageVector = if (source.type == "html") {
+                                imageVector = if (source.type == "web") {
                                     Icons.Default.Code
                                 } else {
                                     Icons.Default.OndemandVideo
@@ -947,7 +947,7 @@ private fun ManageScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            imageVector = if (source.type == "html") {
+                            imageVector = if (source.type == "web") {
                                 Icons.Default.Code
                             } else {
                                 Icons.Default.OndemandVideo
@@ -966,8 +966,12 @@ private fun ManageScreen(
                             )
                             Text(
                                 text = when (source.type) {
-                                    "html" -> "HTML 页面"
-                                    else -> if (source.loaded) "py 源 · 已加载" else "py 源 · 未加载"
+                                    "web" -> "HTML 页面"
+                                    "html" -> "HTML 源"
+                                    "json" -> "JSON 源"
+                                    "txt" -> "TXT 源"
+                                    "py" -> if (source.loaded) "py 源 · 已加载" else "py 源 · 未加载"
+                                    else -> source.type
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = pageSecondaryTextColor(),

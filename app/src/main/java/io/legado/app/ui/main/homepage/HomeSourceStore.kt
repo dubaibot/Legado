@@ -105,7 +105,7 @@ object HomeSourceStore {
     data class VideoSourceMeta(
         val id: String,
         val name: String,
-        val type: String, // "json" | "txt"
+        val type: String, // "json" | "txt" | "html"
     )
 
     /** 列出全部 JSON/TXT 视频源 */

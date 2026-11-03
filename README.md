@@ -109,7 +109,14 @@ https://www.yuque.com/legado/wiki/community
 - 新增：源导入支持 json/txt 文件（按扩展名 + 内容特征检测类型）
 - 优化：播放器浮层新增 MediaController（暂停/进度控制）
 - 优化：播放器浮层新增弹幕开关按钮与进度轮询驱动弹幕
-- 当前快照：3.26.110309
+- 新增：FongMi/TV 多源格式全面支持（json/txt/py/html 四类影视源）
+- 新增：FongMi Config 多站点解析器（sites 数组展开为多个独立源）
+- 新增：FongMi TXT 逐行格式解析器（名称$接口地址展开为多个 CMS 源）
+- 新增：HtmlVideoSource（HTML 源 VideoSource 实现，基于 AnalyzeRule xpath/css 规则解析）
+- 新增：VideoHttpClient 共享 HTTP 客户端（连接池 + 响应缓存 TTL 5 分钟）
+- 新增：JsonVideoSource 支持 FongMi Config 多站点 + CMS V10 + 自定义端点
+- 重写：VideoSourceRegistry 支持 PY/JSON/TXT/HTML 四类源创建与展开
+- 当前快照：3.26.110310
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

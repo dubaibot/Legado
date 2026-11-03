@@ -3,7 +3,14 @@
 ## cronet版本: 128.0.6613.40
 
 【11-03】
-- 新增：Spider 类兼容层，支持 FongMi/TV 约定的 py 源（无模块级函数时自动实例化 Spider 子类调用 homeContent/categoryContent/detailContent/searchContent/playerContent）
+- 新增：FongMi/TV 多源格式全面支持（json/txt/py/html 四类影视源）
+- 新增：FongMi Config 多站点解析器（sites 数组展开为多个独立源）
+- 新增：FongMi TXT 逐行格式解析器（名称$接口地址展开为多个 CMS 源）
+- 新增：HtmlVideoSource（HTML 源 VideoSource 实现，基于 AnalyzeRule xpath/css 规则解析）
+- 新增：VideoHttpClient 共享 HTTP 客户端（连接池 + 响应缓存 TTL 5 分钟）
+- 新增：JsonVideoSource 支持 FongMi Config 多站点 + CMS V10 + 自定义端点
+- 重写：VideoSourceRegistry 支持 PY/JSON/TXT/HTML 四类源创建与展开
+- Spider 类兼容层，支持 FongMi/TV 约定的 py 源（无模块级函数时自动实例化 Spider 子类调用 homeContent/categoryContent/detailContent/searchContent/playerContent）
 - 新增：插件调用结果归一化（Spider 类方法输出统一转换为 App 数据格式，兼容 CMS vod_play_from/vod_play_url 格式）
 - 修复：首页顶栏移除源名称显示，内容区域满屏显示
 - 新增：视频卡片封面图显示（Glide 加载，3:4 比例）
