@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.video.SourceType
 import io.legado.app.data.video.VideoSource
 import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.help.config.AppConfig
@@ -238,9 +239,24 @@ class PyHomepageViewModel : ViewModel() {
             val webList = HomeSourceStore.listHtml().map {
                 HomeSource(it.id, it.name, "web", true)
             }
-            // JSON/TXT/HTML 配置源（统一 VideoSource 接口）
-            val videoSources = HomeSourceStore.listVideoSources().map {
-                HomeSource(it.id, it.name, it.type, true)
+            // JSON/TXT/HTML 配置源（统一 VideoSource 接口，FongMi Config 按站点展开）
+            val videoSources = try {
+                VideoSourceRegistry.listSources()
+                    .filter { it.type != SourceType.PY }  // py 源已由 pyList 提供
+                    .map {
+                        HomeSource(
+                            id = it.id,
+                            name = it.name,
+                            type = when (it.type) {
+                                SourceType.TXT -> "txt"
+                                SourceType.HTML -> "html"
+                                else -> "json"  // JSON / JAR 均按列表源处理
+                            },
+                            loaded = true
+                        )
+                    }
+            } catch (e: Exception) {
+                emptyList()
             }
             withContext(Dispatchers.Main) {
                 _sources.value = pyList + videoSources + webList
@@ -706,6 +722,8 @@ class PyHomepageViewModel : ViewModel() {
                         put("type", "cms")
                         put("api", site.api)
                         site.searchApi.takeIf { it.isNotBlank() }?.let { put("searchApi", it) }
+                        site.jar.takeIf { it.isNotBlank() }?.let { put("jar", it) }
+                        site.ext.takeIf { it.isNotBlank() }?.let { put("ext", it) }
                     }.toString()
                     val ok = HomeSourceStore.saveVideoSourceFromContent(
                         sourceId, site.name, "json", configJson
@@ -780,7 +798,12 @@ class PyHomepageViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             when (source.type) {
                 "py" -> PyLoader.uninstall(source.id)
-                "json", "txt", "html" -> HomeSourceStore.deleteVideoSource(source.id)
+                "json", "txt", "html" -> {
+                    // 展开源（parentId 非空）删除父文件，未命中时回退直接删文件
+                    if (!VideoSourceRegistry.deleteSource(source.id)) {
+                        HomeSourceStore.deleteVideoSource(source.id)
+                    }
+                }
                 else -> HomeSourceStore.deleteHtml(source.id)
             }
             withContext(Dispatchers.Main) {
