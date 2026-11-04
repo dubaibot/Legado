@@ -31,71 +31,54 @@ Entries discovered by the Agent during task execution should follow this format:
 
 ## Entries
 
-[Git 回退禁令与工作区恢复方法]
-- Date: 2026-10-20
-- Context: D13 批次中误用 `git checkout -- <file>` 回退 ExoPlayerHelper.kt，导致未提交的 1534 行工作区版本被回退为 HEAD 的 162 行版本
+[死代码审计、edit 工具模糊匹配与 Git 回退禁令]
+- Date: 2026-11-04（合并 2026-10-20/24/29 条目）
+- Context: D13 批次误用 git checkout 回退文件；分支全面检测中误判死代码；编辑 RssParserByRule.kt 导入区时 oldString 误写仍"成功"
 - Category: Troubleshooting & Debugging
 - Instructions:
-  - 本仓库所有批次（D1-D13+）的移植工作均处于未提交状态（大量 M 文件），禁止对任何文件执行 `git checkout --` / `git restore`，一律用编辑工具做定向回退
-  - ws 的 ExoPlayerHelper.kt（1533 行 Sigma 视频引擎版）源自 fork m 的同名文件，二者逐锚点一致（imports 40-66、lazy databaseProvider 1313/1376）；ws 版本=m 版本+1 行尾部差异
-  - 工作区文件意外丢失时，先核对 `/tmp/opencode/forks/{arc,m,max,ng}` 同路径文件，fork 源即可作为恢复底本
-  - git fsck 无 dangling blob（文件从未 add 过），stash 为空，均非可用恢复渠道
+  - 本仓库所有批次移植工作均处于未提交状态，禁止对任何文件执行 `git checkout --` / `git restore`，一律用编辑工具做定向回退；ws 文件意外丢失时先核对 `/tmp/opencode/forks/{arc,m,max,ng}` 同路径文件作为恢复底本
+  - 引用完整性审计禁止对 grep 结果用 head/N 截断采样——截断处之外的真实引用会漏检，必须全量输出
+  - 死代码判定需四重验证：限定 import 全量 grep + 同包未限定引用 grep + 通配 import `pkg.*` 检查 + 编译兜底
+  - edit 工具对 oldString 存在模糊匹配，oldString 与文件有差异时可能静默按近似内容替换；对 import 区等精细位置的编辑，编辑后必须立即回读验证关键行
 
 [Kotlin 大块移植切片方法]
 - Date: 2026-10-20
 - Context: D13 向 ExoPlayerHelper 追加 max 的 475 行媒体缓存成员块
 - Category: Build Methods
 - Instructions:
-  - 按锚点行切片时，边界必须「从下一声明的 fun 行向上回溯：跳过空行，若遇 `*/` 则继续回溯到配对 `/**`」，否则会把下一函数的 KDoc 切成两半（KDoc 计数不匹配即可检出）
-  - 切完必须断言：`/**` 与 `*/` 数量相等、`{` 与 `}` 数量相等、不含同名重复声明（如 getMediaUrls/MediaRequest 在 m 已有）
-  - 不同签名的同名函数是合法重载（如 max 的 isMediaUrlCached(cache,url,cacheDir) 3 参与 m 的 isMediaUrlCached(url) 1 参），引用方按实参个数解析，两者需同时存在
-  - 审计脚本对接收者扩展声明（`fun <T> Receiver.sym`、`fun <VB> Fragment.viewBinding`）需用 `fun\s+[\w<>\s,]*\.sym` 宽松匹配；R/databinding/BuildConfig/代码生成类直接白名单，否则全量误报
-  - import 闭包审计对「成员导入」（object/伴生对象/嵌套类型/`const val`，如 `AppConst.UA_NAME`、`CookieManager.mergeCookies`、`AnalyzeUrl.Companion.getMediaItem`）会因「按 import 路径找文件」失败而误报：先按「去掉最后一段后的 .kt 文件存在」判定成员导入，rx 备选里补 `const val`；更可靠的兜底是直接对被引用包目录 grep 符号声明
-  - 字符串存在性检查必须扫全部 res（如 `http_ip` 在 non_translat.xml，WebSigma 的 WebService 在用），只扫 values/strings.xml 会误报
-  - 删除枚举/注册表条目时逐条按行前缀删（每条目单行成对）；禁用「进入 skip 后等 endswith 复位」的状态机——SPEAK_ENGINE( 前缀同时命中进入分支并 continue，复位永不执行，曾吞掉 BaseContentSearchDialog 600 行尾部
-  - 每次脚本改写文件后立刻断言花括号/KDoc 平衡 + 文件行数与预期一致，并在关键锚点（createDialog/SourceFieldItem 等）抽查存在性
+  - 按锚点行切片时，边界必须「从下一声明的 fun 行向上回溯：跳过空行，若遇 `*/` 则继续回溯到配对 `/**`」，否则会把下一函数的 KDoc 切成两半
+  - 切完必须断言：`/**` 与 `*/` 数量相等、`{` 与 `}` 数量相等、不含同名重复声明
+  - 不同签名的同名函数是合法重载，引用方按实参个数解析，两者需同时存在
+  - import 闭包审计对「成员导入」会因「按 import 路径找文件」失败而误报：先按「去掉最后一段后的 .kt 文件存在」判定成员导入；更可靠的兜底是直接对被引用包目录 grep 符号声明
+  - 字符串存在性检查必须扫全部 res（如 `http_ip` 在 non_translat.xml），只扫 values/strings.xml 会误报
+  - 删除枚举/注册表条目时逐条按行前缀删（每条目单行成对）；禁用「进入 skip 后等 endswith 复位」的状态机——SPEAK_ENGINE( 前缀同时命中进入分支并 continue，复位永不执行
+  - 每次脚本改写文件后立刻断言花括号/KDoc 平衡 + 文件行数与预期一致
 
 [构建配方与引擎构建约束（assembleDebug/release/worktree 合并）]
 - Date: 2026-10-29（合并 2026-10-23 与 2026-10-26 条目）
 - Context: 多轮构建验证、test 分支 worktree 构建、JS 引擎换件构建
 - Category: Build Methods
 - Instructions:
-  - 构建基线：AGP 8.13.2、Kotlin 2.3.10、Gradle 8.14.4、compileSdk/targetSdk 36；依赖 media3 1.10.1、Room 2.7.1
-  - 编译必须用后台终端（cgroup memory_percent 70 / cpu_percent 200 / timeout 30min），日志 tee 到 /tmp/opencode/assemble_dbgNN.log
-  - Kotlin 编译约 5-10min，Java+打包约 1-2min，assembleDebug 全量约 10-11min；assembleRelease（含 R8+lintVital）约 23min
+  - 构建基线：AGP 8.13.2、Kotlin 2.3.10、Gradle 8.14.4、compileSdk/targetSdk 36；依赖 media3 1.10.1、Room 2.7.1、Gson 2.13.2
+  - 编译必须用后台终端（cgroup memory_percent 70 / cpu_percent 200 / timeout 30min），日志 tee 到 /tmp/opencode/build_*.log
+  - Kotlin 编译约 5-10min，Java+打包约 1-2min，assembleDebug 全量约 10-11min；assembleRelease（含 R8+lintVital）约 21-24min
   - `-x lintVitalAnalyzeAppRelease -x lintVitalAnalyzeRelease` 不跳过 `lintVitalAppRelease`（不同任务名）
-  - 编译检查用 `:app:compileAppReleaseKotlin`（AGP flavor 维度导致 `compileReleaseKotlin` 报 ambiguous，候选 `compileAppReleaseKotlin`/`compileAppReleaseUnitTestKotlin`），约 5-10min
   - soundtouch-jni 需 proguard keep：`-keep class com.tianscar.soundtouch.** { *; }`
-  - GSON 反射反序列化的 Kotlin data class 必须加 `@Keep`（androidx.annotation.Keep）或在 proguard-rules.pro 加 `-keep class pkg.ClassName { *; }`，否则 R8 剥离构造函数导致运行时 "Abstract classes can't be instantiated! Class name: xxx" 崩溃；崩溃调用链特征：Fragment onCreateView → Gson.fromJson → ReflectiveTypeAdapterFactory → ConstructorConstructor 抛 JsonIOException；已修 PyLoader.PyPluginMeta/PyPlugin（HomepageFragment.onCreateView 启动即崩）
-  - 缺失视图类占位策略：布局引用但无代码直接访问的自定义视图，创建 FrameLayout/TextView 子类桩即可通过编译（BatteryViewOrgin、EpubReadView、ReadAiFloatingPanel、ReadAiSummaryPanel、ReadAloudPlayerPanel）；StableLiquidGlassView 用无依赖 FrameLayout 桩替代
-  - exo_icon_* drawable 来自 media3-ui 1.10.1 AAR；video_* 和 unlock drawable 在所有 fork 和 git 历史中均不存在，创建占位版本
-  - Room 迁移链合并为 90→96 单步（ws 的 91-94 中间 schema 不可考）
+  - GSON 反射反序列化的 Kotlin data class 必须加 `@Keep`，否则 R8 剥离构造函数导致运行时崩溃
+  - 缺失视图类占位策略：布局引用但无代码直接访问的自定义视图，创建 FrameLayout/TextView 子类桩即可通过编译
   - gradle.properties 内存收敛：-Xmx4g + in-process kotlin 编译，单堆 4GB 避免 OOM
-  - 编译错误修复策略：按文件簇分组并行修复，只添加缺失成员不覆盖
   - Release APK：universal 31.9MB / arm64-v8a 23.3MB / armeabi-v7a 22.5MB
-  - worktree 构建：`git worktree add --detach <dir> origin/test`，worktree 需补 local.properties（sdk.dir）；test 分支 gradle.properties 改 -Xmx4g + in-process + workers.max=2 防 R8 OOM
+  - worktree 构建：`git worktree add --detach <dir> origin/test`，worktree 需补 local.properties（sdk.dir）
   - applicationId 改 com.myreaderD.reader 需为 google-services.json 增 com.myreaderD.reader.release 客户端条目
-   - JS 引擎换件约束：engine 用 org.htmlunit:htmlunit-core-js:5.3.0，其 SlotMapOwner 使用 MethodHandle.invokeExact（min-api 26），app 与 modules/rhino 的 minSdk 必须保持 26（回退 23 会在 mergeExtDexAppDebug 报 D8 错）
-   - Chaquopy 约束：build.gradle defaultConfig 内 `pip { install("requests") }` 预装 requests（Chaquopy 17.x 用 PipExtension 的 install()，`requirements=` 属性不存在会构建报错；用户 py 源普遍 import requests，未预装会 ModuleNotFoundError 加载失败）；py 插件接口约定：插件模块须定义 search(keyword)/detail(id)/play(url)，返回 JSON 字符串，search 须返回 `[{"id","title","url"}]` 数组（也兼容 {list/data/items} 包装）；HomeBridge 15s 超时；插件加载失败原因经 pyloader.py 的 `get_load_error(pluginId)` 暴露，PyLoader.getLoadError() 读取并展示到管理页
-   - Chaquopy PyObject 无 hasAttr/getAttr 方法（编译报 Unresolved reference），检查属性存在只能用 try-catch 调 callAttr 或 Python 侧 getattr；Python None 经 callAttr 返回后 toString() 为 "None" 字符串，需手动判空
-   - Spider 类兼容层：FongMi/TV 约定的 py 源仅定义 `class Spider(Spider)` 子类方法（homeContent/categoryContent/detailContent/searchContent/playerContent），无模块级函数；plugin_entry.py 新增 call_spider_func 在模块级函数不存在（AttributeError）时自动实例化 Spider 子类调用对应方法，返回 None 表示无 Spider 类让 Kotlin 走原始错误；结果经 _normalize_home/category/search/detail/play 归一化为 App 数据格式（CMS vod_play_from/vod_play_url → play_urls[{"name","url"}]，header → headers）
-   - Release 签名：signingConfigs 仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效，属性缺失产出未签名 APK 安装必报「安装包无效」；属性写在 ~/.gradle/gradle.properties（不进仓库，用户级优先级高于项目级）；密钥库 /workspace/keystore/myreader-release.jks（alias myreader）；验证用 apksigner verify --print-certs；换签名密钥后旧版必须先卸载
-   - VideoPlayerActivity 单 URL 播放：传入 videoUrl + videoTitle extra 即设 VideoPlay.singleUrl=true 直接播放（无需 sourceKey/sourceType）；PyHomepageViewModel.playVideo 已用此模式启动 GSY 播放器
-   - Glide Compose 集成可用：GlideImage + ContentScale.Crop + @OptIn(ExperimentalGlideComposeApi::class)，参考 HomepageBookCover.kt
-   - APK 下载预览：复制产物到 /tmp/opencode，由后台终端 `python3 -m http.server 8902` 对外提供
-   - 构建日志经 `| tail` 缓冲时文件为 0 字节，必须等命令结束再读
-
-[死代码审计与 edit 工具模糊匹配风险]
-- Date: 2026-11-02（合并 2026-10-24 与 2026-10-29 条目）
-- Context: 分支全面检测中误判死代码（grep head -5 截断漏掉引用）；编辑 RssParserByRule.kt 导入区时 oldString 误写仍"成功"，实际破坏 import
-- Category: Troubleshooting & Debugging
-- Instructions:
-  - 引用完整性审计禁止对 grep 结果用 head/N 截断采样——截断处之外的真实引用会漏检，必须全量输出
-  - 死代码判定需四重验证：限定 import 全量 grep + 同包未限定引用 grep（含子目录共享包声明）+ 通配 import `pkg.*` 检查 + 编译兜底
-  - 同名文件在不同包是合法的（style1/style2 书架适配器等 26 对同名文件均为正常），判定死代码看引用看包名，看文件名
-  - Launcher1-7 等类可定义在同名外文件中（WelcomeActivity.kt 内含 7 个 Launcher 顶级类），按类名全树 grep 而非按文件名找
-  - Kotlin 词法扫描需正确处理 raw string 的 `""""` 四引号结尾（末尾 3 引号是终止符，第 4 个是内容），否则误报花括号不平衡
-  - edit 工具对 oldString 存在模糊匹配，oldString 与文件有差异时可能静默按近似内容替换；对 import 区等精细位置的编辑，编辑后必须立即回读验证关键行
+  - Chaquopy 约束：build.gradle defaultConfig 内 `pip { install("requests") }` 预装 requests；py 插件接口约定：插件模块须定义 search/detail/play，返回 JSON 字符串；HomeBridge 15s 超时
+  - Chaquopy PyObject 无 hasAttr/getAttr 方法，检查属性存在只能用 try-catch 调 callAttr 或 Python 侧 getattr；Python None 经 callAttr 返回后 toString() 为 "None" 字符串，需手动判空
+  - Chaquopy Java 方法只接受位置参数：Python 关键字参数会按顺序映射到 Java 方法的位置参数；解决方式：base/spider.py 改为 Python 包装类，正确映射关键字参数到 Java 位置参数
+  - Chaquopy isinstance(cls, type) 对 Java 类不成立返回 False；修复：直接 `try: spider = spider_cls() except: return None` 不依赖 isinstance 检查
+  - Gson Kotlin API：asJsonObject/asString/asJsonArray/asJsonPrimitive 是属性访问（无括号），不是方法调用；`el.asJsonObject` 正确，`el.asJsonObject()` 报 "receiver type mismatch" 编译错误；entrySet()/keySet()/size() 是方法调用（有括号）；getAsJsonObject()/getAsString() 也是方法调用（有括号）
+  - Release 签名：signingConfigs 仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效；属性写在 ~/.gradle/gradle.properties；密钥库 /workspace/keystore/myreader-release.jks（alias myreader）
+  - VideoPlayerActivity 单 URL 播放：传入 videoUrl + videoTitle extra 即设 VideoPlay.singleUrl=true 直接播放
+  - Glide Compose 集成可用：GlideImage + ContentScale.Crop + @OptIn(ExperimentalGlideComposeApi::class)
+  - APK 下载预览：复制产物到 /tmp/opencode，由后台终端 `python3 -m http.server 8901` 对外提供
 
 [分支与 MR 工作流]
 - Date: 2026-10-24（MR 推送知识 2026-10-29 补充）
