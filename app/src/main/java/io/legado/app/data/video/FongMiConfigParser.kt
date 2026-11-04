@@ -47,7 +47,8 @@ object FongMiConfigParser {
         val type: Int,           // 0=CMS, 1=CMS+search, 3=jar(用CMS兼容)
         val api: String,         // CMS API 地址
         val searchApi: String,   // 搜索 API（type 1 专用，可空）
-        val ext: String = "",    // 扩展参数（预留）
+        val ext: String = "",    // 扩展参数
+        val header: Map<String, String> = emptyMap(),  // 自定义请求头
     )
 
     /** 解析 Config JSON，返回站点列表 */
@@ -94,6 +95,7 @@ object FongMiConfigParser {
         val api = str(obj, "api", "apiUrl", "url")
         val searchApi = str(obj, "searchApi", "searchUrl")
         val ext = str(obj, "ext")
+        val header = parseHeader(obj)
         return SiteConfig(
             key = key,
             name = name,
@@ -101,7 +103,23 @@ object FongMiConfigParser {
             api = api,
             searchApi = searchApi,
             ext = ext,
+            header = header,
         )
+    }
+
+    /** 解析 header 字段（支持 JSON 对象和 JSON 字符串两种格式） */
+    private fun parseHeader(obj: JsonObject): Map<String, String> {
+        val headerObj = obj.get("header") ?: return emptyMap()
+        try {
+            val h = when {
+                headerObj.isJsonObject -> headerObj.asJsonObject()
+                headerObj.isJsonPrimitive -> JsonParser.parseString(headerObj.asString()).getAsJsonObject()
+                else -> return emptyMap()
+            }
+            return h.entrySet().associate { (k, v) -> k to v.asString }
+        } catch (e: Exception) {
+            return emptyMap()
+        }
     }
 
     /** 判断是否为 FongMi Config 格式（含 sites 数组） */

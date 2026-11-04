@@ -201,14 +201,14 @@ object PyTaskQueue {
                     // fall through
                 }
             }
-            // Spider 类兼容层：仅当函数不存在（AttributeError）时回退
-            // 避免掩盖网络异常等真实错误
+            // Spider 类兼容层：尝试 fallback，不仅限于 AttributeError
+            // Chaquopy 可能抛出不同类型的异常，统一尝试 Spider 路径
             val errMsg = e.message ?: e.toString()
-            if (errMsg.contains("AttributeError") || errMsg.contains("has no attribute")) {
-                val spiderResult = callSpiderFunc(module, pluginEntry, func, args)
-                if (spiderResult != null) {
-                    return spiderResult
-                }
+            LogUtils.d("PyTaskQueue", "callPluginFunc $func failed: $errMsg, trying spider fallback")
+            val spiderResult = callSpiderFunc(module, pluginEntry, func, args)
+            if (spiderResult != null) {
+                LogUtils.d("PyTaskQueue", "spider fallback succeeded for $func")
+                return spiderResult
             }
             val finalMsg = getErrorMessage(e, func)
             LogUtils.d("PyTaskQueue", "callPluginFunc error: $finalMsg")
@@ -244,11 +244,7 @@ object PyTaskQueue {
 
     private fun getErrorMessage(e: Exception, func: String): String {
         val msg = e.message ?: e.toString()
-        return if (msg.contains("AttributeError") || msg.contains("has no attribute")) {
-            "function not found: $func"
-        } else {
-            "$func: $msg"
-        }
+        return "$func: $msg"
     }
 
     private fun buildErrorJson(errMsg: String): String {

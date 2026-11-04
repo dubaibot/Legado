@@ -15,7 +15,8 @@ import java.net.URLEncoder
  * {
  *   "sites": [
  *     {"key":"app1","name":"App1","type":0,"api":"https://.../api.php/provide/vod"},
- *     {"key":"app2","name":"App2","type":1,"api":"https://.../api.php/provide/vod","searchApi":"..."}
+ *     {"key":"app2","name":"App2","type":1,"api":"https://.../api.php/provide/vod","searchApi":"..."},
+ *     {"key":"app3","name":"App3","type":3,"api":"https://.../api.php/provide/vod","ext":"...","header":{"Referer":"..."}}
  *   ]
  * }
  * 此时 sourceId 格式为 "configId:siteKey"，选择指定站点。
@@ -24,7 +25,9 @@ import java.net.URLEncoder
  * {
  *   "name": "站点名",
  *   "type": "cms",
- *   "api": "https://api.example.com/api.php/provide/vod"
+ *   "api": "https://api.example.com/api.php/provide/vod",
+ *   "ext": "扩展参数（可选）",
+ *   "header": {"Referer": "https://...", "Cookie": "..."}
  * }
  *
  * 3. 自定义端点模式：
@@ -35,15 +38,18 @@ import java.net.URLEncoder
  *   "detail": "...?id={id}", "play": "...?url={url}", "danmaku": "...?id={id}"
  * }
  *
- * CMS 模式接口约定：
- * - 列表: {api}?ac=list&t={tid}&pg={pg}  → class + list
- * - 详情: {api}?ac=detail&ids={id}       → vod_play_url "集名$url#集名$url"
- * - 搜索: {api}?ac=videolist&wd={kw}
+ * CMS 模式接口约定（苹果CMS V10）：
+ * - 首页: {api}（不带参数，返回 class + list）
+ * - 分类: {api}?ac=videolist&t={tid}&pg={pg}（返回 list + pagecount）
+ * - 搜索: {api}?wd={kw}&quick=true（返回 list，不带 ac 参数）
+ * - 详情: {api}?ac=detail&ids={id}（返回 list，含 vod_play_url）
+ * - 所有请求自动附加 extend 参数（如果配置了 ext）
  *
  * 性能优化：
  * - 共享 VideoHttpClient 连接池
  * - 响应缓存 TTL 5 分钟
  * - 所有请求在 Dispatchers.IO 执行
+ * - 支持自定义请求头（Referer, Cookie 等）
  */
 class JsonVideoSource(
     override val sourceId: String,
@@ -58,6 +64,8 @@ class JsonVideoSource(
     private val endpoints: Map<String, String>
     private val siteConfig: FongMiConfigParser.SiteConfig?
     private var configSites: List<FongMiConfigParser.SiteConfig>
+    private val siteHeaders: Map<String, String>
+    private val siteExt: String
 
     init {
         var name = sourceId
@@ -66,6 +74,8 @@ class JsonVideoSource(
         val ep = mutableMapOf<String, String>()
         var fongMiSites = emptyList<FongMiConfigParser.SiteConfig>()
         var selectedSite: FongMiConfigParser.SiteConfig? = null
+        var headers = emptyMap<String, String>()
+        var ext = ""
 
         try {
             val root = JsonParser.parseString(configJson).asJsonObject
@@ -83,6 +93,8 @@ class JsonVideoSource(
                         name = selectedSite.name
                         m = "cms"
                         api = selectedSite.api
+                        headers = selectedSite.header
+                        ext = selectedSite.ext
                     }
                 }
             }
@@ -101,6 +113,12 @@ class JsonVideoSource(
                     val v = root.optString(key, "")
                     if (v.isNotBlank()) ep[key] = v
                 }
+                // 解析 header（支持 JSON 对象和 JSON 字符串）
+                val headerEl = root.get("header")
+                if (headerEl != null && headerEl.isJsonObject) {
+                    headers = headerEl.asJsonObject.entrySet().associate { (k, v) -> k to v.asString }
+                }
+                ext = root.optString("ext", "")
             }
         } catch (e: Exception) {
             io.legado.app.utils.LogUtils.d(TAG, "parse config failed: ${e.message}")
@@ -112,23 +130,28 @@ class JsonVideoSource(
         endpoints = ep
         siteConfig = selectedSite
         configSites = fongMiSites
+        siteHeaders = headers
+        siteExt = ext
     }
 
     val isCmsMode: Boolean get() = mode == "cms"
 
-    /** 获取 CMS API 地址（支持 FongMi type 1 的 searchApi 分离） */
-    private fun cmsApiUrl(withAction: String, params: Map<String, String> = emptyMap()): String {
+    /** 构建 CMS API URL（苹果CMS V10 标准参数） */
+    private fun buildCmsUrl(path: String, params: Map<String, String> = emptyMap()): String {
         val searchApi = siteConfig?.searchApi ?: ""
-        val effectiveApi = if (withAction == "search" && searchApi.isNotBlank()) searchApi else baseUrl
+        val effectiveApi = if (path == "search" && searchApi.isNotBlank()) searchApi else baseUrl
+        val allParams = params.toMutableMap()
+        if (siteExt.isNotBlank()) allParams["extend"] = siteExt
         val sep = if ("?" in effectiveApi) "&" else "?"
-        val paramStr = params.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
-        return if (paramStr.isNotBlank()) "$effectiveApi$sep$withAction&$paramStr" else "$effectiveApi$sep$withAction"
+        val paramStr = allParams.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
+        return if (paramStr.isNotBlank()) "$effectiveApi$sep$paramStr" else effectiveApi
     }
 
     override suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = cmsApiUrl("ac=list")
-            val json = VideoHttpClient.getJson(url)
+            // 苹果CMS V10: 首页直接请求 {api}，不带 ac 参数
+            val url = buildCmsUrl("home")
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "home CMS request failed: $url")
                 return@withContext Pair(emptyList(), emptyList())
@@ -147,7 +170,7 @@ class JsonVideoSource(
             Pair(categories, videos)
         } else {
             val url = endpoints["home"] ?: return@withContext Pair(emptyList(), emptyList())
-            val json = VideoHttpClient.getJson(url)
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "home custom request failed: $url")
                 return@withContext Pair(emptyList(), emptyList())
@@ -163,8 +186,9 @@ class JsonVideoSource(
 
     override suspend fun category(tid: String, pg: Int): CategoryResult = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = cmsApiUrl("ac=list", mapOf("t" to tid, "pg" to pg.toString()))
-            val json = VideoHttpClient.getJson(url)
+            // 苹果CMS V10: 分类用 ac=videolist
+            val url = buildCmsUrl("category", mapOf("ac" to "videolist", "t" to tid, "pg" to pg.toString()))
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "category CMS request failed: $url")
                 return@withContext CategoryResult()
@@ -177,7 +201,7 @@ class JsonVideoSource(
         } else {
             val tpl = endpoints["category"] ?: return@withContext CategoryResult()
             val url = fill(tpl, tid, pg)
-            val json = VideoHttpClient.getJson(url)
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "category custom request failed: $url")
                 return@withContext CategoryResult()
@@ -192,8 +216,9 @@ class JsonVideoSource(
 
     override suspend fun search(keyword: String, pg: Int): List<VideoItem> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = cmsApiUrl("ac=videolist", mapOf("wd" to keyword))
-            val json = VideoHttpClient.getJson(url)
+            // 苹果CMS V10: 搜索不带 ac 参数，用 wd + quick
+            val url = buildCmsUrl("search", mapOf("wd" to keyword, "quick" to "true"))
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "search CMS request failed: $url")
                 return@withContext emptyList()
@@ -202,7 +227,7 @@ class JsonVideoSource(
         } else {
             val tpl = endpoints["search"] ?: return@withContext emptyList()
             val url = tpl.replace("{kw}", enc(keyword)).replace("{pg}", pg.toString())
-            val json = VideoHttpClient.getJson(url)
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "search custom request failed: $url")
                 return@withContext emptyList()
@@ -215,8 +240,9 @@ class JsonVideoSource(
 
     override suspend fun detail(id: String): VideoDetail = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            val url = cmsApiUrl("ac=detail", mapOf("ids" to id))
-            val json = VideoHttpClient.getJson(url)
+            // 苹果CMS V10: 详情用 ac=detail&ids={id}
+            val url = buildCmsUrl("detail", mapOf("ac" to "detail", "ids" to id))
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "detail CMS request failed: $url")
                 return@withContext VideoDetail(id = id, title = id)
@@ -227,7 +253,7 @@ class JsonVideoSource(
         } else {
             val tpl = endpoints["detail"] ?: return@withContext VideoDetail(id = id, title = id)
             val url = tpl.replace("{id}", enc(id))
-            val json = VideoHttpClient.getJson(url)
+            val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "detail custom request failed: $url")
                 return@withContext VideoDetail(id = id, title = id)
@@ -250,7 +276,7 @@ class JsonVideoSource(
         val tpl = endpoints["play"]
         if (tpl.isNullOrBlank()) return@withContext PlayResult(url)
         val realUrl = tpl.replace("{url}", enc(url))
-        val json = VideoHttpClient.getJson(realUrl)
+        val json = VideoHttpClient.getJson(realUrl, siteHeaders)
         if (json == null) {
             io.legado.app.utils.LogUtils.d(TAG, "play request failed: $realUrl")
             return@withContext PlayResult(url)
@@ -265,7 +291,7 @@ class JsonVideoSource(
     override suspend fun danmaku(videoId: String): DanmakuList = withContext(Dispatchers.IO) {
         val tpl = endpoints["danmaku"] ?: return@withContext DanmakuList()
         val url = tpl.replace("{id}", enc(videoId))
-        val body = VideoHttpClient.get(url) ?: return@withContext DanmakuList()
+        val body = VideoHttpClient.get(url, siteHeaders) ?: return@withContext DanmakuList()
         DanmakuParser.parse(body)
     }
 

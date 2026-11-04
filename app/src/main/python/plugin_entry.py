@@ -96,13 +96,22 @@ def call_spider_func(module, func_name, args):
 
     Returns:
         JSON 字符串（成功时为结果 JSON，失败时为 {"error": "..."}）
+        None 表示无 Spider 类，Kotlin 侧走原始错误路径
     """
     spider_cls = getattr(module, "Spider", None)
-    if spider_cls is None or not isinstance(spider_cls, type):
-        return None  # 返回 None 表示无 Spider 类，Kotlin 侧走原始错误
+    if spider_cls is None:
+        print("[call_spider_func] no Spider class found in module")
+        return None
 
+    # Chaquopy 兼容：Java 类在 Chaquopy 中不是 Python type，
+    # 尝试直接实例化而非依赖 isinstance 检查
     try:
         spider = spider_cls()
+    except Exception as e:
+        print("[call_spider_func] Spider instantiation failed: " + str(e))
+        return None
+
+    try:
         init_func = getattr(spider, "init", None)
         if callable(init_func):
             try:
@@ -110,12 +119,20 @@ def call_spider_func(module, func_name, args):
             except Exception:
                 pass
     except Exception as e:
-        return json.dumps({"error": "Spider instantiation failed: " + str(e)})
+        print("[call_spider_func] init failed (ignored): " + str(e))
 
     try:
         if func_name == "home":
             raw = spider.homeContent("")
             result = _normalize_home(raw)
+            # 调用 homeVideoContent 获取首页推荐视频（ElderTV 行为）
+            try:
+                video_raw = spider.homeVideoContent()
+                video_result = _normalize_home(video_raw)
+                if video_result.get("videos"):
+                    result["videos"] = video_result["videos"]
+            except Exception:
+                pass
         elif func_name == "category":
             tid = str(args[0]) if args else ""
             pg = str(args[1]) if len(args) > 1 else "1"

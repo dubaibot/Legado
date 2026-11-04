@@ -37,6 +37,14 @@ object VideoHttpClient {
      * @param ttlMs 缓存有效期，默认 5 分钟
      */
     fun get(url: String, ttlMs: Long = DEFAULT_TTL_MS, forceRefresh: Boolean = false): String? {
+        return get(url, emptyMap(), ttlMs, forceRefresh)
+    }
+
+    /**
+     * 执行 GET 请求，带自定义 header，带缓存。
+     * @param ttlMs 缓存有效期，默认 5 分钟
+     */
+    fun get(url: String, headers: Map<String, String>, ttlMs: Long = DEFAULT_TTL_MS, forceRefresh: Boolean = false): String? {
         val cacheKey = "GET:$url"
         if (!forceRefresh) {
             val entry = responseCache[cacheKey]
@@ -44,7 +52,7 @@ object VideoHttpClient {
                 return entry.body
             }
         }
-        val body = doGet(url) ?: return null
+        val body = doGet(url, headers) ?: return null
         if (body.isNotEmpty()) {
             responseCache[cacheKey] = CacheEntry(body, System.currentTimeMillis())
         }
@@ -55,7 +63,14 @@ object VideoHttpClient {
      * 执行 GET 请求，返回 JSON 对象。
      */
     fun getJson(url: String, ttlMs: Long = DEFAULT_TTL_MS, forceRefresh: Boolean = false): com.google.gson.JsonObject? {
-        val body = get(url, ttlMs, forceRefresh) ?: return null
+        return getJson(url, emptyMap(), ttlMs, forceRefresh)
+    }
+
+    /**
+     * 执行 GET 请求，带自定义 header，返回 JSON 对象。
+     */
+    fun getJson(url: String, headers: Map<String, String>, ttlMs: Long = DEFAULT_TTL_MS, forceRefresh: Boolean = false): com.google.gson.JsonObject? {
+        val body = get(url, headers, ttlMs, forceRefresh) ?: return null
         return try {
             com.google.gson.JsonParser.parseString(body).getAsJsonObject()
         } catch (e: Exception) {
@@ -83,13 +98,13 @@ object VideoHttpClient {
         }
     }
 
-    private fun doGet(url: String): String? {
+    private fun doGet(url: String, headers: Map<String, String> = emptyMap()): String? {
         return try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
+            val builder = Request.Builder().url(url)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
                 .header("Accept", "*/*")
-                .build()
+            headers.forEach { (k, v) -> builder.header(k, v) }
+            val request = builder.build()
             client.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     io.legado.app.utils.LogUtils.d(TAG, "http $url -> ${resp.code}")
