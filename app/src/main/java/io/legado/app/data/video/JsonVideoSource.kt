@@ -38,11 +38,12 @@ import java.net.URLEncoder
  *   "detail": "...?id={id}", "play": "...?url={url}", "danmaku": "...?id={id}"
  * }
  *
- * CMS 模式接口约定（苹果CMS V10）：
- * - 首页: {api}（不带参数，返回 class + list）
+ * CMS 模式接口约定（苹果CMS V10，对照 github.com/huajideshutiao/legado TvBoxCmsSpider）：
+ * - 首页: {api}?ac=list（返回 class + list）
  * - 分类: {api}?ac=videolist&t={tid}&pg={pg}（返回 list + pagecount）
- * - 搜索: {api}?wd={kw}&quick=true（返回 list，不带 ac 参数）
+ * - 搜索: {api}?ac=videolist&wd={kw}&pg={pg}（返回 list + pagecount）
  * - 详情: {api}?ac=detail&ids={id}（返回 list，含 vod_play_url）
+ * - 播放: 直链返回，附带站点 header + CHROME UA + Referer
  * - 所有请求自动附加 extend 参数（如果配置了 ext）
  *
  * 性能优化：
@@ -113,12 +114,14 @@ class JsonVideoSource(
                     val v = root.optString(key, "")
                     if (v.isNotBlank()) ep[key] = v
                 }
-                // 解析 header（支持 JSON 对象和 JSON 字符串）
+                // 解析 header（支持 JSON 对象、JSON 字符串和 "k=v&k2=v2" 三种格式）
                 val headerEl = root.get("header")
                 if (headerEl != null && headerEl.isJsonObject) {
                     headers = headerEl.asJsonObject.entrySet().associate { (k, v) -> k to v.asString }
+                } else if (headerEl != null && headerEl.isJsonPrimitive) {
+                    headers = parseHeaderString(headerEl.asString)
                 }
-                ext = root.optString("ext", "")
+                ext = str(root, "ext")
             }
         } catch (e: Exception) {
             io.legado.app.utils.LogUtils.d(TAG, "parse config failed: ${e.message}")
@@ -149,8 +152,8 @@ class JsonVideoSource(
 
     override suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            // 苹果CMS V10: 首页直接请求 {api}，不带 ac 参数
-            val url = buildCmsUrl("home")
+            // 苹果CMS V10: 首页用 ?ac=list 获取分类+最新视频
+            val url = buildCmsUrl("home", mapOf("ac" to "list"))
             val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "home CMS request failed: $url")
@@ -216,8 +219,8 @@ class JsonVideoSource(
 
     override suspend fun search(keyword: String, pg: Int): List<VideoItem> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
-            // 苹果CMS V10: 搜索不带 ac 参数，用 wd + quick
-            val url = buildCmsUrl("search", mapOf("wd" to keyword, "quick" to "true"))
+            // 苹果CMS V10: 搜索用 ?ac=videolist&wd={kw}&pg={pg}
+            val url = buildCmsUrl("search", mapOf("ac" to "videolist", "wd" to keyword, "pg" to pg.toString()))
             val json = VideoHttpClient.getJson(url, siteHeaders)
             if (json == null) {
                 io.legado.app.utils.LogUtils.d(TAG, "search CMS request failed: $url")
@@ -273,6 +276,15 @@ class JsonVideoSource(
     }
 
     override suspend fun play(url: String): PlayResult = withContext(Dispatchers.IO) {
+        if (isCmsMode) {
+            // 苹果CMS V10: 播放值为绝对地址，直链返回 + 防盗链头
+            val headers = mutableMapOf<String, String>()
+            headers.putAll(siteHeaders)
+            headers.putIfAbsent("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36")
+            val base = baseUrl.substringBefore("?")
+            if (base.isNotBlank()) headers.putIfAbsent("Referer", base.substringBeforeLast("/") + "/")
+            return@withContext PlayResult(url = url, headers = headers)
+        }
         val tpl = endpoints["play"]
         if (tpl.isNullOrBlank()) return@withContext PlayResult(url)
         val realUrl = tpl.replace("{url}", enc(url))
@@ -378,12 +390,28 @@ private fun com.google.gson.JsonObject.optString(key: String, default: String = 
 private fun com.google.gson.JsonObject.optInt(key: String, default: Int = 0): Int =
     takeIf { has(key) }?.get(key)?.takeIf { it.isJsonPrimitive }?.asInt ?: default
 
+private fun parseHeaderString(raw: String): Map<String, String> {
+    // 先尝试 JSON 解析
+    try {
+        val h = JsonParser.parseString(raw).getAsJsonObject()
+        return h.entrySet().associate { (k, v) -> k to v.asString }
+    } catch (_: Exception) {}
+    // 回退 "k=v&k2=v2" 格式
+    return raw.split("&")
+        .mapNotNull { part ->
+            val i = part.indexOf('=')
+            if (i <= 0) null else part.substring(0, i).trim() to part.substring(i + 1).trim()
+        }
+        .filterValues { it.isNotEmpty() }
+        .toMap()
+}
+
 private fun str(obj: com.google.gson.JsonObject, vararg keys: String): String {
     for (key in keys) {
         val v = obj.get(key) ?: continue
         try {
             if (!v.isJsonNull) {
-                val s = v.asString
+                val s = if (v.isJsonPrimitive) v.asString else v.toString()
                 if (s.isNotBlank()) return s
             }
         } catch (e: Exception) {

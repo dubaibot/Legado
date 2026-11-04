@@ -101,7 +101,7 @@ object VideoHttpClient {
     private fun doGet(url: String, headers: Map<String, String> = emptyMap()): String? {
         return try {
             val builder = Request.Builder().url(url)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36")
                 .header("Accept", "*/*")
             headers.forEach { (k, v) -> builder.header(k, v) }
             val request = builder.build()

@@ -107,7 +107,7 @@ object FongMiConfigParser {
         )
     }
 
-    /** 解析 header 字段（支持 JSON 对象和 JSON 字符串两种格式） */
+    /** 解析 header 字段（支持 JSON 对象、JSON 字符串和 "k=v&k2=v2" 三种格式） */
     private fun parseHeader(obj: JsonObject): Map<String, String> {
         val headerObj = obj.get("header") ?: return emptyMap()
         try {
@@ -116,8 +116,19 @@ object FongMiConfigParser {
                 return h.entrySet().associate { (k, v) -> k to v.asString }
             }
             if (headerObj.isJsonPrimitive) {
-                val h = JsonParser.parseString(headerObj.asString).getAsJsonObject()
-                return h.entrySet().associate { (k, v) -> k to v.asString }
+                val raw = headerObj.asString
+                // 先尝试 JSON 解析
+                try {
+                    val h = JsonParser.parseString(raw).getAsJsonObject()
+                    return h.entrySet().associate { (k, v) -> k to v.asString }
+                } catch (_: Exception) {}
+                // 回退 "k=v&k2=v2" 格式
+                return raw.split("&")
+                    .mapNotNull { part ->
+                        val i = part.indexOf('=')
+                        if (i <= 0) null else part.substring(0, i).trim() to part.substring(i + 1).trim()
+                    }.filterValues { it.isNotEmpty() }
+                    .toMap()
             }
             return emptyMap()
         } catch (e: Exception) {
@@ -140,7 +151,7 @@ object FongMiConfigParser {
             val v = obj.get(key) ?: continue
             try {
                 if (!v.isJsonNull) {
-                    val s = v.asString
+                    val s = if (v.isJsonPrimitive) v.asString else v.toString()
                     if (s.isNotBlank()) return s
                 }
             } catch (e: Exception) {
