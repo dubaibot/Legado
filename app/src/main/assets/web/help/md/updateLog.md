@@ -2,6 +2,15 @@
 
 ## cronet版本: 128.0.6613.40
 
+【11-04】
+- 修复：JSON 源 CMS API URL 构建参数错误（home 直接请求 baseUrl 无参数、category 用 ac=videolist、search 用 wd+quick 不带 ac、detail 用 ac=detail+ids）
+- 修复：JSON 源支持自定义 Header（site header 字段解析并应用到所有请求）
+- 修复：JSON 源自动附加 extend 参数（site ext 字段拼接到所有请求 URL）
+- 修复：py 源 Spider 兼容层重写为 Python 包装类，正确映射关键字参数到 Java 位置参数
+- 修复：call_spider_func 移除 isinstance(cls, type) 检查（Chaquopy Java 类不通过该检查）
+- 修复：call_spider_func 增加 homeVideoContent 调用（对齐 ElderTV 行为）
+- 修复：PyTaskQueue.callPluginFunc 移除 AttributeError 文本匹配限制，统一尝试 Spider fallback
+
 【11-03】
 - 新增：FongMi/TV 多源格式全面支持（json/txt/py/html 四类影视源）
 - 新增：FongMi Config 多站点解析器（sites 数组展开为多个独立源）
