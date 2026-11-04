@@ -88,12 +88,14 @@ https://www.yuque.com/legado/wiki/community
 # 更新日志
 
 【11-04】
-- 修复：JSON 源 CMS API URL 构建参数错误（home 直接请求 baseUrl 无参数、category 用 ac=videolist、search 用 wd+quick 不带 ac、detail 用 ac=detail+ids）
-- 修复：JSON 源支持自定义 Header（site header 字段解析并应用到所有请求）
-- 修复：JSON 源自动附加 extend 参数（site ext 字段拼接到所有请求 URL）
+- 修复：JSON 源 CMS API URL 构建参数对齐薯条版 TvBoxCmsSpider（home 用 ?ac=list、search 用 ?ac=videolist&wd=&pg=）
+- 修复：JSON 源搜索带 ac=videolist 参数（原先 wd+quick 无 ac 参数导致搜索无结果）
+- 修复：JSON 源播放返回直链+防盗链头(UA+Referer)
+- 修复：JSON 源 header 支持 "k=v&k2=v2" 字符串格式
+- 修复：JSON 源 ext 支持 JSON 对象/数组非原始类型
+- 修复：JSON 源默认 UA 改为 Windows 桌面 Chrome UA
 - 修复：py 源 Spider 兼容层重写为 Python 包装类，正确映射关键字参数到 Java 位置参数
 - 修复：call_spider_func 移除 isinstance(cls, type) 检查（Chaquopy Java 类不通过该检查）
-- 修复：call_spider_func 增加 homeVideoContent 调用（对齐 ElderTV 行为）
 - 修复：PyTaskQueue.callPluginFunc 移除 AttributeError 文本匹配限制，统一尝试 Spider fallback
 
 【11-02】
