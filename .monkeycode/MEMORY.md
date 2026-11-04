@@ -138,9 +138,9 @@ Entries discovered by the Agent during task execution should follow this format:
   - 顶栏收窄：Toolbar XML 加 android:minHeight="48dp"（view_title_bar.xml + view_title_bar_dark.xml）；HomepageScreen.kt height(56.dp)→height(48.dp)；Dimensions.kt topBarHeight 56.dp→48.dp；字体图标不变（ToolbarTitle 20sp 保留）
   - GlassTopAppBar.kt 有 barHeight: Dp? 参数（null 时默认 64.dp），管理族传入 48dp 档启用自绘紧凑布局；MainTopBarView 和 AppPageTopBar 无硬编码高度
 
-[影视源 VideoHttpClient 独立 OkHttpClient 策略]
-- Date: 2026-11-04
-- Context: 用户反馈 JSON CMS 源"调用源失败"，薯条版 shuliao 同一接口正常工作
+[影视源 VideoHttpClient 独立 OkHttpClient 与站点形态检测策略]
+- Date: 2026-11-04（11-04 晚合并站点形态检测知识）
+- Context: 用户反馈 JSON CMS 源"调用源失败"，薯条版 shuliao 同一接口正常工作；最终定位 api 字段为 csp_T4Guard（jar 爬虫站点）
 - Category: Troubleshooting & Debugging
 - Instructions:
   - VideoHttpClient 不再继承 okHttpClient（HttpHelper.kt 的全局客户端），改用独立 OkHttpClient
@@ -148,3 +148,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - 薯条版 catvod.OkHttp 的关键配置：followRedirects(false)、不发 Accept-Encoding、系统 DNS（OkDns 直接用 Dns.SYSTEM.lookup）、30s 超时、信任所有证书
   - doGet 不再检查 resp.isSuccessful（对齐薯条版 string() 行为，非 2xx 也返回 body）
   - JSON 源接口失败时抛出异常含 URL 和响应内容（替代原先静默返回空数据导致 UI 只显示"该源暂无数据"）
+  - JsonVideoSource init() catch 块必须重新抛出异常（原先吞异常导致 UI 无法看到具体错误，仅日志可见）
+  - 站点形态按 api 字段判定（对照薯条版 TvBoxConfig.isJarSpider/isJsSpider/isPySpider/isCmsApi）：csp_ 前缀=jar 爬虫、含 .js=JS 爬虫、含 .py=Python 爬虫、http 开头=CMS 直连；非 CMS 站点抛出明确错误含站点名和 api 值
+  - VideoSourceRegistry.listSources() 过滤非 CMS 站点（jar/js/py 爬虫站点不出现在源列表）；FongMiTxtParser 已有 http/https 前缀检查无需额外过滤
+  - 用户源配置中的 csp_T4Guard 是 jar 爬虫站点类名而非 URL，本 App 不支持 jar 爬虫加载机制（需自定义 ClassLoader + Spider 接口反射调用）
