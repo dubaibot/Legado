@@ -49,7 +49,6 @@ object JarSpiderLoader {
      */
     fun load(jarSpec: String, siteApi: String, siteKey: String = "", ext: String = ""): Spider {
         val jarFile = resolveJar(jarSpec)
-            ?: throw IllegalStateException("jar 下载失败: $jarSpec")
         val cacheKey = "$jarSpec|$siteApi"
         val pair = loaderCache[cacheKey] ?: synchronized(lock) {
             loaderCache[cacheKey] ?: createLoader(jarFile, siteApi).also { loaderCache[cacheKey] = it }
@@ -69,31 +68,53 @@ object JarSpiderLoader {
     }
 
     /** 解析 jar 规格串，返回本地缓存文件（必要时下载） */
-    private fun resolveJar(jarSpec: String): File? {
+    private fun resolveJar(jarSpec: String): File {
         val parts = jarSpec.split(";")
         val url = parts[0].trim()
         val md5 = if (parts.size > 1) parts[1].trim() else ""
         val downloadUrl = if (parts.size > 2) parts[2].trim() else url
         val jarDir = File(appCtx.cacheDir, "jar")
         if (!jarDir.exists()) jarDir.mkdirs()
-        val file = if (md5.isNotEmpty()) File(jarDir, "$md5.jar") else File(jarDir, Util.md5(url) + ".jar")
+        // md5 仅作为缓存文件名；含非 hex 字符（配置污染）时改用 url 的 md5 避免非法文件名
+        val cacheName = if (md5.isNotEmpty() && md5.all {
+            it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F'
+        }) {
+            md5
+        } else {
+            Util.md5(url)
+        }
+        val file = File(jarDir, "$cacheName.jar")
         if (file.exists() && file.length() > 0) return file
-        return downloadJar(downloadUrl, file)
+        return try {
+            downloadJar(downloadUrl, file, md5)
+        } catch (e: Exception) {
+            throw IllegalStateException("jar 下载失败: ${e.message ?: e.javaClass.simpleName} ($url)")
+        }
     }
 
-    /** 流式下载 jar 到文件（二进制安全，不走 String 解码） */
-    private fun downloadJar(url: String, file: File): File? {
-        return try {
-            httpClient.newCall(Request.Builder().url(url).get().build()).execute().use { res ->
-                if (!res.isSuccessful) return null
-                res.body?.byteStream()?.use { input ->
-                    file.outputStream().use { output -> input.copyTo(output) }
-                }
+    /** 流式下载 jar 到文件（二进制安全，不走 String 解码）；失败抛异常带原因 */
+    private fun downloadJar(url: String, file: File, expectedMd5: String): File {
+        val request = Request.Builder().url(url).get()
+            .header("User-Agent", Util.CHROME)
+            .build()
+        httpClient.newCall(request).execute().use { res ->
+            if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
+            res.body?.byteStream()?.use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
             }
-            if (file.length() > 0) file else null
-        } catch (e: Exception) {
-            null
         }
+        if (file.length() <= 0) throw IllegalStateException("下载内容为空")
+        // md5 校验（仅当 spec 内 md5 为合法 32 位 hex；污染值跳过，避免误伤）
+        if (expectedMd5.length == 32 && expectedMd5.all {
+            it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F'
+        }) {
+            val actual = Util.md5(file)
+            if (actual != expectedMd5.lowercase()) {
+                file.delete()
+                throw IllegalStateException("MD5 校验失败: 期望 ${expectedMd5.lowercase()} 实际 $actual")
+            }
+        }
+        return file
     }
 
     /** 创建 DexClassLoader 并加载 spider 类 */
