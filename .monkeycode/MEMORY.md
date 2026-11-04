@@ -137,3 +137,14 @@ Entries discovered by the Agent during task execution should follow this format:
   - 顶栏高度系统：View 侧 TitleBar(AppBarLayout→Toolbar) 默认 minHeight 56dp（Widget.AppCompat.Toolbar→?attr/actionBarSize）；Compose 侧 HomepageScreen Row height(56.dp)、AppDimens.topBarHeight=56.dp
   - 顶栏收窄：Toolbar XML 加 android:minHeight="48dp"（view_title_bar.xml + view_title_bar_dark.xml）；HomepageScreen.kt height(56.dp)→height(48.dp)；Dimensions.kt topBarHeight 56.dp→48.dp；字体图标不变（ToolbarTitle 20sp 保留）
   - GlassTopAppBar.kt 有 barHeight: Dp? 参数（null 时默认 64.dp），管理族传入 48dp 档启用自绘紧凑布局；MainTopBarView 和 AppPageTopBar 无硬编码高度
+
+[影视源 VideoHttpClient 独立 OkHttpClient 策略]
+- Date: 2026-11-04
+- Context: 用户反馈 JSON CMS 源"调用源失败"，薯条版 shuliao 同一接口正常工作
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - VideoHttpClient 不再继承 okHttpClient（HttpHelper.kt 的全局客户端），改用独立 OkHttpClient
+  - 原因：okHttpClient 的拦截器链（DecompressInterceptor 发送 Accept-Encoding: gzip、RedirectCacheInterceptor、FaviconCache、Cronet、StreamResetRetryInterceptor 等）可能干扰 CMS API 响应
+  - 薯条版 catvod.OkHttp 的关键配置：followRedirects(false)、不发 Accept-Encoding、系统 DNS（OkDns 直接用 Dns.SYSTEM.lookup）、30s 超时、信任所有证书
+  - doGet 不再检查 resp.isSuccessful（对齐薯条版 string() 行为，非 2xx 也返回 body）
+  - JSON 源接口失败时抛出异常含 URL 和响应内容（替代原先静默返回空数据导致 UI 只显示"该源暂无数据"）
