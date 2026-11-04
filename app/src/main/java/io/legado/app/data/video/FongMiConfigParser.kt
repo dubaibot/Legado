@@ -111,12 +111,15 @@ object FongMiConfigParser {
     private fun parseHeader(obj: JsonObject): Map<String, String> {
         val headerObj = obj.get("header") ?: return emptyMap()
         try {
-            val h = when {
-                headerObj.isJsonObject -> headerObj.asJsonObject()
-                headerObj.isJsonPrimitive -> JsonParser.parseString(headerObj.asString()).getAsJsonObject()
-                else -> return emptyMap()
+            if (headerObj.isJsonObject) {
+                val h = headerObj.asJsonObject()
+                return h.entrySet().associate { (k, v) -> k to v.asString }
             }
-            return h.entrySet().associate { (k, v) -> k to v.asString }
+            if (headerObj.isJsonPrimitive) {
+                val h = JsonParser.parseString(headerObj.asString).getAsJsonObject()
+                return h.entrySet().associate { (k, v) -> k to v.asString }
+            }
+            return emptyMap()
         } catch (e: Exception) {
             return emptyMap()
         }
