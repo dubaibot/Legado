@@ -76,8 +76,9 @@ object VideoSourceRegistry {
                 "json" -> {
                     // 检测 FongMi Config 格式（含 sites 数组）
                     if (FongMiConfigParser.isFongMiConfig(content)) {
-                        // 展开为多个源
+                        // 展开为多个源（仅 CMS 直连站点，过滤 jar/js/py 爬虫站点）
                         FongMiConfigParser.parse(content).forEach { site ->
+                            if (site.siteKind != FongMiConfigParser.SiteKind.CMS) return@forEach
                             sources.add(
                                 SourceInfo(
                                     id = "${meta.id}:${site.key}",
@@ -89,6 +90,13 @@ object VideoSourceRegistry {
                         }
                     } else {
                         // 单站点 JSON
+                        // 检测 api 字段形态（对照薯条版 TvBoxConfig api 字段判定）
+                        val apiVal = try {
+                            val root = com.google.gson.JsonParser.parseString(content).asJsonObject
+                            root.optString("api", "")
+                        } catch (e: Exception) { "" }
+                        val siteKind = FongMiConfigParser.SiteKind.detect(apiVal)
+                        if (siteKind != FongMiConfigParser.SiteKind.CMS) return@forEach
                         sources.add(
                             SourceInfo(
                                 id = meta.id,

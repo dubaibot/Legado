@@ -19,6 +19,9 @@
 - 修复：call_spider_func 移除 isinstance(cls, type) 检查（Chaquopy Java 类不通过该检查）
 - 修复：call_spider_func 增加 homeVideoContent 调用（对齐 ElderTV 行为）
 - 修复：PyTaskQueue.callPluginFunc 移除 AttributeError 文本匹配限制，统一尝试 Spider fallback
+- 修复：JSON 源站点形态检测——api 字段为 csp_ 前缀（jar 爬虫）、.js 后缀（JS 爬虫）、.py 后缀（Python 爬虫）时抛出明确错误提示，仅支持 CMS 直连站点（api 以 http 开头）
+- 修复：JSON 源列表过滤非 CMS 站点（jar/js/py 爬虫站点不再出现在源列表中）
+- 修复：JSON 源解析异常重新抛出（原先 catch 吞异常导致静默失败，UI 无法看到具体错误）
 
 【11-03】
 - 新增：FongMi/TV 多源格式全面支持（json/txt/py/html 四类影视源）

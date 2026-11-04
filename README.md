@@ -132,12 +132,15 @@ https://www.yuque.com/legado/wiki/community
 - 新增：后台预热机制（refreshSources 时并发预加载所有源 home 数据，切换源直接命中）
 - 优化：切换源不清空缓存，切回来直接命中 homeCache/categoryCache
 - 重构：ViewModel 统一走 VideoSource 接口，删除 bridge*/parse* 分叉逻辑（py/json/txt 一套代码）
-- 当前快照：3.26.110411
+- 当前快照：3.26.110412
 
 【11-04】
 - 修复：VideoHttpClient 改用独立 OkHttpClient（不继承 okHttpClient 拦截器链），对齐薯条版 catvod.OkHttp 行为（信任所有证书、不跟随重定向、不发送 Accept-Encoding、系统 DNS、30s 超时）
 - 修复：VideoHttpClient doGet 不再检查 resp.isSuccessful（非 2xx 响应也返回 body，对齐薯条版 string() 行为）
 - 修复：JSON 源接口失败时抛出异常含 URL 和响应内容（UI 可见具体错误信息，替代原先静默返回空数据）
+- 修复：JSON 源站点形态检测——api 字段为 csp_ 前缀（jar 爬虫）、.js 后缀（JS 爬虫）、.py 后缀（Python 爬虫）时抛出明确错误提示，仅支持 CMS 直连站点
+- 修复：JSON 源列表过滤非 CMS 站点（jar/js/py 爬虫站点不再出现在源列表中）
+- 修复：JSON 源解析异常重新抛出（原先 catch 吞异常导致静默失败）
 
 【11-03】
 - 修复：JSON 源 CMS API URL 构建参数对齐薯条版 TvBoxCmsSpider（home 用 ?ac=list、search 用 ?ac=videolist&wd=&pg=）

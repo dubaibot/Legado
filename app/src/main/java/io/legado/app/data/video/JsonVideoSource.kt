@@ -77,6 +77,7 @@ class JsonVideoSource(
         var selectedSite: FongMiConfigParser.SiteConfig? = null
         var headers = emptyMap<String, String>()
         var ext = ""
+        var siteKind = "cms"
 
         try {
             val root = JsonParser.parseString(configJson).asJsonObject
@@ -96,6 +97,21 @@ class JsonVideoSource(
                         api = selectedSite.api
                         headers = selectedSite.header
                         ext = selectedSite.ext
+                        siteKind = selectedSite.siteKind
+                        // jar/js/py 爬虫站点不支持
+                        if (siteKind != FongMiConfigParser.SiteKind.CMS) {
+                            val kindName = when (siteKind) {
+                                FongMiConfigParser.SiteKind.JAR_SPIDER -> "jar 爬虫"
+                                FongMiConfigParser.SiteKind.JS_SPIDER -> "JS 爬虫"
+                                FongMiConfigParser.SiteKind.PY_SPIDER -> "Python 爬虫"
+                                else -> "未知类型"
+                            }
+                            throw IllegalStateException(
+                                "不支持$kindName站点: $name\n" +
+                                    "api 字段: \"$api\"\n" +
+                                    "仅支持 CMS 直连站点（api 以 http 开头）"
+                            )
+                        }
                     }
                 }
             }
@@ -110,6 +126,21 @@ class JsonVideoSource(
                     else -> "cms"  // 0, 1, 3, "cms" 等均按 CMS 处理
                 }
                 api = root.optString("api", "")
+                // 检测站点形态（对照薯条版 TvBoxConfig api 字段判定）
+                siteKind = FongMiConfigParser.SiteKind.detect(api)
+                if (siteKind != FongMiConfigParser.SiteKind.CMS && m == "cms") {
+                    val kindName = when (siteKind) {
+                        FongMiConfigParser.SiteKind.JAR_SPIDER -> "jar 爬虫"
+                        FongMiConfigParser.SiteKind.JS_SPIDER -> "JS 爬虫"
+                        FongMiConfigParser.SiteKind.PY_SPIDER -> "Python 爬虫"
+                        else -> "未知类型"
+                    }
+                    throw IllegalStateException(
+                        "不支持$kindName站点: $name\n" +
+                            "api 字段: \"$api\"\n" +
+                            "仅支持 CMS 直连站点（api 以 http 开头）"
+                    )
+                }
                 for (key in listOf("home", "category", "search", "detail", "play", "danmaku")) {
                     val v = root.optString(key, "")
                     if (v.isNotBlank()) ep[key] = v
@@ -125,6 +156,7 @@ class JsonVideoSource(
             }
         } catch (e: Exception) {
             io.legado.app.utils.LogUtils.d(TAG, "parse config failed: ${e.message}")
+            throw e
         }
 
         sourceName = name

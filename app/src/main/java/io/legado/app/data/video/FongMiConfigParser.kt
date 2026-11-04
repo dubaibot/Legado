@@ -40,6 +40,31 @@ object FongMiConfigParser {
 
     private const val TAG = "FongMiConfigParser"
 
+    /**
+     * 站点形态常量（对照薯条版 TvBoxConfig 的 api 字段判定逻辑）：
+     * - csp_ 前缀 → jar 爬虫（spider class name, 非 URL）
+     * - .js 后缀 → JS 爬虫
+     * - .py 后缀 → Python 爬虫
+     * - http 开头 → CMS 直连
+     */
+    object SiteKind {
+        const val CMS = "cms"
+        const val JAR_SPIDER = "jar_spider"
+        const val JS_SPIDER = "js_spider"
+        const val PY_SPIDER = "py_spider"
+        const val UNKNOWN = "unknown"
+
+        /** 根据 api 字段判定站点形态（对照薯条版 TvBoxConfig.isJarSpider/isJsSpider/isPySpider/isCmsApi） */
+        fun detect(api: String): String {
+            val a = api.trim()
+            if (a.startsWith("csp_")) return JAR_SPIDER
+            if (a.contains(".js")) return JS_SPIDER
+            if (a.contains(".py")) return PY_SPIDER
+            if (a.startsWith("http")) return CMS
+            return UNKNOWN
+        }
+    }
+
     /** 单站点配置 */
     data class SiteConfig(
         val key: String,
@@ -49,6 +74,9 @@ object FongMiConfigParser {
         val searchApi: String,   // 搜索 API（type 1 专用，可空）
         val ext: String = "",    // 扩展参数
         val header: Map<String, String> = emptyMap(),  // 自定义请求头
+        val jar: String = "",    // jar 地址（csp_ 站点专用）
+        /** 站点形态（对照薯条版 TvBoxConfig：api 字段判定，不依赖 type） */
+        val siteKind: String = SiteKind.CMS,  // cms / jar_spider / js_spider / py_spider / unknown
     )
 
     /** 解析 Config JSON，返回站点列表 */
@@ -95,7 +123,9 @@ object FongMiConfigParser {
         val api = str(obj, "api", "apiUrl", "url")
         val searchApi = str(obj, "searchApi", "searchUrl")
         val ext = str(obj, "ext")
+        val jar = str(obj, "jar")
         val header = parseHeader(obj)
+        val kind = SiteKind.detect(api)
         return SiteConfig(
             key = key,
             name = name,
@@ -104,6 +134,8 @@ object FongMiConfigParser {
             searchApi = searchApi,
             ext = ext,
             header = header,
+            jar = jar,
+            siteKind = kind,
         )
     }
 
