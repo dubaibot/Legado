@@ -107,7 +107,7 @@ class JsonVideoSource(
                                 else -> "未知类型"
                             }
                             throw IllegalStateException(
-                                "不支持$kindName站点: $name\n" +
+                                "不支持${kindName}站点: $name\n" +
                                     "api 字段: \"$api\"\n" +
                                     "仅支持 CMS 直连站点（api 以 http 开头）"
                             )
@@ -136,7 +136,7 @@ class JsonVideoSource(
                         else -> "未知类型"
                     }
                     throw IllegalStateException(
-                        "不支持$kindName站点: $name\n" +
+                        "不支持${kindName}站点: $name\n" +
                             "api 字段: \"$api\"\n" +
                             "仅支持 CMS 直连站点（api 以 http 开头）"
                     )

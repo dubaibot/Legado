@@ -93,7 +93,7 @@ object VideoSourceRegistry {
                         // 检测 api 字段形态（对照薯条版 TvBoxConfig api 字段判定）
                         val apiVal = try {
                             val root = com.google.gson.JsonParser.parseString(content).asJsonObject
-                            root.optString("api", "")
+                            root.get("api")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
                         } catch (e: Exception) { "" }
                         val siteKind = FongMiConfigParser.SiteKind.detect(apiVal)
                         if (siteKind != FongMiConfigParser.SiteKind.CMS) return@forEach
