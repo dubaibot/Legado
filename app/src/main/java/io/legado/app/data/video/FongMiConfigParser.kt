@@ -112,7 +112,7 @@ object FongMiConfigParser {
         val headerObj = obj.get("header") ?: return emptyMap()
         try {
             if (headerObj.isJsonObject) {
-                val h = headerObj.asJsonObject()
+                val h = headerObj.asJsonObject
                 return h.entrySet().associate { (k, v) -> k to v.asString }
             }
             if (headerObj.isJsonPrimitive) {

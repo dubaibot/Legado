@@ -116,7 +116,7 @@ class JsonVideoSource(
                 // 解析 header（支持 JSON 对象和 JSON 字符串）
                 val headerEl = root.get("header")
                 if (headerEl != null && headerEl.isJsonObject) {
-                    headers = headerEl.asJsonObject().entrySet().associate { (k, v) -> k to v.asString }
+                    headers = headerEl.asJsonObject.entrySet().associate { (k, v) -> k to v.asString }
                 }
                 ext = root.optString("ext", "")
             }
