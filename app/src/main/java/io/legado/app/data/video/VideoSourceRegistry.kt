@@ -239,12 +239,22 @@ class PyVideoSource(
                     else -> onResult(null)
                 }
             }
+        }.let { raw ->
+            // 检查错误 JSON：callPluginFunc 返回 {"error":"..."} 时抛出异常
+            if (raw != null && raw.contains("\"error\"")) {
+                throw IllegalStateException(raw)
+            }
+            raw
         }
 
     override suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>> {
         homeCache?.let { if (isValid(it)) return it.value }
         val json = call("home") ?: return Pair(emptyList(), emptyList())
         val result = PyResultParser.parseHome(json)
+        if (result.first.isEmpty() && result.second.isEmpty() && json.contains("\"error\"")) {
+            homeCache = null
+            return result
+        }
         homeCache = CacheEntry(System.currentTimeMillis(), result)
         return result
     }
@@ -254,6 +264,10 @@ class PyVideoSource(
         categoryCache[key]?.let { if (isValid(it)) return it.value }
         val json = call("category", tid, pg.toString()) ?: return CategoryResult()
         val result = PyResultParser.parseCategory(json, pg)
+        if (result.videos.isEmpty() && json.contains("\"error\"")) {
+            categoryCache.remove(key)
+            return result
+        }
         categoryCache[key] = CacheEntry(System.currentTimeMillis(), result)
         return result
     }
@@ -263,6 +277,10 @@ class PyVideoSource(
         searchCache[key]?.let { if (isValid(it)) return it.value }
         val json = call("search", keyword) ?: return emptyList()
         val result = PyResultParser.parseVideoList(json)
+        if (result.isEmpty() && json.contains("\"error\"")) {
+            searchCache.remove(key)
+            return result
+        }
         searchCache[key] = CacheEntry(System.currentTimeMillis(), result)
         return result
     }

@@ -117,13 +117,17 @@ class JsonVideoSource(
         val effectiveApi = if (withAction == "search" && searchApi.isNotBlank()) searchApi else baseUrl
         val sep = if ("?" in effectiveApi) "&" else "?"
         val paramStr = params.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
-        return "$effectiveApi$sep$withAction&${paramStr}"
+        return if (paramStr.isNotBlank()) "$effectiveApi$sep$withAction&$paramStr" else "$effectiveApi$sep$withAction"
     }
 
     override suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
             val url = cmsApiUrl("ac=list")
-            val json = VideoHttpClient.getJson(url) ?: return@withContext Pair(emptyList(), emptyList())
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "home CMS request failed: $url")
+                return@withContext Pair(emptyList(), emptyList())
+            }
             val categories = mutableListOf<VideoCategory>()
             json.getAsJsonArray("class")?.forEach { el ->
                 val o = el.asJsonObject
@@ -138,7 +142,11 @@ class JsonVideoSource(
             Pair(categories, videos)
         } else {
             val url = endpoints["home"] ?: return@withContext Pair(emptyList(), emptyList())
-            val json = VideoHttpClient.getJson(url) ?: return@withContext Pair(emptyList(), emptyList())
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "home custom request failed: $url")
+                return@withContext Pair(emptyList(), emptyList())
+            }
             val categories = mutableListOf<VideoCategory>()
             json.getAsJsonArray("categories")?.forEach { el ->
                 val o = el.asJsonObject

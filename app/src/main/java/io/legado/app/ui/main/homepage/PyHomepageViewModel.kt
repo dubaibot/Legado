@@ -405,12 +405,16 @@ class PyHomepageViewModel : ViewModel() {
             try {
                 val (cats, vids) = source.home()
                 withContext(Dispatchers.Main) {
-                    val data = HomeData(
-                        categories = cats.map { Category(it.id, it.name) },
-                        videos = vids.map { VideoItem(it.id, it.title, it.pic, it.remarks) },
-                    )
-                    homeData = data
-                    homeCache[pluginId] = data
+                    if (cats.isEmpty() && vids.isEmpty()) {
+                        homeError = "该源暂无数据，请检查网络或切换其他源"
+                    } else {
+                        val data = HomeData(
+                            categories = cats.map { Category(it.id, it.name) },
+                            videos = vids.map { VideoItem(it.id, it.title, it.pic, it.remarks) },
+                        )
+                        homeData = data
+                        homeCache[pluginId] = data
+                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { homeError = e.message ?: "源加载失败" }
@@ -436,7 +440,10 @@ class PyHomepageViewModel : ViewModel() {
         }
         viewModelScope.launch(Dispatchers.IO) {
             val source = sourceFor(pluginId)
-            if (source == null) return@launch
+            if (source == null) {
+                withContext(Dispatchers.Main) { homeError = "源不存在" }
+                return@launch
+            }
             try {
                 val result = source.category(tid, pg)
                 withContext(Dispatchers.Main) {
@@ -449,9 +456,12 @@ class PyHomepageViewModel : ViewModel() {
                     currentPage = data.page
                     totalPages = data.pagecount
                     categoryCache[cacheKey] = data
+                    if (data.videos.isEmpty()) {
+                        homeError = "该分类暂无数据"
+                    }
                 }
             } catch (e: Exception) {
-                // ignore
+                withContext(Dispatchers.Main) { homeError = e.message ?: "分类加载失败" }
             }
         }
     }
