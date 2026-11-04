@@ -166,6 +166,22 @@ object HomeSourceStore {
         }
     }
 
+    /** 从内容直接保存 JSON/TXT 源（非 SAF Uri，用于 TVbox 订阅导入） */
+    fun saveVideoSourceFromContent(sourceId: String, displayName: String, type: String, content: String): Boolean {
+        return try {
+            val dir = File(videoSourcesDir, sourceId)
+            dir.mkdirs()
+            File(dir, "source.$type").writeText(content)
+            File(dir, "meta.json").writeText(
+                """{"id":"$sourceId","name":"${displayName.ifBlank { sourceId }}","type":"$type"}"""
+            )
+            true
+        } catch (e: Exception) {
+            LogUtils.d(TAG, "saveVideoSourceFromContent failed: $sourceId: ${e.message}")
+            false
+        }
+    }
+
     /** 删除 JSON/TXT 源 */
     fun deleteVideoSource(sourceId: String): Boolean {
         return try {

@@ -178,10 +178,25 @@ class PyHomepageViewModel : ViewModel() {
     var showManageDialog by mutableStateOf(false)
         private set
 
+    /** 自定义弹幕 API URL */
+    var danmakuApiUrl by mutableStateOf("")
+        private set
+
+    /** 弹幕 API 输入弹窗 */
+    var showDanmakuApiDialog by mutableStateOf(false)
+
+    /** TVbox 订阅 URL 输入弹窗 */
+    var showTvboxDialog by mutableStateOf(false)
+
+    /** TVbox 订阅 URL 输入值 */
+    var tvboxUrlInput by mutableStateOf("")
+        private set
+
     init {
         refreshSources()
         searchHistory = loadHistory()
         favorites = loadFavorites()
+        danmakuApiUrl = appCtx.getPrefString(io.legado.app.constant.PreferKey.pyDanmakuApiUrl, "") ?: ""
         // 首启自动安装内置源为异步完成，延迟后再刷一次兜底
         viewModelScope.launch(Dispatchers.IO) {
             delay(8000)
@@ -518,6 +533,47 @@ class PyHomepageViewModel : ViewModel() {
         showImportDialog = true
     }
 
+    /** SAF 多选文件回调：批量导入，使用文件名作为默认名称 */
+    fun onFilesPicked(uris: List<Pair<Uri, String>>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            var successCount = 0
+            var failCount = 0
+            uris.forEach { (uri, defaultName) ->
+                val displayName = defaultName.ifBlank { "imported_${System.currentTimeMillis()}" }
+                val pluginId = displayName.substringBeforeLast('.')
+                val content = appCtx.contentResolver.openInputStream(uri)?.use {
+                    it.readBytes().toString(Charsets.UTF_8)
+                } ?: ""
+                val fileName = defaultName.lowercase()
+                val detect = detectSourceType(fileName, content)
+                val ok = when (detect) {
+                    "py" -> PyLoader.installFromUri(uri, displayName)
+                    "json" -> HomeSourceStore.importVideoSource(uri, displayName, "json")
+                    "txt" -> HomeSourceStore.importVideoSource(uri, displayName, "txt")
+                    "html" -> HomeSourceStore.importVideoSource(uri, displayName, "html")
+                    else -> HomeSourceStore.importHtml(uri, displayName)
+                }
+                if (ok) {
+                    successCount++
+                } else {
+                    failCount++
+                }
+            }
+            val msg = if (successCount > 0 && failCount == 0) {
+                "成功导入 $successCount 个源"
+            } else if (successCount > 0 && failCount > 0) {
+                "成功 $successCount 个，失败 $failCount 个"
+            } else {
+                "导入失败"
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(appCtx, msg, Toast.LENGTH_LONG).show()
+                refreshSources()
+            }
+        }
+    }
+
     /** 命名确认后执行导入（py/html/json/txt 按扩展名 + 内容检测） */
     fun confirmImportName(name: String) {
         val uri = importUri
@@ -605,6 +661,98 @@ class PyHomepageViewModel : ViewModel() {
         importUri = null
         importDefaultName = ""
         showImportDialog = false
+    }
+
+    // ---- TVbox 订阅导入 ----
+
+    /** 从 TVbox 订阅 URL 导入：fetch JSON → FongMiConfigParser 解析 → 每个 CMS 站点存为 JSON 源 */
+    fun importTvboxSource(url: String) {
+        val trimmedUrl = url.trim()
+        if (trimmedUrl.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 使用 VideoHttpClient 获取订阅内容
+                val content = io.legado.app.data.video.VideoHttpClient.get(trimmedUrl, forceRefresh = true)
+                    ?: ""
+                if (content.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appCtx, "订阅接口获取失败", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+                val sites = io.legado.app.data.video.FongMiConfigParser.parse(content)
+                if (sites.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appCtx, "订阅内容为空或格式错误", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+                var successCount = 0
+                sites.forEach { site ->
+                    if (site.api.isBlank()) return@forEach
+                    val sourceId = "tvbox_${site.key.ifBlank { System.currentTimeMillis().toString() }}"
+                    val configJson = org.json.JSONObject().apply {
+                        put("name", site.name)
+                        put("type", "cms")
+                        put("api", site.api)
+                        site.searchApi.takeIf { it.isNotBlank() }?.let { put("searchApi", it) }
+                    }.toString()
+                    val ok = HomeSourceStore.saveVideoSourceFromContent(
+                        sourceId, site.name, "json", configJson
+                    )
+                    if (ok) successCount++
+                }
+                // 保存订阅 URL 到偏好
+                val subs = loadTvboxSubscriptions()
+                if (!subs.contains(trimmedUrl)) {
+                    saveTvboxSubscriptions(subs + trimmedUrl)
+                }
+                withContext(Dispatchers.Main) {
+                    val msg = if (successCount > 0) {
+                        "成功导入 $successCount 个 TVbox 源"
+                    } else {
+                        "订阅内容无可用站点"
+                    }
+                    Toast.makeText(appCtx, msg, Toast.LENGTH_LONG).show()
+                    refreshSources()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(appCtx, "TVbox 导入失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun loadTvboxSubscriptions(): List<String> {
+        return try {
+            val json = appCtx.getPrefString(io.legado.app.constant.PreferKey.pyTvboxSubscriptions, "") ?: ""
+            if (json.isBlank()) emptyList()
+            else org.json.JSONArray(json).let { arr ->
+                (0 until arr.length()).map { arr.getString(it) }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveTvboxSubscriptions(list: List<String>) {
+        try {
+            val arr = org.json.JSONArray()
+            list.forEach { arr.put(it) }
+            appCtx.putPrefString(io.legado.app.constant.PreferKey.pyTvboxSubscriptions, arr.toString())
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    // ---- 自定义弹幕 API ----
+
+    /** 保存自定义弹幕 API URL */
+    fun saveDanmakuApiUrl(url: String) {
+        val trimmed = url.trim()
+        danmakuApiUrl = trimmed
+        appCtx.putPrefString(io.legado.app.constant.PreferKey.pyDanmakuApiUrl, trimmed)
     }
 
     // ---- 管理 ----

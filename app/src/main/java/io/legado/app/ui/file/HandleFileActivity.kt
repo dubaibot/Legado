@@ -1,5 +1,6 @@
 package io.legado.app.ui.file
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -37,6 +38,7 @@ class HandleFileActivity :
     override val binding by viewBinding(ActivityTranslucenceBinding::inflate)
     override val viewModel by viewModels<HandleFileViewModel>()
     private var mode = 0
+    private var multiple = false
 
     private val selectDocTree =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -50,16 +52,55 @@ class HandleFileActivity :
             } ?: finish()
         }
 
-    private val selectDoc = registerForActivityResult(ActivityResultContracts.OpenDocument()) {
-        it?.let {
-            if (it.isContentScheme()) {
-                val modeFlags =
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                try {
-                    contentResolver.takePersistableUriPermission(it, modeFlags)
-                } catch (_: SecurityException) { }
+    private val selectDoc = registerForActivityResult(
+        object : androidx.activity.result.contract.ActivityResultContract<Array<String>, Intent?>() {
+            override fun createIntent(context: Context, input: Array<String>): Intent {
+                return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    if (input.isNotEmpty()) {
+                        type = "*/*"
+                        putExtra(Intent.EXTRA_MIME_TYPES, input)
+                    } else {
+                        type = "*/*"
+                    }
+                    if (multiple) {
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    }
+                }
             }
-            onResult(Intent().setData(it))
+
+            override fun parseResult(resultCode: Int, intent: Intent?): Intent? {
+                return intent
+            }
+        }
+    ) { intent ->
+        intent?.let {
+            if (it.clipData != null) {
+                val clipData = it.clipData!!
+                val uris = (0 until clipData.itemCount).mapNotNull { i -> clipData.getItemAt(i).uri }
+                uris.forEach { uri ->
+                    if (uri.isContentScheme()) {
+                        val modeFlags =
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        try {
+                            contentResolver.takePersistableUriPermission(uri, modeFlags)
+                        } catch (_: SecurityException) { }
+                    }
+                }
+                onResult(Intent().apply { setClipData(clipData) })
+            } else {
+                val uri = it.data
+                if (uri != null) {
+                    if (uri.isContentScheme()) {
+                        val modeFlags =
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        try {
+                            contentResolver.takePersistableUriPermission(uri, modeFlags)
+                        } catch (_: SecurityException) { }
+                    }
+                    onResult(Intent().setData(uri))
+                }
+            }
         } ?: finish()
     }
 
@@ -71,6 +112,7 @@ class HandleFileActivity :
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         mode = intent.getIntExtra("mode", 0)
+        multiple = intent.getBooleanExtra("multiple", false)
         viewModel.errorLiveData.observe(this) {
             toastOnUi(it)
             finish()
@@ -352,12 +394,9 @@ class HandleFileActivity :
     }
 
     override fun onResult(data: Intent) {
-        val uri = data.data
-        uri ?: let {
-            finish()
-            return
-        }
         if (mode == HandleFileContract.EXPORT) {
+            val uri = data.data
+            uri ?: let { finish(); return }
             getFileData()?.let { fileData ->
                 viewModel.saveToLocal(uri, fileData.first, fileData.second) { savedUri ->
                     setResult(RESULT_OK, Intent().setData(savedUri))

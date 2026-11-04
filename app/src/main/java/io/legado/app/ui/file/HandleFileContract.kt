@@ -40,6 +40,7 @@ class HandleFileContract :
                 intent.putExtra("contentType", fileData.type)
             }
             intent.putExtra("value", it.value)
+            intent.putExtra("multiple", it.multiple)
         }
         return intent
     }
@@ -88,7 +89,8 @@ class HandleFileContract :
         var onlyOtherActions: Boolean = false,
         var fileData: FileData? = null,
         var requestCode: Int = 0,
-        var value: String? = null
+        var value: String? = null,
+        var multiple: Boolean = false,
     )
 
     data class Result(

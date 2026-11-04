@@ -43,11 +43,15 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
     /** 底栏占用的底部高度（px），由 MainActivity 通知更新，用于 Compose 内容的底部 padding */
     private var bottomPaddingPx by mutableIntStateOf(0)
 
-    /** SAF 导入 py/html 源 */
+    /** SAF 导入 py/html/json/txt 源（多选） */
     private val importDoc = registerForActivityResult(HandleFileContract()) { result ->
         val uri = result.uri ?: return@registerForActivityResult
         val defaultName = getDisplayName(uri).substringBeforeLast('.')
         pyViewModel.onFilePicked(uri, defaultName)
+        // 多选导入
+        if (result.uris.isNotEmpty()) {
+            pyViewModel.onFilesPicked(result.uris.map { u -> u to getDisplayName(u).substringBeforeLast('.') })
+        }
     }
 
     /** 从 SAF Uri 获取显示文件名（content:// URI 的 lastPathSegment 不可用） */
@@ -95,7 +99,8 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
                         onImportRequested = {
                             importDoc.launch {
                                 mode = HandleFileContract.FILE
-                                allowExtensions = arrayOf("py", "html", "htm")
+                                allowExtensions = arrayOf("py", "html", "htm", "json", "txt")
+                                multiple = true
                             }
                         },
                     )

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -99,10 +101,14 @@ fun PyHomepageScreen(
     var showFavoritesDialog by remember { mutableStateOf(false) }
     var showGroupDialog by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var showSourceMenu by remember { mutableStateOf(false) }
     var importName by remember(viewModel.importUri) { mutableStateOf("") }
+    var tvboxUrlInput by remember { mutableStateOf("") }
+    var danmakuApiInput by remember { mutableStateOf("") }
 
     val sources by viewModel.sources.collectAsStateWithLifecycle()
     val currentType = viewModel.currentSourceType()
+    val currentSourceName = viewModel.currentSourceName() ?: "首页"
 
     Column(
         modifier = Modifier
@@ -122,6 +128,51 @@ fun PyHomepageScreen(
                     .height(48.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // 源名称 + 下拉切换
+                Box {
+                    Row(
+                        modifier = Modifier
+                            .clickable { showSourceMenu = true }
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = currentSourceName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = topBarColors.contentColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 160.dp),
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "切换源",
+                            modifier = Modifier.size(18.dp),
+                            tint = topBarColors.contentColor,
+                        )
+                    }
+                    DropdownMenu(
+                        modifier = Modifier.eInkGrayscale(),
+                        expanded = showSourceMenu,
+                        onDismissRequest = { showSourceMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("选择其他源") },
+                            onClick = { showSourceMenu = false },
+                            enabled = false,
+                        )
+                        sources.forEach { source ->
+                            DropdownMenuItem(
+                                text = { Text(source.name) },
+                                onClick = {
+                                    showSourceMenu = false
+                                    viewModel.selectSource(source.id)
+                                },
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 // 搜索
                 IconButton(onClick = { viewModel.toggleSearchMode() }) {
@@ -174,6 +225,22 @@ fun PyHomepageScreen(
                             onClick = {
                                 showSettingsMenu = false
                                 onImportRequested()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("添加TVbox源") },
+                            onClick = {
+                                showSettingsMenu = false
+                                tvboxUrlInput = ""
+                                viewModel.showTvboxDialog = true
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("自定义弹幕API") },
+                            onClick = {
+                                showSettingsMenu = false
+                                danmakuApiInput = viewModel.danmakuApiUrl
+                                viewModel.showDanmakuApiDialog = true
                             },
                         )
                         DropdownMenuItem(
@@ -284,6 +351,82 @@ fun PyHomepageScreen(
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.cancelImport() }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    // ---- TVbox 订阅 URL 输入弹窗 ----
+    if (viewModel.showTvboxDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.showTvboxDialog = false },
+            title = { Text("添加 TVbox 源") },
+            text = {
+                Column {
+                    Text(
+                        text = "输入 TVbox 订阅接口地址",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = pageSecondaryTextColor(),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tvboxUrlInput,
+                        onValueChange = { tvboxUrlInput = it },
+                        label = { Text("https://example.com/sub.json") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.importTvboxSource(tvboxUrlInput)
+                    viewModel.showTvboxDialog = false
+                }) {
+                    Text("导入")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.showTvboxDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    // ---- 自定义弹幕 API 输入弹窗 ----
+    if (viewModel.showDanmakuApiDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.showDanmakuApiDialog = false },
+            title = { Text("自定义弹幕 API") },
+            text = {
+                Column {
+                    Text(
+                        text = "输入弹幕 API 地址（支持 XML/JSON，{id} 为视频 ID 占位符）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = pageSecondaryTextColor(),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = danmakuApiInput,
+                        onValueChange = { danmakuApiInput = it },
+                        label = { Text("https://example.com/api/danmaku?id={id}") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.saveDanmakuApiUrl(danmakuApiInput)
+                    viewModel.showDanmakuApiDialog = false
+                }) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.showDanmakuApiDialog = false }) {
                     Text("取消")
                 }
             },
@@ -566,14 +709,8 @@ private fun HomeContent(
             val videos = categoryData?.videos ?: homeData.videos
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (videos.isEmpty()) {
-                    val emptyText = if (viewModel.selectedCategoryId.isEmpty()) {
-                        "点击分类标签浏览视频"
-                    } else {
-                        val err = viewModel.homeError
-                        if (err != null) "源调用失败:\n$err"
-                        else "该分类暂无视频或加载失败\n请检查网络后重试"
-                    }
-                    EmptyBox(emptyText)
+                    // 空态：不显示提示文字
+                    Box(modifier = Modifier.fillMaxSize())
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),

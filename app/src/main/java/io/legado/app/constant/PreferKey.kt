@@ -404,6 +404,8 @@ object PreferKey {
     const val pyHomePluginId = "pyHomePluginId"
     const val pySearchHistory = "pySearchHistory"
     const val pyFavorites = "pyFavorites"
+    const val pyDanmakuApiUrl = "pyDanmakuApiUrl"
+    const val pyTvboxSubscriptions = "pyTvboxSubscriptions"
     const val loadCoverHighQuality = "loadCoverHighQuality"
     const val mainLayoutPreset = "mainLayoutPreset"
     const val mcpPort = "mcpPort"
