@@ -402,8 +402,8 @@ private fun parseHeaderString(raw: String): Map<String, String> {
             val i = part.indexOf('=')
             if (i <= 0) null else part.substring(0, i).trim() to part.substring(i + 1).trim()
         }
-        .filterValues { it.isNotEmpty() }
         .toMap()
+        .filterValues { it.isNotEmpty() }
 }
 
 private fun str(obj: com.google.gson.JsonObject, vararg keys: String): String {
