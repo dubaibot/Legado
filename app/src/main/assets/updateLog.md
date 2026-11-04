@@ -3,6 +3,12 @@
 ## cronet版本: 128.0.6613.40
 
 【11-04】
+- 新增：jar 爬虫（FongMi Spider）支持——csp_ 前缀站点 + 配套 spider jar 可用（饭太硬类综合配置）
+- 新增：宿主 catvod 表面（com.github.catvod.*，移植自 ElderTV）——Spider/OkHttp/Path/Json/Util/Init/Proxy 等，jar 内 spider 实现依赖的宿主类全部提供
+- 新增：JarSpiderLoader——jar 规格串（url;md5;md5url）下载缓存 + DexClassLoader 父优先加载 + csp_Xxx → com.github.catvod.spider.Xxx 映射 + siteKey + init(context, ext)
+- 新增：JarVideoSource——spider MacCMS JSON 输出适配统一 VideoSource 数据模型（home/category/search/detail/play）
+- 新增：FongMi Config 根级 spider 字段解析（站点级 jar 覆盖根级 spider）
+- 新增：SourceType.JAR 源类型 + proguard 保命规则（com.github.catvod.** 整体保留）
 - 修复：VideoHttpClient 改用独立 OkHttpClient（不继承 okHttpClient 拦截器链），对齐薯条版 catvod.OkHttp 行为（信任所有证书、不跟随重定向、不发送 Accept-Encoding、系统 DNS、30s 超时）
 - 修复：VideoHttpClient doGet 不再检查 resp.isSuccessful（非 2xx 响应也返回 body，对齐薯条版 string() 行为）
 - 修复：JSON 源接口失败时抛出异常含 URL 和响应内容（UI 可见具体错误信息，替代原先静默返回空数据）

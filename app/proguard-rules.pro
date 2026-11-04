@@ -245,3 +245,8 @@ cn.hutool.core.util.**{*;}
 -keep class org.chromium.net.impl.CronetLibraryLoader { *; }
 -keep class org.chromium.net.impl.VersionField { *; }
 -keep class org.chromium.net.impl.** { *; }
+
+# catvod 宿主表面：jar 爬虫（DexClassLoader 动态加载）在运行时引用 com.github.catvod.*，
+# 混淆会导致 Spider/OkHttp/Path 等符号失效，必须整体保留（含字段名 siteKey 等）
+-keep class com.github.catvod.** { *; }
+-dontwarn com.github.catvod.**

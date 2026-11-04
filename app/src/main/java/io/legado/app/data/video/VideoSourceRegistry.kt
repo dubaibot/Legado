@@ -47,6 +47,7 @@ object VideoSourceRegistry {
     /** 清除指定源的实例缓存（删除/更新源时调用） */
     fun invalidateSource(id: String) {
         instanceCache.remove(id)
+        JarSpiderLoader.invalidate()
     }
 
     /** 列出全部可用视频源 */
@@ -76,34 +77,64 @@ object VideoSourceRegistry {
                 "json" -> {
                     // 检测 FongMi Config 格式（含 sites 数组）
                     if (FongMiConfigParser.isFongMiConfig(content)) {
-                        // 展开为多个源（仅 CMS 直连站点，过滤 jar/js/py 爬虫站点）
+                        // 展开为多个源（CMS 站点 + 有 jar 的 jar 爬虫站点）
                         FongMiConfigParser.parse(content).forEach { site ->
-                            if (site.siteKind != FongMiConfigParser.SiteKind.CMS) return@forEach
-                            sources.add(
-                                SourceInfo(
-                                    id = "${meta.id}:${site.key}",
-                                    name = site.name,
-                                    type = SourceType.JSON,
-                                    parentId = meta.id,
-                                )
-                            )
+                            when (site.siteKind) {
+                                FongMiConfigParser.SiteKind.JAR_SPIDER -> {
+                                    if (site.jar.isBlank()) return@forEach
+                                    sources.add(
+                                        SourceInfo(
+                                            id = "${meta.id}:${site.key}",
+                                            name = site.name,
+                                            type = SourceType.JAR,
+                                            parentId = meta.id,
+                                        )
+                                    )
+                                }
+                                FongMiConfigParser.SiteKind.CMS -> {
+                                    sources.add(
+                                        SourceInfo(
+                                            id = "${meta.id}:${site.key}",
+                                            name = site.name,
+                                            type = SourceType.JSON,
+                                            parentId = meta.id,
+                                        )
+                                    )
+                                }
+                                else -> return@forEach
+                            }
                         }
                     } else {
                         // 单站点 JSON
                         // 检测 api 字段形态（对照薯条版 TvBoxConfig api 字段判定）
-                        val apiVal = try {
-                            val root = com.google.gson.JsonParser.parseString(content).asJsonObject
-                            root.get("api")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
-                        } catch (e: Exception) { "" }
+                        val root = try {
+                            com.google.gson.JsonParser.parseString(content).asJsonObject
+                        } catch (e: Exception) { null }
+                        val apiVal = root?.get("api")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
                         val siteKind = FongMiConfigParser.SiteKind.detect(apiVal)
-                        if (siteKind != FongMiConfigParser.SiteKind.CMS) return@forEach
-                        sources.add(
-                            SourceInfo(
-                                id = meta.id,
-                                name = meta.name,
-                                type = SourceType.JSON,
-                            )
-                        )
+                        when (siteKind) {
+                            FongMiConfigParser.SiteKind.JAR_SPIDER -> {
+                                val jar = root?.get("jar")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+                                if (jar.isBlank()) return@forEach
+                                sources.add(
+                                    SourceInfo(
+                                        id = meta.id,
+                                        name = meta.name,
+                                        type = SourceType.JAR,
+                                    )
+                                )
+                            }
+                            FongMiConfigParser.SiteKind.CMS -> {
+                                sources.add(
+                                    SourceInfo(
+                                        id = meta.id,
+                                        name = meta.name,
+                                        type = SourceType.JSON,
+                                    )
+                                )
+                            }
+                            else -> return@forEach
+                        }
                     }
                 }
                 "txt" -> {
@@ -172,6 +203,29 @@ object VideoSourceRegistry {
                 val content = HomeSourceStore.readVideoSource(info.id, "txt")
                     ?: return null
                 TxtVideoSource(info.id, content)
+            }
+            SourceType.JAR -> {
+                val colonIdx = info.id.indexOf(':')
+                if (colonIdx > 0) {
+                    // FongMi Config 展开的 jar 源：父 Config + 站点 key
+                    val parentId = info.id.substring(0, colonIdx)
+                    val siteKey = info.id.substring(colonIdx + 1)
+                    val configJson = HomeSourceStore.readVideoSource(parentId, "json")
+                        ?: return null
+                    val site = FongMiConfigParser.parse(configJson).find { it.key == siteKey }
+                        ?: return null
+                    JarVideoSource(info.id, site.name, site.jar, site.api, site.ext)
+                } else {
+                    // 单站点 jar 源：JSON 内含 jar + api 字段
+                    val configJson = HomeSourceStore.readVideoSource(info.id, "json")
+                        ?: return null
+                    val root = try {
+                        com.google.gson.JsonParser.parseString(configJson).asJsonObject
+                    } catch (e: Exception) { null } ?: return null
+                    val jar = root.get("jar")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+                    val api = root.get("api")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+                    JarVideoSource(info.id, info.name, jar, api)
+                }
             }
             SourceType.HTML -> {
                 val configJson = HomeSourceStore.readVideoSource(info.id, "html")

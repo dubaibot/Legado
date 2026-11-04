@@ -83,13 +83,14 @@ object FongMiConfigParser {
     fun parse(configJson: String): List<SiteConfig> {
         return try {
             val root = JsonParser.parseString(configJson).asJsonObject
+            val rootSpider = str(root, "spider")
             val sitesArr = root.getAsJsonArray("sites")
             if (sitesArr != null) {
                 // 多站点 Config
-                parseSitesArray(sitesArr)
+                parseSitesArray(sitesArr, rootSpider)
             } else {
                 // 单站点 Config
-                listOf(parseSingleSite(root))
+                listOf(parseSiteObject(root, rootSpider))
             }
         } catch (e: Exception) {
             LogUtils.d(TAG, "parse failed: ${e.message}")
@@ -98,11 +99,11 @@ object FongMiConfigParser {
     }
 
     /** 解析多站点数组 */
-    private fun parseSitesArray(sitesArr: JsonArray): List<SiteConfig> {
+    private fun parseSitesArray(sitesArr: JsonArray, rootSpider: String): List<SiteConfig> {
         return sitesArr.mapNotNull { el ->
             try {
                 val obj = el.asJsonObject
-                parseSiteObject(obj)
+                parseSiteObject(obj, rootSpider)
             } catch (e: Exception) {
                 null
             }
@@ -115,7 +116,7 @@ object FongMiConfigParser {
     }
 
     /** 解析单个站点对象（通用） */
-    private fun parseSiteObject(obj: JsonObject): SiteConfig {
+    private fun parseSiteObject(obj: JsonObject, rootSpider: String = ""): SiteConfig {
         val key = str(obj, "key", "id")
         val name = str(obj, "name", "title").ifBlank { key }
         val typeStr = str(obj, "type", "mode").ifBlank { "0" }
@@ -123,7 +124,8 @@ object FongMiConfigParser {
         val api = str(obj, "api", "apiUrl", "url")
         val searchApi = str(obj, "searchApi", "searchUrl")
         val ext = str(obj, "ext")
-        val jar = str(obj, "jar")
+        // 站点级 jar 覆盖根级 spider
+        val jar = str(obj, "jar").ifBlank { rootSpider }
         val header = parseHeader(obj)
         val kind = SiteKind.detect(api)
         return SiteConfig(

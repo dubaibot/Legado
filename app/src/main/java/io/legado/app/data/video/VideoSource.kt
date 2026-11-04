@@ -13,6 +13,7 @@ enum class SourceType {
     HTML,
     JSON,
     TXT,
+    JAR,
 }
 
 /** 视频条目（首页/分类/搜索列表中的单个视频） */
