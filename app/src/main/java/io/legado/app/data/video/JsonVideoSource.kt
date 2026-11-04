@@ -90,7 +90,12 @@ class JsonVideoSource(
             if (selectedSite == null) {
                 // 单站点模式
                 name = root.optString("name", sourceId)
-                m = root.optString("type", "cms").lowercase()
+                // FongMi type: 0/1/3 = CMS, "cms" = CMS, "custom" = 自定义端点
+                val typeStr = root.optString("type", "cms")
+                m = when {
+                    typeStr == "custom" -> "custom"
+                    else -> "cms"  // 0, 1, 3, "cms" 等均按 CMS 处理
+                }
                 api = root.optString("api", "")
                 for (key in listOf("home", "category", "search", "detail", "play", "danmaku")) {
                     val v = root.optString(key, "")
@@ -152,14 +157,18 @@ class JsonVideoSource(
                 val o = el.asJsonObject
                 categories.add(VideoCategory(o.optString("id"), o.optString("name")))
             }
-            Pair(categories, parseVideoArray(json.getAsJsonArray("videos")))
+            Pair(categories, parseVideoArray(json.getAsJsonArray("videos") ?: json.getAsJsonArray("list")))
         }
     }
 
     override suspend fun category(tid: String, pg: Int): CategoryResult = withContext(Dispatchers.IO) {
         if (isCmsMode) {
             val url = cmsApiUrl("ac=list", mapOf("t" to tid, "pg" to pg.toString()))
-            val json = VideoHttpClient.getJson(url) ?: return@withContext CategoryResult()
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "category CMS request failed: $url")
+                return@withContext CategoryResult()
+            }
             CategoryResult(
                 page = json.optInt("page", pg),
                 pageCount = json.optInt("pagecount", 1),
@@ -168,11 +177,15 @@ class JsonVideoSource(
         } else {
             val tpl = endpoints["category"] ?: return@withContext CategoryResult()
             val url = fill(tpl, tid, pg)
-            val json = VideoHttpClient.getJson(url) ?: return@withContext CategoryResult()
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "category custom request failed: $url")
+                return@withContext CategoryResult()
+            }
             CategoryResult(
                 page = json.optInt("page", pg),
                 pageCount = json.optInt("pagecount", 1),
-                videos = parseVideoArray(json.getAsJsonArray("videos")),
+                videos = parseVideoArray(json.getAsJsonArray("videos") ?: json.getAsJsonArray("list")),
             )
         }
     }
@@ -180,12 +193,20 @@ class JsonVideoSource(
     override suspend fun search(keyword: String, pg: Int): List<VideoItem> = withContext(Dispatchers.IO) {
         if (isCmsMode) {
             val url = cmsApiUrl("ac=videolist", mapOf("wd" to keyword))
-            val json = VideoHttpClient.getJson(url) ?: return@withContext emptyList()
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "search CMS request failed: $url")
+                return@withContext emptyList()
+            }
             parseCmsList(json.getAsJsonArray("list"))
         } else {
             val tpl = endpoints["search"] ?: return@withContext emptyList()
             val url = tpl.replace("{kw}", enc(keyword)).replace("{pg}", pg.toString())
-            val json = VideoHttpClient.getJson(url) ?: return@withContext emptyList()
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "search custom request failed: $url")
+                return@withContext emptyList()
+            }
             parseVideoArray(
                 json.getAsJsonArray("videos") ?: json.getAsJsonArray("list")
             )
@@ -195,14 +216,22 @@ class JsonVideoSource(
     override suspend fun detail(id: String): VideoDetail = withContext(Dispatchers.IO) {
         if (isCmsMode) {
             val url = cmsApiUrl("ac=detail", mapOf("ids" to id))
-            val json = VideoHttpClient.getJson(url) ?: return@withContext VideoDetail(id = id, title = id)
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "detail CMS request failed: $url")
+                return@withContext VideoDetail(id = id, title = id)
+            }
             val vod = json.getAsJsonArray("list")?.firstOrNull()?.asJsonObject
                 ?: return@withContext VideoDetail(id = id, title = id)
             parseCmsDetail(vod)
         } else {
             val tpl = endpoints["detail"] ?: return@withContext VideoDetail(id = id, title = id)
             val url = tpl.replace("{id}", enc(id))
-            val json = VideoHttpClient.getJson(url) ?: return@withContext VideoDetail(id = id, title = id)
+            val json = VideoHttpClient.getJson(url)
+            if (json == null) {
+                io.legado.app.utils.LogUtils.d(TAG, "detail custom request failed: $url")
+                return@withContext VideoDetail(id = id, title = id)
+            }
             val o = if (json.has("video")) json.getAsJsonObject("video") else json
             VideoDetail(
                 id = o.optString("id", id),
@@ -221,7 +250,11 @@ class JsonVideoSource(
         val tpl = endpoints["play"]
         if (tpl.isNullOrBlank()) return@withContext PlayResult(url)
         val realUrl = tpl.replace("{url}", enc(url))
-        val json = VideoHttpClient.getJson(realUrl) ?: return@withContext PlayResult(url)
+        val json = VideoHttpClient.getJson(realUrl)
+        if (json == null) {
+            io.legado.app.utils.LogUtils.d(TAG, "play request failed: $realUrl")
+            return@withContext PlayResult(url)
+        }
         val headers = mutableMapOf<String, String>()
         json.getAsJsonObject("headers")?.entrySet()?.forEach { (k, v) ->
             headers[k] = v.asString
@@ -244,11 +277,11 @@ class JsonVideoSource(
             try {
                 val o = el.asJsonObject
                 VideoItem(
-                    id = o.optString("vod_id"),
-                    title = o.optString("vod_name"),
-                    url = o.optString("vod_id"),
-                    pic = o.optString("vod_pic"),
-                    remarks = o.optString("vod_remarks"),
+                    id = str(o, "vod_id", "id"),
+                    title = str(o, "vod_name", "name", "title"),
+                    url = str(o, "vod_id", "id").ifBlank { str(o, "vod_url", "url", "link") },
+                    pic = str(o, "vod_pic", "pic", "img", "cover"),
+                    remarks = str(o, "vod_remarks", "remarks", "remark", "note"),
                     sourceId = sourceId,
                 )
             } catch (e: Exception) {
@@ -259,8 +292,8 @@ class JsonVideoSource(
 
     private fun parseCmsDetail(vod: JsonObject): VideoDetail {
         val lines = mutableListOf<PlayLine>()
-        val playFrom = vod.optString("vod_play_from")
-        val playUrl = vod.optString("vod_play_url")
+        val playFrom = str(vod, "vod_play_from", "play_from")
+        val playUrl = str(vod, "vod_play_url", "play_url")
         val fromNames = playFrom.split("$$$").filter { it.isNotBlank() }
         val urlGroups = playUrl.split("$$$").filter { it.isNotBlank() }
         fromNames.forEachIndexed { idx, name ->
@@ -275,10 +308,10 @@ class JsonVideoSource(
             }
         }
         return VideoDetail(
-            id = vod.optString("vod_id"),
-            title = vod.optString("vod_name"),
-            pic = vod.optString("vod_pic"),
-            desc = vod.optString("vod_content"),
+            id = str(vod, "vod_id", "id"),
+            title = str(vod, "vod_name", "title", "name"),
+            pic = str(vod, "vod_pic", "pic", "img", "cover"),
+            desc = str(vod, "vod_content", "desc", "content", "description"),
             playLines = lines,
         )
     }
@@ -289,11 +322,11 @@ class JsonVideoSource(
             try {
                 val o = el.asJsonObject
                 VideoItem(
-                    id = o.optString("id"),
-                    title = o.optString("title"),
-                    url = o.optString("url").ifBlank { o.optString("id") },
-                    pic = o.optString("pic"),
-                    remarks = o.optString("remarks"),
+                    id = str(o, "id", "vod_id"),
+                    title = str(o, "title", "vod_name", "name"),
+                    url = str(o, "url", "link", "vod_url").ifBlank { str(o, "id", "vod_id") },
+                    pic = str(o, "pic", "vod_pic", "img", "cover"),
+                    remarks = str(o, "remarks", "vod_remarks", "remark", "note"),
                     sourceId = sourceId,
                 )
             } catch (e: Exception) {
@@ -318,3 +351,18 @@ private fun com.google.gson.JsonObject.optString(key: String, default: String = 
 
 private fun com.google.gson.JsonObject.optInt(key: String, default: Int = 0): Int =
     takeIf { has(key) }?.get(key)?.takeIf { it.isJsonPrimitive }?.asInt ?: default
+
+private fun str(obj: com.google.gson.JsonObject, vararg keys: String): String {
+    for (key in keys) {
+        val v = obj.get(key) ?: continue
+        try {
+            if (!v.isJsonNull) {
+                val s = v.asString
+                if (s.isNotBlank()) return s
+            }
+        } catch (e: Exception) {
+            continue
+        }
+    }
+    return ""
+}
