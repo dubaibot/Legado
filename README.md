@@ -132,7 +132,15 @@ https://www.yuque.com/legado/wiki/community
 - 新增：后台预热机制（refreshSources 时并发预加载所有源 home 数据，切换源直接命中）
 - 优化：切换源不清空缓存，切回来直接命中 homeCache/categoryCache
 - 重构：ViewModel 统一走 VideoSource 接口，删除 bridge*/parse* 分叉逻辑（py/json/txt 一套代码）
-- 当前快照：3.26.110310
+- 当前快照：3.26.110411
+
+【11-04】
+- 修复：VideoHttpClient 改用独立 OkHttpClient（不继承 okHttpClient 拦截器链），对齐薯条版 catvod.OkHttp 行为（信任所有证书、不跟随重定向、不发送 Accept-Encoding、系统 DNS、30s 超时）
+- 修复：VideoHttpClient doGet 不再检查 resp.isSuccessful（非 2xx 响应也返回 body，对齐薯条版 string() 行为）
+- 修复：JSON 源接口失败时抛出异常含 URL 和响应内容（UI 可见具体错误信息，替代原先静默返回空数据）
+
+【11-03】
+- 修复：JSON 源 CMS API URL 构建参数对齐薯条版 TvBoxCmsSpider（home 用 ?ac=list、search 用 ?ac=videolist&wd=&pg=）
 
 【10-27】
 - 优化：应用名称由「阅读D」改为「阅读」

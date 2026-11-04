@@ -155,10 +155,7 @@ class JsonVideoSource(
             // 苹果CMS V10: 首页用 ?ac=list 获取分类+最新视频
             val url = buildCmsUrl("home", mapOf("ac" to "list"))
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "home CMS request failed: $url")
-                return@withContext Pair(emptyList(), emptyList())
-            }
+                ?: throw IllegalStateException("CMS 接口无响应: $url")
             val categories = mutableListOf<VideoCategory>()
             json.getAsJsonArray("class")?.forEach { el ->
                 val o = el.asJsonObject
@@ -172,12 +169,9 @@ class JsonVideoSource(
             val videos = parseCmsList(json.getAsJsonArray("list"))
             Pair(categories, videos)
         } else {
-            val url = endpoints["home"] ?: return@withContext Pair(emptyList(), emptyList())
+            val url = endpoints["home"] ?: throw IllegalStateException("自定义端点模式缺少 home 配置")
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "home custom request failed: $url")
-                return@withContext Pair(emptyList(), emptyList())
-            }
+                ?: throw IllegalStateException("自定义端点无响应: $url")
             val categories = mutableListOf<VideoCategory>()
             json.getAsJsonArray("categories")?.forEach { el ->
                 val o = el.asJsonObject
@@ -192,23 +186,17 @@ class JsonVideoSource(
             // 苹果CMS V10: 分类用 ac=videolist
             val url = buildCmsUrl("category", mapOf("ac" to "videolist", "t" to tid, "pg" to pg.toString()))
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "category CMS request failed: $url")
-                return@withContext CategoryResult()
-            }
+                ?: throw IllegalStateException("CMS 分类接口无响应: $url")
             CategoryResult(
                 page = json.optInt("page", pg),
                 pageCount = json.optInt("pagecount", 1),
                 videos = parseCmsList(json.getAsJsonArray("list")),
             )
         } else {
-            val tpl = endpoints["category"] ?: return@withContext CategoryResult()
+            val tpl = endpoints["category"] ?: throw IllegalStateException("自定义端点模式缺少 category 配置")
             val url = fill(tpl, tid, pg)
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "category custom request failed: $url")
-                return@withContext CategoryResult()
-            }
+                ?: throw IllegalStateException("自定义分类端点无响应: $url")
             CategoryResult(
                 page = json.optInt("page", pg),
                 pageCount = json.optInt("pagecount", 1),
@@ -222,19 +210,13 @@ class JsonVideoSource(
             // 苹果CMS V10: 搜索用 ?ac=videolist&wd={kw}&pg={pg}
             val url = buildCmsUrl("search", mapOf("ac" to "videolist", "wd" to keyword, "pg" to pg.toString()))
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "search CMS request failed: $url")
-                return@withContext emptyList()
-            }
+                ?: throw IllegalStateException("CMS 搜索接口无响应: $url")
             parseCmsList(json.getAsJsonArray("list"))
         } else {
-            val tpl = endpoints["search"] ?: return@withContext emptyList()
+            val tpl = endpoints["search"] ?: throw IllegalStateException("自定义端点模式缺少 search 配置")
             val url = tpl.replace("{kw}", enc(keyword)).replace("{pg}", pg.toString())
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "search custom request failed: $url")
-                return@withContext emptyList()
-            }
+                ?: throw IllegalStateException("自定义搜索端点无响应: $url")
             parseVideoArray(
                 json.getAsJsonArray("videos") ?: json.getAsJsonArray("list")
             )
@@ -246,21 +228,15 @@ class JsonVideoSource(
             // 苹果CMS V10: 详情用 ac=detail&ids={id}
             val url = buildCmsUrl("detail", mapOf("ac" to "detail", "ids" to id))
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "detail CMS request failed: $url")
-                return@withContext VideoDetail(id = id, title = id)
-            }
+                ?: throw IllegalStateException("CMS 详情接口无响应: $url")
             val vod = json.getAsJsonArray("list")?.firstOrNull()?.asJsonObject
-                ?: return@withContext VideoDetail(id = id, title = id)
+                ?: throw IllegalStateException("CMS 详情接口无数据: $url")
             parseCmsDetail(vod)
         } else {
-            val tpl = endpoints["detail"] ?: return@withContext VideoDetail(id = id, title = id)
+            val tpl = endpoints["detail"] ?: throw IllegalStateException("自定义端点模式缺少 detail 配置")
             val url = tpl.replace("{id}", enc(id))
             val json = VideoHttpClient.getJson(url, siteHeaders)
-            if (json == null) {
-                io.legado.app.utils.LogUtils.d(TAG, "detail custom request failed: $url")
-                return@withContext VideoDetail(id = id, title = id)
-            }
+                ?: throw IllegalStateException("自定义详情端点无响应: $url")
             val o = if (json.has("video")) json.getAsJsonObject("video") else json
             VideoDetail(
                 id = o.optString("id", id),
@@ -285,14 +261,10 @@ class JsonVideoSource(
             if (base.isNotBlank()) headers.putIfAbsent("Referer", base.substringBeforeLast("/") + "/")
             return@withContext PlayResult(url = url, headers = headers)
         }
-        val tpl = endpoints["play"]
-        if (tpl.isNullOrBlank()) return@withContext PlayResult(url)
+        val tpl = endpoints["play"] ?: return@withContext PlayResult(url)
         val realUrl = tpl.replace("{url}", enc(url))
         val json = VideoHttpClient.getJson(realUrl, siteHeaders)
-        if (json == null) {
-            io.legado.app.utils.LogUtils.d(TAG, "play request failed: $realUrl")
-            return@withContext PlayResult(url)
-        }
+            ?: throw IllegalStateException("自定义播放端点无响应: $realUrl")
         val headers = mutableMapOf<String, String>()
         json.getAsJsonObject("headers")?.entrySet()?.forEach { (k, v) ->
             headers[k] = v.asString
