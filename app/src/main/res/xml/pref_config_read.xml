@@ -89,6 +89,13 @@
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
+        android:key="webViewRead"
+        android:title="@string/web_view_read"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
         android:key="adaptSpecialStyle"
         android:title="@string/adapt_special_style"
         app:iconSpaceReserved="false"

@@ -169,6 +169,7 @@ object PreferKey {
     const val readBodyToLh = "readBodyToLh"
     const val textFullJustify = "textFullJustify"
     const val textBottomJustify = "textBottomJustify"
+    const val webViewRead = "webViewRead"
     const val adaptSpecialStyle = "adaptSpecialStyle"
     const val keepBlankLine = "keepBlankLine"
     const val autoReadSpeed = "autoReadSpeed"

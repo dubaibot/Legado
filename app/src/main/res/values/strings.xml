@@ -8019,4 +8019,5 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="export_to_clipboard">Export JSON to clipboard</string>
 
     <string name="query_result">Found %1$d matches</string>
+    <string name="web_view_read">WebView reading page</string>
 </resources>

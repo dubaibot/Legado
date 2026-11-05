@@ -7275,4 +7275,5 @@ bookUrl：%7$s
     <string name="debug_curl_method">请求方法</string>
 
     <string name="bubble_source_local">本地</string>
+    <string name="web_view_read">WebView 阅读页</string>
 </resources>

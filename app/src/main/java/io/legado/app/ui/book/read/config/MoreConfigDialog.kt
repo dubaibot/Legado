@@ -139,6 +139,10 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                     postEvent(EventBus.UP_CONFIG, arrayListOf(5))
                 }
 
+                PreferKey.webViewRead -> {
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+                }
+
                 PreferKey.showBrightnessView -> {
                     postEvent(PreferKey.showBrightnessView, "")
                 }

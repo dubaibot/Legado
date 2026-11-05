@@ -9,6 +9,12 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <io.legado.app.ui.book.read.web.WebReadView
+        android:id="@+id/web_read_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <io.legado.app.ui.book.read.epub.EpubReadView
         android:id="@+id/epub_read_view"
         android:layout_width="match_parent"

@@ -61,6 +61,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var editAutoComplete = appCtx.getPrefBoolean(PreferKey.editAutoComplete, true)
     var showBoardLine = appCtx.getPrefInt(PreferKey.showBoardLine, 1)
     var adaptSpecialStyle = appCtx.getPrefBoolean(PreferKey.adaptSpecialStyle, true)
+    var webViewRead = appCtx.getPrefBoolean(PreferKey.webViewRead, true)
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
@@ -70,6 +71,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.editAutoComplete -> editAutoComplete = appCtx.getPrefBoolean(PreferKey.editAutoComplete, true)
             PreferKey.showBoardLine -> showBoardLine = appCtx.getPrefInt(PreferKey.showBoardLine, 1)
             PreferKey.adaptSpecialStyle -> adaptSpecialStyle = appCtx.getPrefBoolean(PreferKey.adaptSpecialStyle, true)
+
+            PreferKey.webViewRead -> webViewRead = appCtx.getPrefBoolean(PreferKey.webViewRead, true)
 
             PreferKey.themeMode -> {
                 themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")

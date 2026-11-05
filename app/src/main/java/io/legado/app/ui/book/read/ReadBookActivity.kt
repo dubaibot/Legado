@@ -87,6 +87,7 @@ import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_COLOR
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_DIVIDER_COLOR
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.ReadView
+import io.legado.app.ui.book.read.web.WebReadView
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate
 import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.book.read.page.entities.TextPage
@@ -153,6 +154,7 @@ import io.legado.app.ui.login.SourceLoginJsExtensions
 class ReadBookActivity : BaseReadBookActivity(),
     View.OnTouchListener,
     ReadView.CallBack,
+    WebReadView.CallBack,
     TextActionMenu.CallBack,
     ContentTextView.CallBack,
     PopupMenu.OnMenuItemClickListener,
@@ -305,6 +307,19 @@ class ReadBookActivity : BaseReadBookActivity(),
                 return@addCallback
             }
             finish()
+        }
+        applyReadEngine()
+    }
+
+    private fun applyReadEngine() {
+        if (AppConfig.webViewRead) {
+            binding.webReadView.visibility = View.VISIBLE
+            binding.readView.visibility = View.GONE
+            binding.webReadView.attach(this)
+        } else {
+            binding.webReadView.visibility = View.GONE
+            binding.readView.visibility = View.VISIBLE
+            binding.webReadView.detach()
         }
     }
 
@@ -1039,6 +1054,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun keyPage(direction: PageDirection) {
+        if (AppConfig.webViewRead) {
+            if (direction == PageDirection.NEXT) {
+                binding.webReadView.pageNext()
+            } else {
+                binding.webReadView.pagePrev()
+            }
+            return
+        }
         binding.readView.cancelSelect()
         binding.readView.pageDelegate?.isCancel = false
         binding.readView.pageDelegate?.keyTurnPage(direction)
@@ -1067,6 +1090,14 @@ class ReadBookActivity : BaseReadBookActivity(),
         loadStates = true
     }
 
+    override fun onPageChanged() {
+        pageChanged()
+    }
+
+    override fun onContentLoadFinish() {
+        contentLoadFinish()
+    }
+
     /**
      * 更新内容
      */
@@ -1076,7 +1107,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         success: (() -> Unit)?
     ) {
         lifecycleScope.launch {
-            binding.readView.upContent(relativePosition, resetPageOffset)
+            if (AppConfig.webViewRead) {
+                binding.webReadView.upContent(relativePosition, resetPageOffset)
+            } else {
+                binding.readView.upContent(relativePosition, resetPageOffset)
+            }
             if (relativePosition == 0) {
                 upSeekBarProgress()
             }
@@ -1090,7 +1125,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         resetPageOffset: Boolean,
         success: (() -> Unit)?
     ) = withContext(Main.immediate) {
-        binding.readView.upContent(relativePosition, resetPageOffset)
+        if (AppConfig.webViewRead) {
+            binding.webReadView.upContent(relativePosition, resetPageOffset)
+        } else {
+            binding.readView.upContent(relativePosition, resetPageOffset)
+        }
         if (relativePosition == 0) {
             upSeekBarProgress()
         }
@@ -1779,6 +1818,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         textActionMenu.dismiss()
         popupAction.dismiss()
         binding.readView.onDestroy()
+        binding.webReadView.onDestroy()
         ReadBook.unregister(this)
         handler.removeCallbacksAndMessages(null) // 清理Handler消息
         if (!ReadBook.inBookshelf && !isChangingConfigurations) {
@@ -1804,10 +1844,18 @@ class ReadBookActivity : BaseReadBookActivity(),
                 when (value) {
                     0 -> upSystemUiVisibility()
                     1 -> readView.upBg()
-                    2 -> readView.upStyle()
+                    2 -> {
+                        readView.upStyle()
+                        if (AppConfig.webViewRead) {
+                            webReadView.upStyle()
+                        }
+                    }
                     3 -> readView.upBgAlpha()
                     4 -> readView.upPageSlopSquare()
-                    5 -> if (isInitFinish) ReadBook.loadContent(resetPageOffset = false)
+                    5 -> {
+                        if (isInitFinish) ReadBook.loadContent(resetPageOffset = false)
+                        applyReadEngine()
+                    }
                     6 -> readView.upContent(resetPageOffset = false)
                     8 -> ChapterProvider.upStyle()
                     9 -> readView.invalidateTextPage()
