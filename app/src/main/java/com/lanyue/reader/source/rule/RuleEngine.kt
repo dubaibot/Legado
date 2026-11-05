@@ -120,24 +120,25 @@ class RuleEngine(
         // 纯 @put 段没有主体规则：返回空，puts 走「回落到本段结果」分支
         if (rule.isBlank()) return emptyList()
 
-        val values: List<String> = if (isJsRule(rule)) {
-            runJsList(unwrapJs(rule), html, ctx)
-        } else {
-            val parseResult = dom.parse(html, ctx.baseUrl, needsRealDom, ctx.traceId)
-            val doc = when (parseResult) {
-                is DomParser.ParseResult.Ok -> parseResult.document
-                is DomParser.ParseResult.Failed -> throw EngineException(
-                    EngineErrorCode.SCRIPT_EXCEPTION,
-                    "dom parse failed: " + parseResult.reason
-                )
+        val values: List<String> = when {
+            isJsRule(rule) -> runJsList(unwrapJs(rule), html, ctx)
+
+            // JSONPath：$.a.b / $..name / [?(@.x=='y')]
+            JsonPath.looksLikeJsonPath(rule) -> runJsonPath(html, rule)
+
+            // XPath：//div[@class='x']/a/text()  -> 翻译成 CSS 后复用选择器逻辑
+            XPathLite.looksLikeXPath(rule) -> runXPath(html, rule, ctx, needsRealDom)
+
+            else -> {
+                val doc = parseDomOrThrow(html, ctx, needsRealDom)
+                val split = splitJsTail(rule)
+                var selected = selectCss(doc, split.first, ctx.baseUrl)
+                val jsTail = split.second
+                if (jsTail != null) {
+                    selected = selected.map { v -> runJsString(jsTail, v, ctx) }
+                }
+                selected
             }
-            val split = splitJsTail(rule)
-            var selected = selectCss(doc, split.first)
-            val jsTail = split.second
-            if (jsTail != null) {
-                selected = selected.map { v -> runJsString(jsTail, v, ctx) }
-            }
-            selected
         }
         return RuleChain.finish(values, listOf(replacement))
     }
@@ -157,10 +158,65 @@ class RuleEngine(
         }
     }
 
+    /** 显式取值指令。 */
+    private val EXPLICIT_DIRECTIVES = setOf("text", "textnodes", "ownhtml", "html", "all", "content")
+
+    /** 可按属性名直接取值的高频 HTML 属性。 */
+    private val COMMON_ATTRS = setOf(
+        "href", "src", "value", "alt", "title", "datetime", "poster",
+        "srcset", "id", "class", "style", "name", "type", "placeholder"
+    )
+
+    /** 解析 DOM；失败统一转成带错误码的引擎异常。 */
+    private suspend fun parseDomOrThrow(html: String, ctx: RuleContext, needsRealDom: Boolean): Document {
+        val parseResult = dom.parse(html, ctx.baseUrl, needsRealDom, ctx.traceId)
+        return when (parseResult) {
+            is DomParser.ParseResult.Ok -> parseResult.document
+            is DomParser.ParseResult.Failed -> throw EngineException(
+                EngineErrorCode.SCRIPT_EXCEPTION,
+                "dom parse failed: " + parseResult.reason
+            )
+        }
+    }
+
+    /**
+     * JSONPath 求值。
+     *
+     * 非 JSON 响应直接判空而不是抛异常：同一字段在个别源上可能返回 HTML，
+     * 这属于"取不到"而不是"程序错误"，抛异常会让整章失败。
+     */
+    private fun runJsonPath(html: String, rule: String): List<String> {
+        val elements = JsonPath.selectText(html, rule)
+        if (elements.isEmpty()) return emptyList()
+        return JsonPath.toStrings(elements).filter { it.isNotEmpty() }
+    }
+
+    /**
+     * XPath 求值：先翻译成 CSS，再复用选择器取值。
+     *
+     * 不支持的结构（轴 / and / or / 未知函数）会抛明确的规则错误，
+     * 让用户知道是规则写法问题，而不是静默返回空。
+     */
+    private suspend fun runXPath(
+        html: String,
+        rule: String,
+        ctx: RuleContext,
+        needsRealDom: Boolean
+    ): List<String> {
+        val converted = XPathLite.toCss(rule) ?: throw EngineException(
+            EngineErrorCode.SCRIPT_EXCEPTION,
+            "unsupported xpath: " + rule
+        )
+        val doc = parseDomOrThrow(html, ctx, needsRealDom)
+        val directive = converted.directive
+        val composed = if (directive == null) converted.css else converted.css + "@" + directive
+        return selectCss(doc, composed, ctx.baseUrl)
+    }
+
     /**
      * CSS 选择器求值。支持 class./tag./id. 前缀与 @attr、@text、@html 后缀。
      */
-    private fun selectCss(doc: Document, rawRule: String): List<String> {
+    private fun selectCss(doc: Document, rawRule: String, baseUrl: String? = null): List<String> {
         val parts = rawRule.split("@").filter { it.isNotBlank() }
         if (parts.isEmpty()) return emptyList()
 
@@ -188,20 +244,73 @@ class RuleEngine(
             }
         }
 
-        return els.map { extract(it, directive) }.filter { it.isNotEmpty() }
+        return els.map { extract(it, directive, baseUrl) }.filter { it.isNotEmpty() }
     }
 
+    /**
+     * 判定 `@` 之后那一段是不是取值指令。
+     *
+     * Legado 里 `class.a@href` 是最常见写法，早期实现只认 text/html/attr:，
+     * 于是 "href" 被当成第二段 CSS 选择器（找 <href> 标签），永远取不到值。
+     * 这里补齐常见属性名，并支持 @attr: 与 @abs: 两种前缀。
+     */
     private fun isExtractDirective(part: String): Boolean {
         val lower = part.lowercase()
-        return lower in setOf("text", "textnodes", "ownhtml", "html", "all", "content") ||
-            lower.startsWith("attr:")
+        if (lower in EXPLICIT_DIRECTIVES) return true
+        if (lower.startsWith("attr:") || lower.startsWith("abs:")) return true
+        if (lower in COMMON_ATTRS) return true
+        // data-* / aria-* 是自定义属性，按指令处理
+        if (lower.startsWith("data-") || lower.startsWith("aria-")) return true
+        return false
     }
 
-    private fun extract(el: Element, directive: String?): String = when {
-        directive == null || directive == "text" || directive == "textnodes" -> el.text()
-        directive == "html" || directive == "ownhtml" || directive == "all" -> el.html()
-        directive.startsWith("attr:") -> el.attr(directive.removePrefix("attr:"))
-        else -> el.text()
+    /**
+     * 从元素取值。
+     *
+     * 属性不存在时返回空串（由上层过滤掉），不回落到文本——
+     * 回落会把"取不到 href"变成"取到一段标题文字"，产生看起来对但实际错的数据。
+     */
+    private fun extract(el: Element, directive: String?, baseUrl: String?): String {
+        if (directive == null) return el.text()
+        return when {
+            directive == "text" || directive == "textnodes" ->
+                el.text()
+            directive == "html" || directive == "ownhtml" || directive == "all" ->
+                el.html()
+            directive == "content" ->
+                if (el.hasAttr("content")) el.attr("content") else el.text()
+            directive.startsWith("abs:") ->
+                absolutize(el.attr(directive.removePrefix("abs:")), baseUrl)
+            directive.startsWith("attr:") ->
+                el.attr(directive.removePrefix("attr:"))
+            else ->
+                el.attr(directive)
+        }
+    }
+
+    /**
+     * 把相对地址补成绝对地址（@abs:href 用）。
+     *
+     * 只做常见形态，不引入 URI 解析开销：
+     *   //host/a   -> 继承 baseUrl 的 scheme
+     *   /a         -> 继承 origin
+     *   a/b        -> 拼在 baseUrl 目录后
+     *   已是绝对地址则原样返回
+     */
+    private fun absolutize(value: String, baseUrl: String?): String {
+        val v = value.trim()
+        if (v.isEmpty()) return ""
+        if (v.startsWith("http://") || v.startsWith("https://")) return v
+        val base = baseUrl?.trim().orEmpty()
+        if (base.isEmpty()) return v
+        val schemeEnd = base.indexOf("://")
+        val scheme = if (schemeEnd > 0) base.substring(0, schemeEnd) else "https"
+        if (v.startsWith("//")) return scheme + ":" + v
+        val originEnd = base.indexOf('/', schemeEnd + 3)
+        val origin = if (originEnd > 0) base.substring(0, originEnd) else base
+        if (v.startsWith("/")) return origin + v
+        val dir = if (originEnd > 0) base.substring(0, base.lastIndexOf('/') + 1) else base + "/"
+        return dir + v
     }
 
     /**
