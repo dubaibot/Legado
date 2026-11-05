@@ -82,7 +82,8 @@ class JsRunner(private val instance: RunnerInstance) {
 
         // 4.5 后置门禁：投递期间可能已被结算（结果早于挂载），此处再校验
         if (deferred.isCompleted) {
-            return deferred.await().getOrThrow()
+            // await() 已直接返回 String；失败会由 await 本身抛出，不再二次包一层
+            return deferred.await()
         }
 
         return deferred.await()

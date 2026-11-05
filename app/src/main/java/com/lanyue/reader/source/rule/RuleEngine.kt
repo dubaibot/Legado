@@ -40,6 +40,9 @@ class RuleEngine(
 
     /**
      * 在一段 HTML 上执行规则，返回字符串列表。
+     *
+     * 整条规则交给 [RuleChain] 拆解：`||` 备选短路、`&&` 并列合并、
+     * `##` 正则替换、`@put/@get` 变量、`{{ }}` 模板。
      * [rule] 为 null/空时返回空列表，不抛异常（源字段常为空）。
      */
     suspend fun evalList(
@@ -48,31 +51,26 @@ class RuleEngine(
         ctx: RuleContext,
         needsRealDom: Boolean = false
     ): List<String> {
-        if (rule.isNullOrBlank()) return emptyList()
+        val plan = RuleChain.parse(rule)
+        if (plan.isEmpty) return emptyList()
 
-        // 纯 JS 规则：直接跑，不解析 DOM
-        if (isJsRule(rule)) {
-            return runJsList(unwrapJs(rule), html, ctx)
+        val vars = HashMap<String, String>()
+        plan.allGets().forEach { key -> ctx.variables[key]?.let { vars[key] = it } }
+
+        for (alt in plan.alternatives) {
+            if (alt.isEmpty) continue
+            val perSegment = ArrayList<List<String>>(alt.segments.size)
+            for (seg in alt.segments) {
+                val scope = ctx.copy(variables = vars.toMap())
+                val values = evalSegment(html, seg.rule, seg.replacement, scope, needsRealDom)
+                perSegment.add(values)
+                applyPuts(html, seg, vars, values, scope, needsRealDom)
+            }
+            val merged = RuleChain.merge(perSegment)
+            // 短路：第一个有结果的备选胜出，后面的不再请求（省远端流量）
+            if (RuleChain.shouldAccept(merged)) return merged
         }
-
-        val parseResult = dom.parse(html, ctx.baseUrl, needsRealDom, ctx.traceId)
-        val doc = when (parseResult) {
-            is DomParser.ParseResult.Ok -> parseResult.document
-            is DomParser.ParseResult.Failed -> throw EngineException(
-                EngineErrorCode.SCRIPT_EXCEPTION,
-                "dom parse failed: " + parseResult.reason
-            )
-        }
-
-        val split = splitJsTail(rule)
-        val cssRule = split.first
-        val jsTail = split.second
-
-        var values = selectCss(doc, cssRule)
-        if (jsTail != null) {
-            values = values.map { v -> runJsString(jsTail, v, ctx) }
-        }
-        return values.filter { it.isNotEmpty() }
+        return emptyList()
     }
 
     /** 单值规则：取第一个。 */
@@ -82,6 +80,82 @@ class RuleEngine(
         ctx: RuleContext,
         needsRealDom: Boolean = false
     ): String? = evalList(html, rule, ctx, needsRealDom).firstOrNull()
+
+    /**
+     * 执行 `@put` 写入。
+     *
+     * value 自身是一条独立规则；为空或与主体规则相同时回落到本段结果，
+     * 这样 `sel@text@put:{title:}` 这种简写也能用。
+     */
+    private suspend fun applyPuts(
+        html: String,
+        seg: RuleChain.Segment,
+        vars: HashMap<String, String>,
+        values: List<String>,
+        ctx: RuleContext,
+        needsRealDom: Boolean
+    ) {
+        if (seg.puts.isEmpty()) return
+        seg.puts.forEach { (key, valueRule) ->
+            val trimmed = valueRule.trim()
+            val value = if (trimmed.isEmpty() || trimmed == seg.rule.trim()) {
+                values.firstOrNull()
+            } else {
+                val sub = RuleChain.compileSegment(trimmed)
+                evalSegment(html, sub.rule, sub.replacement, ctx, needsRealDom).firstOrNull()
+            }
+            if (!value.isNullOrEmpty()) vars[key] = value
+        }
+    }
+
+    /** 执行一个已拆解好的取数单元（变量指令已剥离）。 */
+    private suspend fun evalSegment(
+        html: String,
+        rawRule: String,
+        replacement: RuleSyntax.RegexReplacement?,
+        ctx: RuleContext,
+        needsRealDom: Boolean
+    ): List<String> {
+        val rule = resolveTemplate(rawRule, ctx)
+        // 纯 @put 段没有主体规则：返回空，puts 走「回落到本段结果」分支
+        if (rule.isBlank()) return emptyList()
+
+        val values: List<String> = if (isJsRule(rule)) {
+            runJsList(unwrapJs(rule), html, ctx)
+        } else {
+            val parseResult = dom.parse(html, ctx.baseUrl, needsRealDom, ctx.traceId)
+            val doc = when (parseResult) {
+                is DomParser.ParseResult.Ok -> parseResult.document
+                is DomParser.ParseResult.Failed -> throw EngineException(
+                    EngineErrorCode.SCRIPT_EXCEPTION,
+                    "dom parse failed: " + parseResult.reason
+                )
+            }
+            val split = splitJsTail(rule)
+            var selected = selectCss(doc, split.first)
+            val jsTail = split.second
+            if (jsTail != null) {
+                selected = selected.map { v -> runJsString(jsTail, v, ctx) }
+            }
+            selected
+        }
+        return RuleChain.finish(values, listOf(replacement))
+    }
+
+    /**
+     * 替换 `{{ }}`：先查变量，再查内置名。无法求值时保留原样，
+     * 避免把整条规则打穿成空串而静默失败。
+     */
+    private fun resolveTemplate(rule: String, ctx: RuleContext): String {
+        if (!rule.contains("{{")) return rule
+        return RuleSyntax.resolveTemplate(rule) { expr ->
+            when (expr) {
+                "baseUrl" -> ctx.baseUrl
+                "sourceId" -> ctx.sourceId
+                else -> ctx.variables[expr]
+            }
+        }
+    }
 
     /**
      * CSS 选择器求值。支持 class./tag./id. 前缀与 @attr、@text、@html 后缀。
@@ -98,13 +172,19 @@ class RuleEngine(
 
         var els: Elements = Elements()
         selectorParts.forEachIndexed { index, raw ->
-            val sel = normalizeSelector(raw)
+            val (sel, pickAt) = splitIndexSuffix(raw)
             els = if (index == 0) {
                 doc.select(sel)
             } else {
                 val nested = Elements()
                 els.forEach { el -> nested.addAll(el.select(sel)) }
                 nested
+            }
+            // 尾部 .N 表示只取第 N 个（负数代表倒数），越界则判空，不静默取到错的元素
+            if (pickAt != null) {
+                val idx = if (pickAt < 0) els.size + pickAt else pickAt
+                val picked = els.getOrNull(idx)
+                els = if (picked == null) Elements() else Elements(picked)
             }
         }
 
@@ -122,6 +202,24 @@ class RuleEngine(
         directive == "html" || directive == "ownhtml" || directive == "all" -> el.html()
         directive.startsWith("attr:") -> el.attr(directive.removePrefix("attr:"))
         else -> el.text()
+    }
+
+    /**
+     * 拆出 `class.item.1` 这类尾部索引。
+     *
+     * 返回 (去索引后的选择器, 索引或 null)。
+     * 只认最后一段是纯整数的情况，避免把 `.col-2` 之类的类名误当索引。
+     */
+    private fun splitIndexSuffix(raw: String): Pair<String, Int?> {
+        val t = raw.trim()
+        val dot = t.lastIndexOf('.')
+        if (dot <= 0 || dot == t.lastIndex) return normalizeSelector(t) to null
+        val tail = t.substring(dot + 1)
+        val num = tail.toIntOrNull() ?: return normalizeSelector(t) to null
+        val head = t.substring(0, dot)
+        // head 为空（如 ".1"）时无法构成选择器，按索引无选择器处理
+        if (head.isBlank()) return normalizeSelector(t) to null
+        return normalizeSelector(head) to num
     }
 
     /** class.xxx -> .xxx；tag.a -> a；id.x -> #x。 */

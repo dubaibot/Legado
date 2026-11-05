@@ -1,31 +1,66 @@
-# 蓝阅 Android · 源码
+# 蓝阅 Android 阅读器（架构骨架）
 
-阅览客户端源码工程：解析内核 / 数据层 / 源接入 / 播放器 / 弹幕。
+自托管、本地优先的 Android 阅读器骨架。纯本地运行，无埋点、无遥测、无第三方统计 SDK。
 
-## 在线浏览源码
+## 目录
 
-- **源码浏览页**（文件树 + 全文搜索 + 语法高亮 + 一键复制 + 内嵌 ZIP 下载）
-  https://cdn.jsdelivr.net/gh/dubaibot/Legado@lanyue-source/source-browser.html
+```
+app/src/main/java/com/lanyue/reader/
+├── core/
+│   ├── engine/        规则引擎核心（JsRuntime / DomParser / JsExtensions / 通道粘滞 /
+│   │                  RateLimiter / Sniffer / NetworkDispatcher / pool）
+│   ├── net/           网络通道抽象与 OkHttp 实现
+│   ├── render/        排版引擎（TypographySpec / Paginator / ReadingProgress / Theme）
+│   ├── security/      权限与桥接安全
+│   └── observability/ 本地指标（仅落盘，不外发）
+├── source/
+│   ├── rule/          规则层（RuleSyntax 语法 / RuleChain 编排 / RuleEngine 执行）
+│   └── video/         TVBox 兼容与本地解析代理
+├── data/db/entity/    Room 实体
+└── tools/             合规与架构门禁脚本
+```
 
-## 结构
+## 规则引擎
 
-| 目录 | 内容 |
-| --- | --- |
-| `app/src/main/java/com/lanyue/reader/core` | 解析内核、网络分派、限速、埋点、权限分级 |
-| `app/src/main/java/com/lanyue/reader/data` | Room 实体 / DAO / 数据库（17 表） |
-| `app/src/main/java/com/lanyue/reader/source` | 书源 / 订阅源 / 影视源 / 弹幕源 + SourceRouter 调度 |
-| `app/src/main/java/com/lanyue/reader/player` | 播放器管理、音频前台服务、下载续传服务 |
-| `app/src/main/java/com/lanyue/reader/danmaku` | 弹幕参数、过滤、格式转换、Canvas 渲染 |
-| `tools/` | 合规与架构门禁（权限白名单 / 免责声明 / 无遥测 / 契约） |
+一条规则按「自外向内」的优先级拆解：
 
-## 门禁
+| 语法 | 语义 |
+|------|------|
+| `A \|\| B` | 备选，A 有结果即短路，不再请求 B |
+| `A && B` | 并列，两段结果按顺序合并 |
+| `sel##正则##替换` | 取数后正则替换，支持 `$1` 反向引用；单 `##正则` 表示删除匹配 |
+| `@put:{k:v}` / `@get:{k}` | 变量写入 / 读取 |
+| `{{ 表达式 }}` | 结果模板拼接 |
+| `class.x.1@text` | 尾部 `.N` 取第 N 个元素（负数取倒数） |
+
+拆分逻辑在 `RuleSyntax`（纯字符串处理）与 `RuleChain`（纯函数编排），
+`RuleEngine` 只负责取数与 I/O 接线，因此整条规则的拆解行为可在 JVM 单测中锁定。
+
+## 排版引擎
+
+- `Paginator`：按字宽单位估算分页（中文 1 格、ASCII 半格），带避头尾与英文单词保护；
+  全局字符偏移为唯一真值，改字号重排后位置不跳章。
+- `ReadingProgress`：不可变进度状态机，含空书 / 越界 / 单章边界保护。
+- `TypographySpec` / `ThemePalette`：排版度量与主题为纯数据，校验在构造期完成。
+
+## 本地解析代理
+
+`LocalParseProxy` 仅监听 `127.0.0.1` 随机端口，每次播放会话签发随机 token：
+会话有 TTL 与数量上限，同 URL 并发解析会合并，上游地址过滤 CR/LF 防响应头注入。
+
+## 合规门禁
 
 ```bash
 bash tools/ci.sh
 ```
 
+四道门禁：权限白名单、免责声明、无遥测出口、架构契约。
+
+## 构建
+
+需要 Android Studio / AGP。本仓库为架构骨架，不含完整 UI 与资源，无法直接出包。
+
 ## 说明
 
-- 本分支为源码镜像分支，不改动 `main`。
-- 编译验证需本地 Android Studio 执行 `assembleDebug`（本环境无 Android SDK）。
-- 免责声明：本工程不提供、不存储、不分发任何内容；内容来自用户自行导入的第三方源。
+本项目不内置、不分发任何书籍或影视内容，也不内置任何源规则；
+仅提供阅读与解析引擎能力，内容与源的获取、合规性由使用者自行负责。

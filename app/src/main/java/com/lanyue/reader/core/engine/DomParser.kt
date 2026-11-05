@@ -39,8 +39,10 @@ class DomParser(
             return ParseResult.Failed("html exceeds 2MB limit: ${html.length}")
         }
 
-        if (needsRealDom && realDom != null) {
-            val dom = runCatching { realDom.queryDocument(html, baseUrl, TOTAL_WAIT_MS) }.getOrNull()
+        // 构造参数属性无法智能转换，先取出局部引用再判空
+        val session = realDom
+        if (needsRealDom && session != null) {
+            val dom = runCatching { session.queryDocument(html, baseUrl, TOTAL_WAIT_MS) }.getOrNull()
             if (dom != null) return ParseResult.Ok(dom, degraded = false)
             metrics.degradation(traceId, "realdom->jsoup")
         }
