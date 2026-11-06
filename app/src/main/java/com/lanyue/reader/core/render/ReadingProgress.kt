@@ -91,6 +91,19 @@ data class ReadingProgress(
         return copy(pageInChapter = page, pagesInChapter = doc.pageCount)
     }
 
+    /**
+     * 按章节号强制打已读标记。
+     *
+     * 翻页跨章时用这个而不是 [markCurrentChapterRead]：
+     * 分页可能只覆盖到章节尾部之前（尾段落为空白被裁掉），
+     * 用偏移判断会把"确实读完了"的一章漏标。
+     */
+    fun markChapterRead(index: Int): ReadingProgress {
+        if (index !in chapterCharCounts.indices) return this
+        if (index in readChapters) return this
+        return copy(readChapters = readChapters + index)
+    }
+
     /** 章节读完时打标。 */
     fun markCurrentChapterRead(): ReadingProgress {
         val len = chapterCharCounts.getOrNull(locator.chapterIndex) ?: 0

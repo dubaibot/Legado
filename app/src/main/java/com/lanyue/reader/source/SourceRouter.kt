@@ -14,6 +14,10 @@ import com.lanyue.reader.source.model.IVideoSource
 import com.lanyue.reader.source.model.PlayResult
 import com.lanyue.reader.source.model.SearchBookItem
 import com.lanyue.reader.source.model.SourceCapability
+import com.lanyue.reader.source.model.SourceHealth
+import com.lanyue.reader.source.model.SourceType
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import com.lanyue.reader.source.model.VideoEpisode
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -39,11 +43,20 @@ class SourceRouter(
     /** 单源搜索超时，超时源视为本次失败但不影响其它源。 */
     private val perSourceTimeoutMs: Long = 12_000L,
     /** 连续失败阈值：达到后本次会话内不再调用该源。 */
-    private val failThreshold: Int = 3
+    private val failThreshold: Int = 3,
+    /** 多源并发上限：源数量可能上百，必须限流，否则协程与连接瞬间打满。 */
+    private val maxConcurrency: Int = 6
 ) {
 
-    private val bookFailCount = HashMap<String, Int>()
-    private val videoFailCount = HashMap<String, Int>()
+    /**
+     * 失败隔离按「源类型 + 源 id」分开计数。
+     * 早期实现共用一个 id -> 计数表，导致书源连续失败会把同 id 的影视频道
+     * 一起隔离（两类源的 id 完全可能重复），属于真实缺陷。
+     */
+    private val health = SourceHealth(failThreshold)
+
+    /** 并发闸门：跨所有源共用一个信号量。 */
+    private val gate = Semaphore(maxConcurrency.coerceAtLeast(1))
 
     // ---------------- 书源 ----------------
 
@@ -57,22 +70,33 @@ class SourceRouter(
         page: Int,
         traceId: String
     ): List<SearchBookItem> = coroutineScope {
-        val usable = sources.filter { it.capabilityFlags.contains(SourceCapability.SEARCHABLE) && !isIsolated(it.sourceId) }
+        val usable = sources.filter {
+            it.capabilityFlags.contains(SourceCapability.SEARCHABLE) &&
+                !health.isIsolated(SourceType.BOOK, it.sourceId)
+        }
 
         val deferred = usable.map { source ->
             source to async {
-                withTimeoutOrNull(perSourceTimeoutMs) {
-                    runCatching { source.search(key, page) }
-                        .onSuccess { markSuccess(source.sourceId) }
-                        .onFailure {
-                            markFail(source.sourceId)
-                            metrics.failure(traceId, "search", "SOURCE_INVALID")
+                gate.withPermit {
+                    withTimeoutOrNull(perSourceTimeoutMs) {
+                        runCatching { source.search(key, page) }
+                            .onSuccess { health.markSuccess(SourceType.BOOK, source.sourceId) }
+                            .onFailure {
+                                val n = health.markFail(SourceType.BOOK, source.sourceId)
+                                metrics.failure(traceId, "search", "SOURCE_INVALID")
+                                if (n == failThreshold) {
+                                    metrics.degradation(traceId, "book-isolated:" + source.sourceId)
+                                }
+                            }
+                            .getOrDefault(emptyList())
+                    } ?: run {
+                        val n = health.markFail(SourceType.BOOK, source.sourceId)
+                        metrics.failure(traceId, "search", "TIMEOUT")
+                        if (n == failThreshold) {
+                            metrics.degradation(traceId, "book-isolated:" + source.sourceId)
                         }
-                        .getOrDefault(emptyList())
-                } ?: run {
-                    markFail(source.sourceId)
-                    metrics.failure(traceId, "search", "TIMEOUT")
-                    emptyList()
+                        emptyList()
+                    }
                 }
             }
         }
@@ -132,21 +156,30 @@ class SourceRouter(
         traceId: String
     ): List<com.lanyue.reader.source.model.VideoItem> = coroutineScope {
         val usable = sources.filter {
-            it.capabilityFlags.contains(SourceCapability.SEARCHABLE) && !isIsolated(it.sourceId)
+            it.capabilityFlags.contains(SourceCapability.SEARCHABLE) &&
+                !health.isIsolated(SourceType.VIDEO, it.sourceId)
         }
         usable.map { source ->
             source to async {
-                withTimeoutOrNull(perSourceTimeoutMs) {
-                    runCatching { source.search(key, page) }
-                        .onSuccess { markSuccess(source.sourceId) }
-                        .onFailure {
-                            markFail(source.sourceId)
-                            metrics.failure(traceId, "vsearch", "SOURCE_INVALID")
+                gate.withPermit {
+                    withTimeoutOrNull(perSourceTimeoutMs) {
+                        runCatching { source.search(key, page) }
+                            .onSuccess { health.markSuccess(SourceType.VIDEO, source.sourceId) }
+                            .onFailure {
+                                val n = health.markFail(SourceType.VIDEO, source.sourceId)
+                                metrics.failure(traceId, "vsearch", "SOURCE_INVALID")
+                                if (n == failThreshold) {
+                                    metrics.degradation(traceId, "video-isolated:" + source.sourceId)
+                                }
+                            }
+                            .getOrDefault(emptyList())
+                    } ?: run {
+                        val n = health.markFail(SourceType.VIDEO, source.sourceId)
+                        if (n == failThreshold) {
+                            metrics.degradation(traceId, "video-isolated:" + source.sourceId)
                         }
-                        .getOrDefault(emptyList())
-                } ?: run {
-                    markFail(source.sourceId)
-                    emptyList()
+                        emptyList()
+                    }
                 }
             }
         }.flatMap { it.second.await() }
@@ -159,7 +192,7 @@ class SourceRouter(
     suspend fun getPlay(source: IVideoSource, episode: VideoEpisode, traceId: String): PlayResult =
         runCatching { source.getPlay(episode) }
             .onFailure {
-                markFail(source.sourceId)
+                health.markFail(SourceType.VIDEO, source.sourceId)
                 metrics.failure(traceId, "play", "PARSE_FAILED")
                 throw ProductException(ProductErrorCode.PARSE_FAILED, "影片解析失败")
             }
@@ -195,23 +228,14 @@ class SourceRouter(
     // ---------------- 失败隔离 ----------------
 
     /** 本次会话内是否已隔离（不持久化，重启即恢复）。 */
-    private fun isIsolated(sourceId: String): Boolean =
-        (bookFailCount[sourceId] ?: 0) >= failThreshold ||
-            (videoFailCount[sourceId] ?: 0) >= failThreshold
-
-    private fun markFail(sourceId: String) {
-        bookFailCount[sourceId] = (bookFailCount[sourceId] ?: 0) + 1
-        videoFailCount[sourceId] = (videoFailCount[sourceId] ?: 0) + 1
-    }
-
-    private fun markSuccess(sourceId: String) {
-        bookFailCount.remove(sourceId)
-        videoFailCount.remove(sourceId)
-    }
+    fun isIsolated(type: SourceType, sourceId: String): Boolean =
+        health.isIsolated(type, sourceId)
 
     /** 供设置页「重试该源」使用：清除隔离。 */
     fun resetIsolation(sourceId: String) {
-        bookFailCount.remove(sourceId)
-        videoFailCount.remove(sourceId)
+        health.reset(sourceId)
     }
+
+    /** 当前被隔离的源数量（诊断 / 设置页展示用）。 */
+    fun isolatedCount(): Int = health.isolatedCount()
 }
