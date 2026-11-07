@@ -71,8 +71,11 @@ object JarSpiderLoader {
         val spider = try {
             pair.second.getDeclaredConstructor().newInstance() as Spider
         } catch (e: Exception) {
+            // InvocationTargetException 包裹构造器内部真实异常，解包透传根因
+            val target = (e as? java.lang.reflect.InvocationTargetException)?.targetException
+            val cause = target ?: e
             throw IllegalStateException(
-                "jar spider 实例化失败: ${e.javaClass.simpleName}: ${e.message}", e
+                "jar spider 实例化失败: ${cause.javaClass.simpleName}: ${cause.message}", e
             )
         }
         spider.siteKey = siteKey
