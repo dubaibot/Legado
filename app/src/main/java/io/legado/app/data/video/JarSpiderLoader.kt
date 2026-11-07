@@ -30,7 +30,7 @@ object JarSpiderLoader {
 
     private val lock = Any()
 
-    /** jar 规格串 + 站点 api → (DexClassLoader, 已就绪的 jar 侧 Init 类) */
+    /** jar 规格串 + 站点 api → (DexClassLoader, 已定位的壳 spider 类) */
     private val loaderCache = ConcurrentHashMap<String, Pair<DexClassLoader, Class<*>>>()
 
 
@@ -51,10 +51,11 @@ object JarSpiderLoader {
      *    宿主代为 System.load 会破坏 JNI_OnLoad 的 classloader 关联：
      *    JNI FindClass 用发起加载方的 loader，宿主上下文找不到 jar 类 → JNI_ERR。
      * 2. Init.init(Context) 先存 Application 字段再触发 native DexNative.getLoader(ctx)，
-     *    clinit 时 context() 已非 null，自加载链路完整；loader(DexClassLoader) 字段
-     *    由 native 返回对象填充——宿主只需 DexClassLoader 创建后立即 init(ctx)。
-     * 3. Spider 实例一律由 Init.getSpider(api) 工厂产出，spider 内部的 siteKey/init
-     *    仍需调用方设置。
+     *    clinit 时 context() 已非 null，自加载链路完整；guard 运行时在 init 阶段启动。
+     * 3. Spider 实例 = 实例化壳类 com.github.catvod.spider.XxxGuard（api csp_Xxx）：
+     *    壳类 BaseSpiderGuard.<init> 内部用 getClass().getName() 调 Init.getSpider
+     *    解析真实 spider（native 注册表按完整类名索引），全部 Spider 方法委托 real。
+     *    宿主直接以 csp_ 前缀串调 getSpider 会返回 null（键格式不匹配）。
      *
      * @param jarSpec jar 规格串（"url" 或 "url;md5;md5url"）
      * @param siteApi 站点 api（csp_Xxx，传入 jar 的 spider 工厂）
@@ -77,24 +78,25 @@ object JarSpiderLoader {
                 // System.load（Android 的 DexClassLoader 可按条目读 jar 内 assets）。
                 // 宿主不得代为 System.load：JNI_OnLoad 用发起加载方的 classloader 做
                 // FindClass/RegisterNatives，宿主上下文找不到 jar 类 → JNI_ERR。
-                // jar 侧 Init 是受保护 jar 唯一公有初始化入口，getSpider 为其工厂；
+                // jar 侧 Init 是受保护 jar 唯一公有初始化入口，先 init 再实例化壳类；
                 // init(Context) 先存 Application 字段再触发 DexNative，clinit 时
-                // context() 已非 null，自加载链路完整。
+                // context() 已非 null，自加载链路完整
                 val init = loader.loadClass("com.github.catvod.spider.Init")
                 invokeJarInit(init)
-                loaderCache[cacheKey] = loader to init
-                return@run loader to init
+                val cls = loadSpiderClass(loader, siteApi)
+                loaderCache[cacheKey] = loader to cls
+                return@run loader to cls
             }
         }
-        // 每个源都从工厂取新实例（spider 缓存里已有实例会串 siteKey）
+        // 每个源都从壳类实例化新实例（壳类构造器内部经 Init.getSpider(完整类名)
+        // 解析真实 spider；缓存类而非实例，避免复用时串 siteKey）
         val spider = try {
-            val obj = pair.second.getMethod("getSpider", String::class.java).invoke(null, siteApi)
-            obj as Spider
+            pair.second.getDeclaredConstructor().newInstance() as Spider
         } catch (e: Exception) {
             val target = (e as? java.lang.reflect.InvocationTargetException)?.targetException
             val cause = target ?: e
             throw IllegalStateException(
-                "jar spider 工厂失败 (getSpider(\"$siteApi\")): ${cause.javaClass.simpleName}: ${cause.message}", e
+                "jar spider 实例化失败 (${pair.second.name}): ${cause.javaClass.simpleName}: ${cause.message}", e
             )
         }
         spider.siteKey = siteKey
@@ -202,6 +204,19 @@ object JarSpiderLoader {
                 Runtime.getRuntime().exec(arrayOf("chmod", "444", file.absolutePath))
             }
         } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * 定位壳 spider 类：api csp_Xxx → com.github.catvod.spider.Xxx。
+     * 壳类构造器（BaseSpiderGuard）内部会用完整类名经 Init.getSpider 解析真实 spider。
+     */
+    private fun loadSpiderClass(loader: DexClassLoader, siteApi: String): Class<*> {
+        val clsName = "com.github.catvod.spider." + siteApi.substringAfter("csp_")
+        return try {
+            loader.loadClass(clsName)
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider 类加载失败: $clsName (${e.javaClass.simpleName}: ${e.message})", e)
         }
     }
 
