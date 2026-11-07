@@ -158,7 +158,8 @@ Entries discovered by the Agent during task execution should follow this format:
 - Context: 用户 vivo V2352A(Android 16) 实测受保护 spider jar（含 ftyguard_v7/v8.so + ftyshinidie.guard）报错链：NoClassDefFoundError DexNative → JNI_OnLoad failed on a previous attempt → JNI_ERR from JNI_OnLoad；用 androguard 反汇编 jar 内 Init/DexNative/<clinit> 字节码取证定位
 - Category: Troubleshooting & Debugging
 - Instructions:
-  - 受保护 jar 调用契约（tvbox 惯例，字节码确认）：DexClassLoader(jar, cacheDir, null, app.classLoader) → loader.loadClass("com.github.catvod.spider.Init") → 反射 init(Context)（jar 唯一公有初始化入口，先存 Application 字段再触发 native DexNative.getLoader(ctx)）→ 反射 getSpider(siteApi) 工厂产 Spider 实例；不要自己 loadClass+newInstance spider 类
+  - 受保护 jar 调用契约（tvbox 惯例，字节码确认）：DexClassLoader(jar, cacheDir, null, app.classLoader) → loadClass("com.github.catvod.spider.Init") → 反射 init(Context)（jar 唯一公有初始化入口，先存 Application 字段再触发 native DexNative.getLoader(ctx)，guard 解密运行时在此启动）→ loadClass 壳类（csp_ 前缀剥除 → com.github.catvod.spider.XxxGuard）→ newInstance（壳构造器自解析真实 spider）→ siteKey/init
+  - 壳类契约：XxxGuard extends BaseSpiderGuard extends Spider；BaseSpiderGuard.<init> 用 getClass().getName()（完整类名）调 Init.getSpider 解析真实 spider 存入委托字段；native 注册表按完整类名索引——宿主直接以 csp_ 前缀串调 Init.getSpider 会返回 null（键格式不匹配），勿直调
   - Android 的 DexClassLoader/BaseDexClassLoader 可以按条目读 jar 内 assets（getResourceAsStream("assets/x.so") 有效），jar 作者的 guard 自加载代码正依赖此能力；不要替 jar 抽取 assets
   - 宿主进程绝不能代替 jar 调 System.load 加载 guard .so：JNI_OnLoad 的 FindClass/RegisterNatives 使用"发起加载方"的 classloader，宿主上下文找不到 jar 内 DexNative → JNI_ERR returned from JNI_OnLoad；必须让 jar 自己的 DexNative.<clinit> 加载（调用方=DexNative 类=jar loader）
   - ART 按规范化路径登记已加载 .so，同路径二次 System.load 抛 "JNI_OnLoad failed on a previous attempt to load"；若必须自加载 native 库，文件名要内容寻址（<name>.<md5前12>.so）
