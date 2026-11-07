@@ -13,7 +13,10 @@ mkdir -p "$OUT"
 
 # Android 硬依赖的文件排除（纯 JVM 层之外的），OkHttp/Gson/Log 桩保留
 EXCLUDES=(
-  "data/db/"
+  "data/db/CatalogDaos.kt"
+  "data/db/Converters.kt"
+  "data/db/LanyueDatabase.kt"
+  "data/db/SourceDaos.kt"
   "core/security/KeystoreSecretStore.kt"
   "core/engine/RssFallbackParser.kt"
   "danmaku/DanmakuMatchEngine.kt"
@@ -27,7 +30,6 @@ EXCLUDES=(
   "source/danmaku/DandanplaySource.kt"
   "source/rss/LegadoRssSource.kt"
   "source/SourceRegistry.kt"
-  "source/model/CapabilityResolver.kt"
 )
 
 SRCS=()
@@ -44,7 +46,7 @@ TESTS=$(find tests -name "*.kt" | sort)
 "$KC" -jvm-target 17 \
   -classpath "$JARS" \
   -include-runtime -d "$OUT/tests.jar" \
-  "${SRCS[@]}" "$CP_DIR/stub/android/util/Log.kt" $TESTS 2>&1
+  "${SRCS[@]}" $CP_DIR/stub/android/util/Log.kt $CP_DIR/stub/androidx/room/Entity.kt $CP_DIR/stub/androidx/room/PrimaryKey.kt $CP_DIR/stub/androidx/room/Index.kt $TESTS 2>&1
 
 echo "== 编译通过，运行测试 =="
 # pipefail 下 grep -q 提前退出会让 unzip 以 SIGPIPE 失败，先取全量清单再匹配
@@ -65,7 +67,9 @@ for cls in \
   NetworkDispatcherE2ETestKt \
   RuleChainTestKt \
   JsRuntimePoolTestKt \
-  SourceRouterTestKt; do
+  SourceRouterTestKt \
+  SourceValidatorTestKt \
+  CapabilityResolverTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
