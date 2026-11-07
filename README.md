@@ -142,7 +142,7 @@ bash tools/ci.sh
 | `tests/BackupLayerTest.kt` | 备份编解码容错 + 合并策略（89 项） |
 | `tests/SourceImportLayerTest.kt` | 书源导入解析与同步策略（161 项） |
 | `tests/ShelfAggregateLayerTest.kt` | 聚合搜索 + 书架操作 + 换源映射（101 项） |
-| `tests/DanmakuFilterTest.kt` | 弹幕渲染参数 + 过滤屏蔽/合并去重（49 项） |
+| `tests/DanmakuFilterTest.kt` | 弹幕渲染参数 + 过滤屏蔽/合并去重/同屏截断（55 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 

@@ -132,6 +132,18 @@ private fun main() {
     eq(passThrough.size, 3, "无屏蔽时广告保留、空白过滤剩 3 条")
     check("广告文本被保留", passThrough.any { it.text == "广告" })
 
+    // ── 同屏密度截断（保帧）：保留最早进入的 maxOnScreen 条 ──
+    val many = List(10) { i -> ev(i * 1000L, text = "dm$i") }
+    val capped = DanmakuFilter(DanmakuRenderParams(maxOnScreen = 3)).apply(many)
+    eq(capped.size, 3, "超过同屏上限时截断")
+    eq(capped[0].timeMs, 0L, "截断保留最早弹幕")
+    eq(capped[2].timeMs, 2000L, "截断保留第 3 条")
+    eq(capped.last().text, "dm2", "截断丢弃最新弹幕")
+    val below = DanmakuFilter(DanmakuRenderParams(maxOnScreen = 15)).apply(many)
+    eq(below.size, 10, "不超过上限时不截断")
+    val noCap = DanmakuFilter(DanmakuRenderParams(maxOnScreen = 0)).apply(many)
+    eq(noCap.size, 10, "maxOnScreen=0 视为不限制")
+
     println("================ 弹幕过滤层测试结束 ================")
     println("Pass: $passed, Fail: $failed")
     if (failed > 0) exitProcess(1)
