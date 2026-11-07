@@ -1,7 +1,6 @@
 package io.legado.app.data.video
 
 import android.content.Context
-import android.os.Build
 import com.github.catvod.Init
 import com.github.catvod.crawler.Spider
 import com.github.catvod.utils.Util
@@ -21,8 +20,8 @@ import dalvik.system.DexClassLoader
  * - 缓存到 cacheDir/jar/<md5>.jar
  * - DexClassLoader 父优先委托（宿主 com.github.catvod.* 优先于 jar 内同名类）
  * - Spider 实例由 jar 侧 Init.getSpider(siteApi) 工厂产出（tvbox 惯例）
- * - 受保护 jar：自动抽取 assets/ftyguard_vX.so 并 System.load，随后反射
- *   Init.init(Context)（jar 侧唯一公有初始化入口）
+ * - 受保护 jar：反射 Init.init(Context)（jar 侧唯一公有初始化入口），native
+ *   guard .so 由 jar 自身 DexNative.<clinit> 自加载，宿主不得代加载
  * - siteKey + init(context, ext) 实例化
  *
  * 宿主 catvod 表面（com.github.catvod.*）由 App 提供，jar 内只含 spider 实现。
@@ -30,10 +29,6 @@ import dalvik.system.DexClassLoader
 object JarSpiderLoader {
 
     private val lock = Any()
-    private val lockNative = Any()
-
-    /** 已加载的 native guard 指纹（jar 内容变化时重新加载） */
-    private val nativeGuards = mutableSetOf<String>()
 
     /** jar 规格串 + 站点 api → (DexClassLoader, 已就绪的 jar 侧 Init 类) */
     private val loaderCache = ConcurrentHashMap<String, Pair<DexClassLoader, Class<*>>>()
@@ -51,13 +46,13 @@ object JarSpiderLoader {
      *
      * 受保护 jar（DexNative/guard）的调用契约（经字节码取证）：
      * 1. init.classLoader() = 单例的类加载器（Init.<init> 自动注入），classLoader() 返回该实例；
-     *    DexNative.<clinit> 会用 getResourceAsStream("assets/ftyguard_vX.so") 抽取并
-     *    System.load——但 BaseDexClassLoader 无法读取 jar 内 assets，因此宿主必须
-     *    在 DexNative 首次被触碰前自行从 jar zip 抽取同款 .so 并 System.load。
-     *    clinit 内部任何异常都被静默吞掉，Native 方法真正需要 .so 已加载完成。
-     * 2. Init.init(Context) 仅存 Application 字段并调用 native DexNative.getLoader(ctx)，
-     *    loader(DexClassLoader) 字段由 native 返回对象填充——Host 无需自建 DexClassLoader
-     *    （tvbox 惯例：DexClassLoader 创建后立即 init(ctx)，getSpider 产生蜘蛛实例）。
+     *    DexNative.<clinit> 自行 getResourceAsStream("assets/ftyguard_vX.so") 抽取并
+     *    System.load（Android DexClassLoader 可按条目读 jar 内 assets）。
+     *    宿主代为 System.load 会破坏 JNI_OnLoad 的 classloader 关联：
+     *    JNI FindClass 用发起加载方的 loader，宿主上下文找不到 jar 类 → JNI_ERR。
+     * 2. Init.init(Context) 先存 Application 字段再触发 native DexNative.getLoader(ctx)，
+     *    clinit 时 context() 已非 null，自加载链路完整；loader(DexClassLoader) 字段
+     *    由 native 返回对象填充——宿主只需 DexClassLoader 创建后立即 init(ctx)。
      * 3. Spider 实例一律由 Init.getSpider(api) 工厂产出，spider 内部的 siteKey/init
      *    仍需调用方设置。
      *
@@ -78,10 +73,13 @@ object JarSpiderLoader {
                     null,
                     appCtx.classLoader
                 )
-                // 受保护 jar：DexNative.<clinit> 依赖 assets/ftyguard_vX.so，
-                // DexClassLoader 无法读取 jar assets，宿主先抽取并 System.load
-                ensureJarNativeLib(jarFile)
-                // jar 侧 Init 是受保护 jar 唯一公有初始化入口，getSpider 为其工厂
+                // 受保护 jar：assets/ftyguard_vX.so 由 jar 自身 DexNative.<clinit> 抽取并
+                // System.load（Android 的 DexClassLoader 可按条目读 jar 内 assets）。
+                // 宿主不得代为 System.load：JNI_OnLoad 用发起加载方的 classloader 做
+                // FindClass/RegisterNatives，宿主上下文找不到 jar 类 → JNI_ERR。
+                // jar 侧 Init 是受保护 jar 唯一公有初始化入口，getSpider 为其工厂；
+                // init(Context) 先存 Application 字段再触发 DexNative，clinit 时
+                // context() 已非 null，自加载链路完整。
                 val init = loader.loadClass("com.github.catvod.spider.Init")
                 invokeJarInit(init)
                 loaderCache[cacheKey] = loader to init
@@ -224,58 +222,6 @@ object JarSpiderLoader {
             throw IllegalStateException(
                 "jar 侧 Init.init(Context) 失败: ${cause.javaClass.simpleName}: ${cause.message}", e
             )
-        }
-    }
-
-    /**
-     * 抽取受保护 jar 的 native guard .so 并 System.load。
-     *
-     * jar 内 DexNative.<clinit> 约定：Init.classLoader().getResourceAsStream
-     * ("assets/ftyguard_vX.so") 抽取并 System.load——BaseDexClassLoader 不提供
-     * jar assets 读取能力，会静默失败。宿主在 DexClassLoader/JarInit 之前自行完成
-     * 同样的抽取+加载（与 DexNative 一致：CPU_ABI 含 "64" 选 v8 否则 v7），
-     * 之后 DexNative 的静默失败不再有影响（.so 已全局注册）。
-     *
-     * 文件名采用内容寻址（ftyguard_v8.<md5前12位>.so）：ART 按规范化路径登记已加载
-     * 的 .so，同路径二次 System.load 会抛
-     * "JNI_OnLoad failed on a previous attempt to load"——多个 jar 共用同一
-     * libName 但内容不同（守护等级不同/jar 迭代）时会触发，故不同内容各占独立路径，
-     * 相同 digest 复用同一文件且只加载一次。
-     */
-    private fun ensureJarNativeLib(jarFile: File) {
-        if (!jarFile.exists()) return
-        val cpuAbi = Build.CPU_ABI.orEmpty()
-        val libName = if (cpuAbi.contains("64")) "ftyguard_v8.so" else "ftyguard_v7.so"
-        val bytes = try {
-            java.util.zip.ZipFile(jarFile).use { zip ->
-                zip.getEntry("assets/$libName")?.let { entry ->
-                    zip.getInputStream(entry).use { it.readBytes() }
-                }
-            }
-        } catch (_: Exception) {
-            return
-        } ?: return
-        val digest = java.security.MessageDigest.getInstance("MD5").digest(bytes)
-        val hex = digest.joinToString("") { "%02x".format(it) }
-        val key = "$libName|${bytes.size}|$hex"
-        val short = hex.take(12)
-        synchronized(lockNative) {
-            if (nativeGuards.contains(key)) return
-            try {
-                val dir = File(appCtx.cacheDir, "spider-native")
-                if (!dir.exists()) dir.mkdirs()
-                val file = File(dir, "$libName.$short.so")
-                if (!file.exists()) {
-                    file.writeBytes(bytes)
-                    file.setReadOnly()
-                }
-                System.load(file.absolutePath)
-                nativeGuards.add(key)
-            } catch (e: Exception) {
-                throw IllegalStateException(
-                    "native guard .so 加载失败 ($libName): ${e.javaClass.simpleName}: ${e.message}", e
-                )
-            }
         }
     }
 }

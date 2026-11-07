@@ -152,3 +152,15 @@ Entries discovered by the Agent during task execution should follow this format:
   - 站点形态按 api 字段判定（对照薯条版 TvBoxConfig.isJarSpider/isJsSpider/isPySpider/isCmsApi）：csp_ 前缀=jar 爬虫、含 .js=JS 爬虫、含 .py=Python 爬虫、http 开头=CMS 直连；非 CMS 站点抛出明确错误含站点名和 api 值
   - VideoSourceRegistry.listSources() 过滤非 CMS 站点（jar/js/py 爬虫站点不出现在源列表）；FongMiTxtParser 已有 http/https 前缀检查无需额外过滤
   - 用户源配置中的 csp_T4Guard 是 jar 爬虫站点类名而非 URL，本 App 不支持 jar 爬虫加载机制（需自定义 ClassLoader + Spider 接口反射调用）
+
+[受保护 jar（guard/DexNative）加载契约与调试链]
+- Date: 2026-11-07（连续三次真机调试收敛）
+- Context: 用户 vivo V2352A(Android 16) 实测受保护 spider jar（含 ftyguard_v7/v8.so + ftyshinidie.guard）报错链：NoClassDefFoundError DexNative → JNI_OnLoad failed on a previous attempt → JNI_ERR from JNI_OnLoad；用 androguard 反汇编 jar 内 Init/DexNative/<clinit> 字节码取证定位
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 受保护 jar 调用契约（tvbox 惯例，字节码确认）：DexClassLoader(jar, cacheDir, null, app.classLoader) → loader.loadClass("com.github.catvod.spider.Init") → 反射 init(Context)（jar 唯一公有初始化入口，先存 Application 字段再触发 native DexNative.getLoader(ctx)）→ 反射 getSpider(siteApi) 工厂产 Spider 实例；不要自己 loadClass+newInstance spider 类
+  - Android 的 DexClassLoader/BaseDexClassLoader 可以按条目读 jar 内 assets（getResourceAsStream("assets/x.so") 有效），jar 作者的 guard 自加载代码正依赖此能力；不要替 jar 抽取 assets
+  - 宿主进程绝不能代替 jar 调 System.load 加载 guard .so：JNI_OnLoad 的 FindClass/RegisterNatives 使用"发起加载方"的 classloader，宿主上下文找不到 jar 内 DexNative → JNI_ERR returned from JNI_OnLoad；必须让 jar 自己的 DexNative.<clinit> 加载（调用方=DexNative 类=jar loader）
+  - ART 按规范化路径登记已加载 .so，同路径二次 System.load 抛 "JNI_OnLoad failed on a previous attempt to load"；若必须自加载 native 库，文件名要内容寻址（<name>.<md5前12>.so）
+  - DexNative.<clinit> 整体 try/catch 吞异常（move-exception→getCause→return-void），clinit 失败后续只表现为 NoClassDefFoundError；Init.init 调用不存在的 set(Context) 会被反射 NoSuchMethodException 吞掉——根因被掩蔽两层，调试须从字节码确认真实 API（Init 混淆字段：oOoOoOoOoOoOoO0o=Application、oOo0oOo0Oo0oO0Oo=ClassLoader、oOoOoOo0oOo0o0oO=DexClassLoader；单例在 Init$Loader 静态槽）
+  - androguard 反汇编 API：DEX(raw).get_classes() → EncodedMethod.get_code().get_bc().get_instructions()（is_static 等用 get_access_flags() & 8/0x800 判断；EncodedMethod 无 is_static 方法）
