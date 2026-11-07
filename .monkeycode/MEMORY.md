@@ -40,4 +40,5 @@ Entries discovered by the Agent during task execution should follow this format:
   - kotlinc 与依赖 jar 位于 `/tmp/opencode`（kotlinc-2.0.20、coroutines-core.jar、jsoup.jar、gson.jar、okhttp.jar、okio.jar、conscrypt.jar、out/），脚本支持 `KC` / `CP_DIR` / `OUT` 环境变量覆盖
   - 新增带硬 Android 依赖（Room / Keystore / Canvas / 播放器等）的源码文件时，需把路径追加到 `tools/test_jvm.sh` 的 EXCLUDES，否则编译失败
   - 测试均为纯 JVM `main()` 入口（无 JUnit），新增测试类也要在脚本末尾的类名清单中登记
+  - kotlinc 把 `tests/*.kt` 视为同一模块编译进同一 jar，顶层类名即使 `private` 也不能跨文件重复（如 `FakeJs`）；无 package 声明的测试文件必须显式 import 被引用的源码类型（如 `com.lanyue.reader.core.engine.SnifferSession`）
   - 下载第三方 jar 后的第一次编译可能因缺失 Transitive 依赖失败；已确认 coroutines / jsoup / gson / okhttp / okio / conscrypt 六件套足够
