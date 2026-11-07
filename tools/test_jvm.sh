@@ -62,7 +62,9 @@ for cls in \
   EngineRuleSyntaxTestKt \
   EngineCoreTestKt \
   RuleEngineDispatchRound2TestKt \
-  NetworkDispatcherE2ETestKt; do
+  NetworkDispatcherE2ETestKt \
+  RuleChainTestKt \
+  JsRuntimePoolTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
