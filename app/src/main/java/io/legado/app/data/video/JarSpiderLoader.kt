@@ -235,6 +235,12 @@ object JarSpiderLoader {
      * jar assets 读取能力，会静默失败。宿主在 DexClassLoader/JarInit 之前自行完成
      * 同样的抽取+加载（与 DexNative 一致：CPU_ABI 含 "64" 选 v8 否则 v7），
      * 之后 DexNative 的静默失败不再有影响（.so 已全局注册）。
+     *
+     * 文件名采用内容寻址（ftyguard_v8.<md5前12位>.so）：ART 按规范化路径登记已加载
+     * 的 .so，同路径二次 System.load 会抛
+     * "JNI_OnLoad failed on a previous attempt to load"——多个 jar 共用同一
+     * libName 但内容不同（守护等级不同/jar 迭代）时会触发，故不同内容各占独立路径，
+     * 相同 digest 复用同一文件且只加载一次。
      */
     private fun ensureJarNativeLib(jarFile: File) {
         if (!jarFile.exists()) return
@@ -250,16 +256,19 @@ object JarSpiderLoader {
             return
         } ?: return
         val digest = java.security.MessageDigest.getInstance("MD5").digest(bytes)
-        val key = "$libName|${bytes.size}|${digest.joinToString("") { "%02x".format(it) }}"
+        val hex = digest.joinToString("") { "%02x".format(it) }
+        val key = "$libName|${bytes.size}|$hex"
+        val short = hex.take(12)
         synchronized(lockNative) {
             if (nativeGuards.contains(key)) return
             try {
                 val dir = File(appCtx.cacheDir, "spider-native")
                 if (!dir.exists()) dir.mkdirs()
-                val file = File(dir, libName)
-                if (file.exists()) file.delete()
-                file.writeBytes(bytes)
-                file.setReadOnly()
+                val file = File(dir, "$libName.$short.so")
+                if (!file.exists()) {
+                    file.writeBytes(bytes)
+                    file.setReadOnly()
+                }
                 System.load(file.absolutePath)
                 nativeGuards.add(key)
             } catch (e: Exception) {
