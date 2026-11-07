@@ -51,15 +51,47 @@ object JarSpiderLoader {
         val jarFile = resolveJar(jarSpec)
         val cacheKey = "$jarSpec|$siteApi"
         val pair = loaderCache[cacheKey] ?: synchronized(lock) {
-            loaderCache[cacheKey] ?: createLoader(jarFile, siteApi).also { loaderCache[cacheKey] = it }
+            loaderCache[cacheKey] ?: run {
+                Init.set(appCtx)
+                val loader = DexClassLoader(
+                    jarFile.absolutePath,
+                    appCtx.cacheDir.absolutePath,
+                    null,
+                    appCtx.classLoader
+                )
+                // 受保护 jar：jar 侧 Init/Proxy 必须先导（解密并注册 spider 类），
+                // 再 loadClass 定位 spider——顺序颠倒会 ClassNotFound
+                invokeSpiderInit(loader)
+                invokeSpiderProxy(loader)
+                val cls = loadSpiderClass(loader, siteApi)
+                loaderCache[cacheKey] = loader to cls
+                return@run loader to cls
+            }
         }
-        val spider = pair.second.getDeclaredConstructor().newInstance() as Spider
+        val spider = try {
+            pair.second.getDeclaredConstructor().newInstance() as Spider
+        } catch (e: Exception) {
+            throw IllegalStateException(
+                "jar spider 实例化失败: ${e.javaClass.simpleName}: ${e.message}", e
+            )
+        }
         spider.siteKey = siteKey
-        Init.set(appCtx)
-        invokeSpiderInit(pair.first)
-        invokeSpiderProxy(pair.first)
-        spider.init(appCtx, ext)
+        try {
+            spider.init(appCtx, ext)
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider init 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
         return spider
+    }
+
+    /** 加载 spider 类（csp_Xxx → com.github.catvod.spider.Xxx），失败带出类名 */
+    private fun loadSpiderClass(loader: DexClassLoader, siteApi: String): Class<*> {
+        val clsName = "com.github.catvod.spider." + siteApi.substringAfter("csp_")
+        return try {
+            loader.loadClass(clsName)
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider 类加载失败: $clsName (${e.javaClass.simpleName}: ${e.message})", e)
+        }
     }
 
     /** 清空已加载的 jar 缓存（源更新/删除时调用） */
@@ -159,20 +191,6 @@ object JarSpiderLoader {
             }
         } catch (_: Exception) {
         }
-    }
-
-    /** 创建 DexClassLoader 并加载 spider 类 */
-    private fun createLoader(jarFile: File, siteApi: String): Pair<DexClassLoader, Class<*>> {
-        Init.set(appCtx)
-        val loader = DexClassLoader(
-            jarFile.absolutePath,
-            appCtx.cacheDir.absolutePath,
-            null,
-            appCtx.classLoader
-        )
-        val clsName = "com.github.catvod.spider." + siteApi.substringAfter("csp_")
-        val cls = loader.loadClass(clsName)
-        return loader to cls
     }
 
     /** 反射调用 jar 内 com.github.catvod.spider.Init.set(context)（jar 侧 Init 可选） */

@@ -28,7 +28,11 @@ class JarVideoSource(
     private val spider: Spider by lazy { JarSpiderLoader.load(jarSpec, siteApi, sourceId, ext) }
 
     override suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>> = withContext(Dispatchers.IO) {
-        val json = parse(spider.homeContent(false))
+        val json = try {
+            parse(spider.homeContent(false))
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider homeContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
         val categories = mutableListOf<VideoCategory>()
         json.getAsJsonArray("class")?.forEach { el ->
             val o = el.asJsonObject
@@ -46,7 +50,11 @@ class JarVideoSource(
     }
 
     override suspend fun category(tid: String, pg: Int): CategoryResult = withContext(Dispatchers.IO) {
-        val json = parse(spider.categoryContent(tid, pg.toString(), false, HashMap()))
+        val json = try {
+            parse(spider.categoryContent(tid, pg.toString(), false, HashMap()))
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider categoryContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
         CategoryResult(
             page = json.get("page")?.takeIf { it.isJsonPrimitive }?.asInt ?: pg,
             pageCount = json.get("pagecount")?.takeIf { it.isJsonPrimitive }?.asInt ?: 1,
@@ -55,18 +63,31 @@ class JarVideoSource(
     }
 
     override suspend fun search(keyword: String, pg: Int): List<VideoItem> = withContext(Dispatchers.IO) {
-        parseList(parse(spider.searchContent(keyword, false)).getAsJsonArray("list"))
+        val json = try {
+            parse(spider.searchContent(keyword, false))
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider searchContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
+        parseList(json.getAsJsonArray("list"))
     }
 
     override suspend fun detail(id: String): VideoDetail = withContext(Dispatchers.IO) {
-        val vod = parse(spider.detailContent(listOf(id))).getAsJsonArray("list")
+        val vod = try {
+            parse(spider.detailContent(listOf(id))).getAsJsonArray("list")
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider detailContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
             ?.firstOrNull()?.asJsonObject
             ?: return@withContext VideoDetail(id = id, title = id)
         parseDetail(vod)
     }
 
     override suspend fun play(url: String): PlayResult = withContext(Dispatchers.IO) {
-        val json = parse(spider.playerContent("", url, emptyList()))
+        val json = try {
+            parse(spider.playerContent("", url, emptyList()))
+        } catch (e: Exception) {
+            throw IllegalStateException("jar spider playerContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
         val playUrl = json.get("playUrl")
         var resultUrl = ""
         val headers = mutableMapOf<String, String>()

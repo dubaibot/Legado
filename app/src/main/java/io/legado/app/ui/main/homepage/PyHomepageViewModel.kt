@@ -433,7 +433,9 @@ class PyHomepageViewModel : ViewModel() {
                     }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { homeError = e.message ?: "源加载失败" }
+                withContext(Dispatchers.Main) {
+                    homeError = "${e.javaClass.simpleName}: ${e.message}"
+                }
             }
         }
     }
