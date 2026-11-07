@@ -120,8 +120,11 @@ cn.hutool.core.util.**{*;}
 # markwon
 -dontwarn org.commonmark.ext.gfm.**
 
--keep class okhttp3.*{*;}
--keep class okio.*{*;}
+# spider jar（FongMi/catvod）宿主类面：jar 内解密代码按原始全名引用这些库，
+# R8 不得改名（okhttp3.internal、okio 等子包一并保留）
+-keep class com.google.gson.**{*;}
+-keep class okhttp3.**{*;}
+-keep class okio.**{*;}
 -keep class com.jayway.jsonpath.*{*;}
 
 # LiveEventBus
