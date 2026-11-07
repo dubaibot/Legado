@@ -595,7 +595,8 @@ private fun SearchResultList(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(results, key = { it.id }) { item ->
+        // spider 源返回列表可能含重复 id（同片多入口），Lazy key 全局唯一要求下去重保序
+        items(results.distinctBy { it.id }, key = { it.id }) { item ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -725,7 +726,9 @@ private fun HomeContent(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        items(videos, key = { it.id }) { video ->
+                        // spider 源返回列表可能含重复 id（同片多入口/翻页重叠），
+                        // Lazy key 全局唯一要求下去重保序
+                        items(videos.distinctBy { it.id }, key = { it.id }) { video ->
                             VideoCard(
                                 video = video,
                                 onClick = {
