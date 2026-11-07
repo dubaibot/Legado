@@ -153,6 +153,7 @@ bash tools/ci.sh
 | `tests/SourceRouterTest.kt` | 源调度层与健康隔离（SourceRouter 四类源调度、单源失败不影响其它源、3 连败隔离与恢复、超时计入失败、正文三形态分流与错误映射、弹幕首命中/无命中错误码、订阅源不写隔离、并发闸门峰值）（51 项） |
 | `tests/SourceValidatorTest.kt` | 源配置校验与能力判定（书源/订阅/影视三族 validate 分级、URL/JSON 体检、JS 括号重心校验、Report 汇总文案）（69 项） |
 | `tests/CapabilityResolverTest.kt` | 源配置文件级能力判定（能力位 miss/降级/订阅兜底/影视双开启映射，entity 数据形状直连接口契约）（19 项） |
+| `tests/TvBoxParserTest.kt` | TVBox 配置解析（接口配置展开多站点、type3 drpy/jar 区分与裁剪标记、parses 解析链、lives 持久化字段、hotSearch 裁剪、非法配置 Invalid、可选字段 null 不炸）（63 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 

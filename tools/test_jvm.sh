@@ -25,7 +25,6 @@ EXCLUDES=(
   "player/"
   "source/video/LocalParseProxy.kt"
   "source/video/CmsVideoSource.kt"
-  "source/video/TvBoxParser.kt"
   "source/book/LegadoBookSource.kt"
   "source/danmaku/DandanplaySource.kt"
   "source/rss/LegadoRssSource.kt"
@@ -69,7 +68,8 @@ for cls in \
   JsRuntimePoolTestKt \
   SourceRouterTestKt \
   SourceValidatorTestKt \
-  CapabilityResolverTestKt; do
+  CapabilityResolverTestKt \
+  TvBoxParserTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
