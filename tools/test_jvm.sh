@@ -60,7 +60,8 @@ for cls in \
   DanmakuFilterTestKt \
   SecurityGuardTestKt \
   EngineRuleSyntaxTestKt \
-  EngineCoreTestKt; do
+  EngineCoreTestKt \
+  RuleEngineDispatchRound2TestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
