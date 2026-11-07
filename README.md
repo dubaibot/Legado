@@ -143,6 +143,7 @@ bash tools/ci.sh
 | `tests/SourceImportLayerTest.kt` | 书源导入解析与同步策略（161 项） |
 | `tests/ShelfAggregateLayerTest.kt` | 聚合搜索 + 书架操作 + 换源映射（101 项） |
 | `tests/DanmakuFilterTest.kt` | 弹幕渲染参数 + 过滤屏蔽/合并去重/同屏截断（55 项） |
+| `tests/SecurityGuardTest.kt` | 安全闸门（URL/SSRF/重定向/限流/HTML 判定） + 权限分级（114 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 

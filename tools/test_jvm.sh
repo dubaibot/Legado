@@ -57,7 +57,8 @@ for cls in \
   BackupLayerTestKt \
   SourceImportLayerTestKt \
   ShelfAggregateLayerTestKt \
-  DanmakuFilterTestKt; do
+  DanmakuFilterTestKt \
+  SecurityGuardTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
