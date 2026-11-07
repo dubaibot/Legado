@@ -88,7 +88,10 @@ object JarSpiderLoader {
             Util.md5(url)
         }
         val file = File(jarDir, "$cacheName.jar")
-        if (file.exists() && file.length() > 0) return file
+        if (file.exists() && file.length() > 0) {
+            makeReadOnly(file)
+            return file
+        }
         return try {
             downloadJar(url, backupUrl.orEmpty(), file, md5)
         } catch (e: Exception) {
@@ -137,6 +140,8 @@ object JarSpiderLoader {
                         throw IllegalStateException("MD5 校验失败: 期望 ${expectedMd5.lowercase()} 实际 $actual")
                     }
                 }
+                // ART 禁止加载可写的 dex 文件：置只读后返回
+                makeReadOnly(file)
                 return file
             }
             // 清理半成品，尝试下一个地址
@@ -144,6 +149,16 @@ object JarSpiderLoader {
             lastError = attemptError
         }
         throw IllegalStateException(lastError)
+    }
+
+    /** Android 不允许 DexClassLoader 加载带写位的文件，置为只读（chmod 444） */
+    private fun makeReadOnly(file: File) {
+        try {
+            if (!file.setReadOnly()) {
+                Runtime.getRuntime().exec(arrayOf("chmod", "444", file.absolutePath))
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /** 创建 DexClassLoader 并加载 spider 类 */
