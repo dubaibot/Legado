@@ -24,8 +24,6 @@ EXCLUDES=(
   "danmaku/render/DanmakuCanvasLayer.kt"
   "player/"
   "source/video/LocalParseProxy.kt"
-  "source/video/CmsVideoSource.kt"
-  "source/book/LegadoBookSource.kt"
   "source/danmaku/DandanplaySource.kt"
   "source/rss/LegadoRssSource.kt"
   "source/SourceRegistry.kt"
@@ -70,6 +68,7 @@ for cls in \
   SourceValidatorTestKt \
   CapabilityResolverTestKt \
   TvBoxParserTestKt \
+  LegadoBookSourceTestKt \
   SortUrlParserTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
