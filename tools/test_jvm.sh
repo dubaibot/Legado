@@ -61,7 +61,8 @@ for cls in \
   SecurityGuardTestKt \
   EngineRuleSyntaxTestKt \
   EngineCoreTestKt \
-  RuleEngineDispatchRound2TestKt; do
+  RuleEngineDispatchRound2TestKt \
+  NetworkDispatcherE2ETestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
