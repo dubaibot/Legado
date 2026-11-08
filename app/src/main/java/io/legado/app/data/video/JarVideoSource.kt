@@ -4,6 +4,7 @@ import com.github.catvod.crawler.Spider
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import io.legado.app.constant.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.HashMap
@@ -83,10 +84,16 @@ class JarVideoSource(
     }
 
     override suspend fun play(url: String): PlayResult = withContext(Dispatchers.IO) {
-        val json = try {
-            parse(spider.playerContent("", url, emptyList()))
+        val rawJson = try {
+            spider.playerContent("", url, emptyList())
         } catch (e: Exception) {
             throw IllegalStateException("jar spider playerContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
+        AppLog.putDebug("JarSource.play: raw jsonSize=${rawJson.length}")
+        val json = try {
+            JsonParser.parseString(rawJson).getAsJsonObject()
+        } catch (_: Exception) {
+            JsonObject()
         }
         var resultUrl = ""
         val headers = mutableMapOf<String, String>()

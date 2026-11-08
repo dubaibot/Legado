@@ -318,11 +318,14 @@ object ExoPlayerHelper {
             .build()
         return when (sniff.contentType) {
             C.TYPE_HLS -> {
-                // P1-8: AES-128 密钥请求注入（2026-07-31）
-                // 用 HlsKeyDataSourceFactory 包装 dataSourceFactory，对密钥 URL 注入额外防盗链头
-                // 处理某些 CDN 对密钥请求的防盗链检查更严格的场景（需要播放页 Referer）
-                val hlsDataSourceFactory = HlsKeyDataSourceFactory().wrap(dataSourceFactory)
-                HlsMediaSource.Factory(hlsDataSourceFactory)
+                    // P1-8: AES-128 密钥请求注入（2026-07-31）
+                    // 用 HlsKeyDataSourceFactory 包装 dataSourceFactory，对密钥 URL 注入额外防盗链头
+                    // 处理某些 CDN 对密钥请求的防盗链检查更严格的场景（需要播放页 Referer）
+                    val hlsDataSourceFactory =
+                        PngStripDataSourceFactory(
+                            HlsKeyDataSourceFactory().wrap(dataSourceFactory)
+                        )
+                    HlsMediaSource.Factory(hlsDataSourceFactory)
                     // 缓冲速度优化（P0）：仅解析 m3u8 清单即完成 preparation，首帧耗时降 30%+
                     // 兼容性 >95%（ExoPlayer 官方统计），对非标 m3u8 自动降级
                     .setAllowChunklessPreparation(true)

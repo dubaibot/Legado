@@ -28,6 +28,7 @@ import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.exoplayer.HlsKeyDataSourceFactory
 import io.legado.app.help.exoplayer.PlayerInstancePool
+import io.legado.app.help.exoplayer.PngStripDataSourceFactory
 import io.legado.app.help.player.PlaybackErrorAction
 import io.legado.app.help.player.PlaybackErrorPolicy
 import io.legado.app.constant.AppLog
@@ -333,7 +334,9 @@ class Exo2MediaPlayer(context: Context) : IjkExo2MediaPlayer(context) {
                     // 对 AES-128 key URL 额外注入 currentPlayHeaders 防盗链头（部分 CDN 对 key 请求校验更严格），
                     // 对齐旧入口 createMediaSource 的 P1-8 包装（原先仅旧入口接入，主链路缺失）
                     val hlsDataSourceFactory =
-                        HlsKeyDataSourceFactory().wrap(ExoPlayerHelper.resolvingDataSource)
+                        PngStripDataSourceFactory(
+                            HlsKeyDataSourceFactory().wrap(ExoPlayerHelper.resolvingDataSource)
+                        )
                     HlsMediaSource.Factory(hlsDataSourceFactory)
                         // 缓冲速度优化（P0）：仅解析 m3u8 清单即完成 preparation，首帧耗时降 30%+
                         .setAllowChunklessPreparation(true)

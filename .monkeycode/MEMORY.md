@@ -54,9 +54,9 @@ Entries discovered by the Agent during task execution should follow this format:
   - 删除枚举/注册表条目时逐条按行前缀删（每条目单行成对）；禁用「进入 skip 后等 endswith 复位」的状态机——SPEAK_ENGINE( 前缀同时命中进入分支并 continue，复位永不执行
   - 每次脚本改写文件后立刻断言花括号/KDoc 平衡 + 文件行数与预期一致
 
-[构建配方与引擎构建约束（assembleDebug/release/worktree 合并）]
-- Date: 2026-10-29（合并 2026-10-23 与 2026-10-26 条目）
-- Context: 多轮构建验证、test 分支 worktree 构建、JS 引擎换件构建
+[构建配方、环境前置与引擎构建约束（合并：assembleDebug/release/worktree + JDK/SDK 前置）]
+- Date: 2026-11-08（合并 2026-10-27/29 条目）
+- Context: 多轮构建验证、test 分支 worktree 构建、JS 引擎换件构建、冷环境装 JDK/SDK
 - Category: Build Methods
 - Instructions:
   - 构建基线：AGP 8.13.2、Kotlin 2.3.10、Gradle 8.14.4、compileSdk/targetSdk 36；依赖 media3 1.10.1、Room 2.7.1、Gson 2.13.2
@@ -81,6 +81,11 @@ Entries discovered by the Agent during task execution should follow this format:
   - VideoPlayerActivity 单 URL 播放：传入 videoUrl + videoTitle extra 即设 VideoPlay.singleUrl=true 直接播放
   - Glide Compose 集成可用：GlideImage + ContentScale.Crop + @OptIn(ExperimentalGlideComposeApi::class)
   - APK 下载预览：复制产物到 /tmp/opencode，由后台终端 `python3 -m http.server 8901` 对外提供
+  - 环境默认无 java/sdkmanager，需先装 JDK 17（apt openjdk-17-jdk-headless，位于 /usr/lib/jvm/java-17-openjdk-amd64）与 Android cmdline-tools（装到 /opt/android-sdk，sdkmanager 装 platforms;android-36、build-tools;35.0.0/36.0.0、platform-tools），并写 local.properties `sdk.dir=/opt/android-sdk`
+  - debug 构建走 ~/.android/debug.keystore（Android Debug 签名，包名 com.myreaderD.reader.debug），与 release 的 myreader 密钥不同
+  - Maven Central 偶发 TLS 中断（Remote host terminated the handshake），重试即可，已下载依赖缓存于 ~/.gradle/caches
+  - Gradle 构建可能产生 java_pid*.hprof 崩溃堆转储（OOM 时自动生成，单文件可达 3.7GB），构建前检查 `df -h` 磁盘空间，发现 .hprof 用 `truncate -s 0` 清空而非删除
+  - `./gradlew clean` 仅释放 build 目录（~1.5GB），Gradle 缓存（~9.6GB）不可随意清理否则下次构建全量重下载；磁盘空间不足时优先处理 .hprof 和旧 APK 产物
 
 [分支与 MR 工作流]
 - Date: 2026-10-24（MR 推送知识 2026-10-29 补充）
@@ -93,16 +98,16 @@ Entries discovered by the Agent during task execution should follow this format:
   - 删除远程分支后跑 `git fetch --prune origin` 清理本地跟踪引用
   - MR 创建：remote 是 GitHub，`git push -o merge_request.create` 会 HTTP 500，gh CLI 未认证；MR 需用户手动从 GitHub 创建
 
-[环境无预装 JDK/Android SDK 时的构建前置]
-- Date: 2026-10-27
-- Context: 在 feat/debug-tracker 分支用 assembleDebug 重新生成 APK（含图标改动）
-- Category: Environment Configuration
+[后台终端超时冻结进程（ghost daemon）与 gradle 锁劫持处置]
+- Date: 2026-11-08
+- Context: 构建终端超时被杀后 gradle daemon（PID 8256）永久假死：/proc 显示 state R 但 CPU 采样零增长、SIGKILL 永久 pending（SigPnd bit9，status 可查）、kill -9/cgroup.kill/gradle --stop/ptrace SEIZE+INTERRUPT 注入 exit_group 全部无效（hypervisor 级冻结），持有 5GB 内存 + 13 个 gradle 锁文件，新构建报 "Timeout waiting to lock journal cache Owner PID: 8256"
+- Category: Troubleshooting & Debugging
 - Instructions:
-  - 环境默认无 java/sdkmanager，需先装 JDK 17（apt openjdk-17-jdk-headless，位于 /usr/lib/jvm/java-17-openjdk-amd64）与 Android cmdline-tools（装到 /opt/android-sdk，sdkmanager 装 platforms;android-36、build-tools;35.0.0/36.0.0、platform-tools），并写 local.properties `sdk.dir=/opt/android-sdk`
-  - debug 构建走 ~/.android/debug.keystore（Android Debug 签名，包名 com.myreaderD.reader.debug），与 release 的 myreader 密钥不同
-  - Maven Central 偶发 TLS 中断（Remote host terminated the handshake），重试即可，已下载依赖缓存于 ~/.gradle/caches
-  - Gradle 构建可能产生 java_pid*.hprof 崩溃堆转储（OOM 时自动生成，单文件可达 3.7GB），构建前检查 `df -h` 磁盘空间，发现 .hprof 用 `truncate -s 0` 清空而非删除
-  - `./gradlew clean` 仅释放 build 目录（~1.5GB），Gradle 缓存（~9.6GB）不可随意清理否则下次构建全量重下载；磁盘空间不足时优先处理 .hprof 和旧 APK 产物
+  - 诊断 ghost 三步：ps cputime 两次采样对比（零增长=假死）+ /proc/PID/status 查 SigPnd 是否含 SIGKILL 位（0x100）+ /proc/PID/stack 看内核栈（本例 futex_wait）；用 python flock LOCK_EX|LOCK_NB 试锁可区分「真持有」与「已释放的僵尸注册项」
+  - guest 侧无法杀死 ghost，处置策略是绕过：fallocate 2.5GB /swapfile_build + mkswap + swapon，构建内存压力下 ghost 冷页自然换出（本例可用内存 534MB 恢复至 2.1GB+，构建成功 17m50s）
+  - 锁劫持处置：把 ghost 持有的全部 *.lock 文件 mv 为 .lock.stale<时间戳>（保留备份禁 rm），新构建自动重建锁文件；ghost 的 fd 指向改名 inode，锁自然失效
+  - swap 常驻保留（swapoff 需将 ghost 4.9GB 换回内存必然失败），后续构建直接复用；磁盘仅 3.3GB 余量时 swapfile 上限约 2.5GB
+  - 预防：构建运行期间禁止编辑源码——Gradle 在编译时刻读取文件，本次 BUILD FAILED 即因编译读到编辑中间态（旧函数残留）；所有编辑必须等 BUILD SUCCESSFUL/FAILED 标记出现后再做
 
 [移植 M3 分支 UI 到 AppCompat 主题项目的崩溃与修复模式]
 - Date: 2026-10-29
