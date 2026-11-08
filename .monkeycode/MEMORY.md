@@ -171,3 +171,18 @@ Entries discovered by the Agent during task execution should follow this format:
   - ART 按规范化路径登记已加载 .so，同路径二次 System.load 抛 "JNI_OnLoad failed on a previous attempt to load"；若必须自加载 native 库，文件名要内容寻址（<name>.<md5前12>.so）
   - DexNative.<clinit> 整体 try/catch 吞异常（move-exception→getCause→return-void），clinit 失败后续只表现为 NoClassDefFoundError；Init.init 调用不存在的 set(Context) 会被反射 NoSuchMethodException 吞掉——根因被掩蔽两层，调试须从字节码确认真实 API（Init 混淆字段：oOoOoOoOoOoOoO0o=Application、oOo0oOo0Oo0oO0Oo=ClassLoader、oOoOoOo0oOo0o0oO=DexClassLoader；单例在 Init$Loader 静态槽）
   - androguard 反汇编 API：DEX(raw).get_classes() → EncodedMethod.get_code().get_bc().get_instructions()（is_static 等用 get_access_flags() & 8/0x800 判断；EncodedMethod 无 is_static 方法）
+
+[全局拦截点需按源隔离门控]
+- Date: 2026-11-08
+- Context: b10 在 ExoPlayerHelper/Exo2MediaPlayer 的 HLS 分支层全局注入 PngStripDataSourceFactory，
+          导致 py/TVbox 源选型链路回归（用户反馈 py 源「原本能播现在不能播」）
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - ExoPlayer HLS 的 DataSource 包装层对**所有 HLS 流无差别拦截**，b10 验证：jar/py/TVbox 共享
+    createMediaSource / HlsMediaSource.Factory 链路时，任何「透传观感无害」的包装都会互相串伤
+  - 回归隔离办法：用 @Volatile 全局开关（默认 false）+ 调用入口按源类型短路；py/TVbox 相关
+    Diag Monad 单流程（intent.sourceType 为 book=0/rss=1，永远不等于 video SourceType.JAR.ordinal）
+  - VideoPlayerActivity 的 intent sourceType 是 SourceType.book=0/rss=1，不是 io.legado.app.data.video.SourceType
+  - 修复入口在 PyHomepageViewModel.playVideo（按 source.sourceType==JAR 置 gate，其余路径透传），
+    onDestroy 复位 gate=false
+  - b11 实测：BUILD SUCCESSFUL in 22m 25s，PngStripDataSourceFactory 字符串在 classes3.dex 保留
