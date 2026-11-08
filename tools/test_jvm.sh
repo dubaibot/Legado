@@ -25,7 +25,7 @@ EXCLUDES=(
   "player/"
   "source/video/LocalParseProxy.kt"
   "LanyueApp.kt"
-  "ui/MainActivity.kt"
+  "ui/"
 )
 
 SRCS=()

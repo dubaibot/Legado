@@ -33,4 +33,17 @@
     <string name="disclaimer_body">本应用不提供、不存储、不分发任何内容，所有内容均来自用户自行导入的第三方源；内容的合法性与准确性由第三方源及使用者自行负责，使用风险由用户自行承担。</string>
     <string name="disclaimer_copyright">本应用的解析结果均来自第三方源，版权归原作者及原站点所有；本应用不存储任何内容副本，仅供个人学习与阅读使用。如权利人认为内容侵权，可通过下方通道反馈，我们将在核实后提供源屏蔽指引。</string>
     <string name="disclaimer_report">侵权/违规内容举报：请在「设置 - 关于 - 反馈」提交具体源地址与条目链接，我们会记录并协助屏蔽。</string>
+
+    <!-- 首启首个交互迭代：导入 / 列表 / 自检界面文案 -->
+    <string name="import_book_source">导入书源</string>
+    <string name="import_disclaimer_open">使用须知 / 声明</string>
+    <string name="sources_section_title">已导入书源</string>
+    <string name="sources_empty">还没有导入任何书源。点击上方「导入书源」选择本地书源文件（JSON / TXT）。</string>
+    <string name="import_summary_dismiss">收起</string>
+    <string name="read_failed">读取文件失败或无权限，请重试</string>
+    <string name="too_large_msg">文件超过 16 MiB 上限，已拒绝导入</string>
+    <string name="static_check">静态自检</string>
+    <string name="checking">正在体检配置字段…</string>
+    <string name="detail_address">书源地址</string>
+    <string name="detail_type">源类型</string>
 </resources>
