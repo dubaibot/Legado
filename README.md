@@ -159,6 +159,8 @@ bash tools/ci.sh
 | `tests/CmsVideoSourceTest.kt` | 影视源适配器实现（源 type/id 拼接、能力位映射、分类/列表/搜索 URL 与 header、详情字段映射与线路选集解析、直接播放与解析链、嗅探与 flag 透传）（60 项） |
 | `tests/DandanplaySourceTest.kt` | 弹幕源适配器实现（sourceId/type/能力位、X-AppId/X-Timestamp/X-Signature 签名头、match/搜索接口、分页、404/指纹拦截降级、空 key 防护、probe）（60 项） |
 | `tests/FeedSourceTest.kt` | 订阅源适配器实现（中文源标识与能力位、并发限速、分类排序与坏行跳过、ADR-016 RSS/Atom 兜底、search 兜底与 500 异常、正文 WebView 兜底、header 注入）（54 项） |
+| `tests/SourceRegistryTest.kt` | 源装配工厂（四源 enabled/unsupported 过滤、工厂调用时机、null 透传、异常向上传播）（23 项） |
+| `tests/SourceRegistryTest.kt` | 源装配工厂（四源 enabled/unsupported 过滤、工厂调用时机、null 透传、异常向上传播）（23 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 
