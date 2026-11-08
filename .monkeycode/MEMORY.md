@@ -75,6 +75,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - Chaquopy Java 方法只接受位置参数：Python 关键字参数会按顺序映射到 Java 方法的位置参数；解决方式：base/spider.py 改为 Python 包装类，正确映射关键字参数到 Java 位置参数
   - Chaquopy isinstance(cls, type) 对 Java 类不成立返回 False；修复：直接 `try: spider = spider_cls() except: return None` 不依赖 isinstance 检查
   - Gson Kotlin API：asJsonObject/asString/asJsonArray/asJsonPrimitive 是属性访问（无括号），不是方法调用；`el.asJsonObject` 正确，`el.asJsonObject()` 报 "receiver type mismatch" 编译错误；entrySet()/keySet()/size() 是方法调用（有括号）；getAsJsonObject()/getAsString() 也是方法调用（有括号）
+  - media3 C 常量 + Java 方法陷阱：media3 1.10.1 的 `C.LENGTH_UNSET` 是 Int 不是 Long；DataSource.open() 返回 Long，比较需用 `C.LENGTH_UNSET.toLong()`；Java 类 ByteArrayOutputStream 的 size 是方法调用（需 `.size()` 加括号），不是 Kotlin 属性访问
   - CMS API URL 模式（对照 github.com/huajideshutiao/legado TvBoxCmsSpider.kt 实测）：home 用 `?ac=list`（返回 class+list）、category 用 `?ac=videolist&t=&pg=`、search 用 `?ac=videolist&wd=&pg=`（带 ac=videolist，不带 quick）、detail 用 `?ac=detail&ids=`、play 返回直链+防盗链头(UA+Referer)；quick 是 FongMi/TV 约定不是 MacCMS V10 参数
   - header 字段支持三种格式：JSON 对象 `{"k":"v"}`、JSON 字符串 `"{\"k\":\"v\"}"`、`"k=v&k2=v2"` 纯字符串；ext 字段支持字符串/JSON 对象/数组
   - Release 签名：signingConfigs 仅在 gradle 存在 RELEASE_STORE_FILE 属性时生效；属性写在 ~/.gradle/gradle.properties；密钥库 /workspace/keystore/myreader-release.jks（alias myreader）
