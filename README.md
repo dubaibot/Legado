@@ -160,13 +160,25 @@ bash tools/ci.sh
 | `tests/DandanplaySourceTest.kt` | 弹幕源适配器实现（sourceId/type/能力位、X-AppId/X-Timestamp/X-Signature 签名头、match/搜索接口、分页、404/指纹拦截降级、空 key 防护、probe）（60 项） |
 | `tests/FeedSourceTest.kt` | 订阅源适配器实现（中文源标识与能力位、并发限速、分类排序与坏行跳过、ADR-016 RSS/Atom 兜底、search 兜底与 500 异常、正文 WebView 兜底、header 注入）（54 项） |
 | `tests/SourceRegistryTest.kt` | 源装配工厂（四源 enabled/unsupported 过滤、工厂调用时机、null 透传、异常向上传播）（23 项） |
-| `tests/SourceRegistryTest.kt` | 源装配工厂（四源 enabled/unsupported 过滤、工厂调用时机、null 透传、异常向上传播）（23 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 
 ## 构建
 
-需要 Android Studio / AGP。本仓库为架构骨架，不含完整 UI 与资源，无法直接出包。
+本仓库可直接打包 APK。环境准备（一次性）：
+
+- Android SDK：cmdline-tools + 许可签署 + `platforms;android-34` / `build-tools;34.0.0` / `platform-tools`
+- Gradle：AGP 8.5.2 / Kotlin 2.0.20 兼容的任意 8.x（本项目用 8.10.2 验证）
+- 仓库根 `local.properties` 声明 `sdk.dir=<SDK 路径>`（不入库）
+
+```bash
+gradle assembleDebug
+```
+
+产物 `app/build/outputs/apk/debug/app-debug.apk`（debug 签名）。
+已验证：包名 `com.lanyue.reader`，版本 0.1.0，minSdk 26 / targetSdk 34；
+`aapt2 dump badging` + `apksigner verify` 通过。入口为首启引导页（声明不含内置源），
+并注册 `lanYue://booksource|rssSource|video|danmaku` 四个深度链接 scheme。
 
 ## 说明
 

@@ -24,6 +24,8 @@ EXCLUDES=(
   "danmaku/render/DanmakuCanvasLayer.kt"
   "player/"
   "source/video/LocalParseProxy.kt"
+  "LanyueApp.kt"
+  "ui/MainActivity.kt"
 )
 
 SRCS=()

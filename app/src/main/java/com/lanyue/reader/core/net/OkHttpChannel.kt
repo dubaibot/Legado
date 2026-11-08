@@ -6,19 +6,16 @@ import com.lanyue.reader.core.engine.NetworkException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.conscrypt.Conscrypt
-import java.security.Security
 import java.util.concurrent.TimeUnit
 
 /**
- * 4.6 通道一：OkHttp + Conscrypt。默认通道，普通 API 源走这里。
+ * 4.6 通道一：OkHttp。默认通道，普通 API 源走这里。
  */
 class OkHttpChannel(
     private val uaProvider: (String) -> String? = { null },
     private val cookieProvider: (String) -> String? = { null }
 ) : HttpChannel {
     private val client: OkHttpClient by lazy {
-        runCatching { Security.insertProviderAt(Conscrypt.newProvider(), 1) }
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)

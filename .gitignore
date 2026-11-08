@@ -1,0 +1,13 @@
+# Gradle / Kotlin build
+/.gradle/
+/.kotlin/
+/build/
+/app/build/
+
+# SDK / local
+/local.properties
+/captures/
+
+# IDE
+/.idea/
+*.iml
