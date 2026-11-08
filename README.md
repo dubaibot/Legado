@@ -23,6 +23,7 @@ app/src/main/java/com/lanyue/reader/
 │   ├── debug/         书源离线调试管线（搜索→详情→目录→正文串链路）
 │   ├── book/ rss/ video/ danmaku/   各站点适配器
 ├── bookshelf/         书架操作层（增删/分组/排序）与换源进度映射
+├── ui/                Compose 界面（书源导入入口、书源列表、静态自检详情）
 ├── data/
 │   ├── db/            Room 数据库 / 实体 / DAO（书源、订阅、影视、弹幕、书架）
 │   └── backup/        备份 DTO / JSON 编解码 / 导入合并策略
@@ -177,7 +178,9 @@ gradle assembleDebug
 
 产物 `app/build/outputs/apk/debug/app-debug.apk`（debug 签名）。
 已验证：包名 `com.lanyue.reader`，版本 0.1.0，minSdk 26 / targetSdk 34；
-`aapt2 dump badging` + `apksigner verify` 通过。入口为首启引导页（声明不含内置源），
+`aapt2 dump badging` + `apksigner verify` 通过。首屏为书源管理页：通过系统文件选择器
+导入书源文件（Legado Json / 订阅），点击书源进入离线调试管线（`SourceDebugger.staticCheck`）
+显示搜索/详情/目录/正文四阶段体检结果；声明不内置任何源。
 并注册 `lanYue://booksource|rssSource|video|danmaku` 四个深度链接 scheme。
 
 ## 说明

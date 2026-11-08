@@ -70,3 +70,5 @@ Entries discovered by the Agent during task execution should follow this format:
   - `android.nonTransitiveRClass=true`（AGP 8 默认）下，非 namespace 子包引用 R 必须显式 `import com.lanyue.reader.R`，否则报错 unresolved reference 'R'
   - Room TypeConverter/备份编解码使用 Gson 时，要在 app 模块声明 `com.google.code.gson:gson`，否则 ksp 阶段报 Converter 无此类
   - 顶层聚合搜索、换源、导入等纯逻辑仍按 `tools/test_jvm.sh` 的纯 JVM 路线验证，Android 打包不来影响这套流程
+  - UI 层（Composable）的坑：`ActivityResultContracts.GetContent()` 构造是无参的，mime 类型在 `launcher.launch("*/*")` 里传；`mutableStateListOf` 的返回值不能按 `by remember { mutableStateListOf<T>() }` 委托（无 getValue 重载，编译报 "Property delegate must have a 'getValue' method"），用普通 `val` 持有即可；`TextButton`/`ElevatedButton` 等 Material3 组件各有独立 import，需逐个补
+
