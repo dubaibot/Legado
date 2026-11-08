@@ -89,6 +89,7 @@ import io.legado.app.help.dlna.CastPhase
 import io.legado.app.help.dlna.DlnaCastManager
 import io.legado.app.help.dlna.PlayerControl
 import io.legado.app.help.exoplayer.FirstFramePreloader
+import io.legado.app.help.exoplayer.PngStripDataSourceFactory
 import io.legado.app.help.gsyVideo.VideoPlayer
 import io.legado.app.help.player.ErrorMapper
 import io.legado.app.help.webView.PooledWebView
@@ -519,6 +520,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
             val sourceKey = intent.getStringExtra("sourceKey")
             val sourceType = intent.getIntExtra("sourceType", 0)
+            // PngStripDataSourceFactory 全局门控由调用方按源类型设置：
+            // - jar 源会话：PyHomepageViewModel.playVideo 置 true
+            // - 其它场景：保持默认 false（透传）
+            // 注意：此处 intent 的 sourceType 为 book/rss 类型（SourceType.book=0/rss=1），
+            // 不能直接与 SourceType.JAR.ordinal 比较避免误判
             val bookUrl = intent.getStringExtra("bookUrl")
             val record = intent.getStringExtra("record")
             // P0-7：真实书架身份改由 VideoPlay.initSource 按**库中 notShelf 位**解析
@@ -2695,6 +2701,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     override fun onDestroy() {
+        // PngStripDataSourceFactory 门控复位：避免 jar 会话残留后影响下一情形播放
+        PngStripDataSourceFactory.PngStripDataSource.enabled = false
         // app-stability-round2 P2-2: 先取消抓取协程（含嗅探 WebView），再释放播放器资源
         // 根因：原顺序 destroyWeb 先执行、stopLoading 后置，嗅探协程取消时序混乱，且 runCatching 误捕获 CancellationException
         // 修复：stopLoading 提前到最前，协程取消后 BackstageWebView.invokeOnCancellation 主动销毁嗅探 WebView

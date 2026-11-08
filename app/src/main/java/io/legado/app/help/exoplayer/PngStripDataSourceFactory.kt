@@ -59,6 +59,11 @@ class PngStripDataSourceFactory(
         private var stripLen = 0L
 
         override fun open(dataSpec: DataSpec): Long {
+            // 全局门控：默认关闭，仅 jar 源播放路径将其置 true
+            // 避免影响 py/TVbox 等其它源链路
+            if (!enabled) {
+                return upstream.open(dataSpec)
+            }
             consumedBuf.reset()
             consumed = 0
             stripLen = 0
@@ -222,6 +227,11 @@ class PngStripDataSourceFactory(
             private const val MAX_PNG_HEADER_LEN = 4096L
             private const val TS_SYNC_BYTE = 0x47.toByte()
             private const val MAX_CHUNK_DATA = 4 * 1024 * 1024
+
+            // 全局门控：默认关闭，仅 jar 源播放路径显式开启
+            // 确保 py/TVbox 等其它源链路不受影响
+            @Volatile
+            var enabled = false
         }
     }
 }

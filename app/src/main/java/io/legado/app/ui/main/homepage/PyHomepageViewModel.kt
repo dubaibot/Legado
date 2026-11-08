@@ -11,6 +11,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.video.SourceType
 import io.legado.app.data.video.VideoSource
 import io.legado.app.data.video.VideoSourceRegistry
+import io.legado.app.help.exoplayer.PngStripDataSourceFactory
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.python.PyLoader
 import io.legado.app.ui.video.VideoPlayerActivity
@@ -378,6 +379,10 @@ class PyHomepageViewModel : ViewModel() {
             val result = source?.play(initialUrl)
             val resolvedUrl = result?.url ?: initialUrl
             if (resolvedUrl.isNotEmpty()) {
+                // PngStripDataSourceFactory 全局门控：仅 jar 源会话开启剥离
+                // py/json/txt/html 保持透传，避免误伤非 PNG 伪装的 HLS 流
+                PngStripDataSourceFactory.PngStripDataSource.enabled =
+                    (source?.sourceType == SourceType.JAR)
                 // 构建集数列表 JSON（传完整列表给播放器，支持集数切换）
                 val episodesJson = JSONArray().apply {
                     playUrls.forEach { (name, url) ->
