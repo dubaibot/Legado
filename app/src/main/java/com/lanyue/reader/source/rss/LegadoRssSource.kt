@@ -62,19 +62,7 @@ class LegadoRssSource(
 
         // ADR-016：ruleArticles 为空 -> RSS/Atom 兜底
         if (entity.ruleArticles.isNullOrBlank()) {
-            val feed = rssFallback.parse(html) ?: return emptyList()
-            return feed.items.map { item ->
-                SubscriptionItem(
-                    title = item.title ?: "",
-                    url = item.link ?: "",
-                    cover = item.image,
-                    pubDate = parseDate(item.pubDate),
-                    description = item.description,
-                    sort = sort?.name,
-                    origin = sourceId,
-                    contentType = contentTypeOf(entity.type)
-                )
-            }.filter { it.url.isNotEmpty() }
+            return parseFallbackItems(html, sort?.name)
         }
 
         return parseListItems(html, ctx, sort?.name)
@@ -85,6 +73,12 @@ class LegadoRssSource(
         val searchUrl = entity.searchUrl ?: return emptyList()
         val url = UrlTemplate.fill(searchUrl, key, page)
         val html = fetch(url, "search")
+
+        // ADR-016：与列表一致，ruleArticles 为空时走 RSS/Atom 兜底
+        if (entity.ruleArticles.isNullOrBlank()) {
+            return parseFallbackItems(html, null)
+        }
+
         val ctx = RuleEngine.RuleContext(url, sourceId, sourceId + ":search")
         return parseListItems(html, ctx, null)
     }
@@ -105,6 +99,23 @@ class LegadoRssSource(
     }
 
     // ---------- 内部 ----------
+
+    /** ADR-016 RSS/Atom 兜底：ruleArticles 为空时把响应当 feed 解析。 */
+    private fun parseFallbackItems(html: String, sortName: String?): List<SubscriptionItem> {
+        val feed = rssFallback.parse(html) ?: return emptyList()
+        return feed.items.map { item ->
+            SubscriptionItem(
+                title = item.title ?: "",
+                url = item.link ?: "",
+                cover = item.image,
+                pubDate = parseDate(item.pubDate),
+                description = item.description,
+                sort = sortName,
+                origin = sourceId,
+                contentType = contentTypeOf(entity.type)
+            )
+        }.filter { it.url.isNotEmpty() }
+    }
 
     private suspend fun fetch(url: String, op: String): String {
         val traceId = sourceId + ":" + op

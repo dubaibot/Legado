@@ -83,6 +83,7 @@ class DandanplaySource(
     }
 
     override suspend fun search(key: String): List<DanmakuMatch> {
+        if (key.isBlank()) return emptyList()
         return searchEpisodes(key, null)
     }
 

@@ -54,8 +54,7 @@ class CmsVideoSource(
     override suspend fun getCategories(): List<Category> {
         val url = apiBase + "?ac=list"
         val json = fetchJson(url, "categories")
-        val classes = json.getAsJsonObject("class")
-            ?.let { runCatching { it.asJsonArray }.getOrNull() }
+        val classes = runCatching { json.get("class")?.asJsonArray }.getOrNull()
             ?: return emptyList()
 
         return classes.mapNotNull { el ->
