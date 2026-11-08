@@ -29,6 +29,8 @@ import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssEpisode
 import io.legado.app.data.entities.RssReadRecord
 import io.legado.app.data.entities.RssRoute
+import io.legado.app.data.video.SourceType as VideoSourceType
+import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.data.entities.RssSource
 import io.legado.app.help.exoplayer.FirstFramePreloader
 import io.legado.app.help.exoplayer.VideoPreloader
@@ -2321,12 +2323,34 @@ object VideoPlay : CoroutineScope by MainScope(){
         currentSwitchToken = token
         AppLog.put("playPyEpisode: start, episode=${episode.title}, token=$token, pluginId=${pluginId.take(2)}")
         playEpisodeJob = Coroutine.async(loadScope, IO) {
-            val resolved = suspendCancellableCoroutine<String?> { cont ->
-                HomeBridge.play(pluginId, episode.url) { cont.resume(it) }
+            // 非 py 源修正：playVideo 入口对 jar/json/txt/html 源都会传 pyPluginId，但这些源的 ID 并不是
+            // Python 模块，HomeBridge.play → PythonEnv.module(pluginId) 返回 null → 永远
+            // 「视频链接解析失败」永不起播。非 py 源直接经 VideoSource.play 解析（统一接口口径），
+            // py 源才继续走 HomeBridge Python 桥接。
+            val nonPySource = runCatching {
+                VideoSourceRegistry.getSourceInfo(pluginId)
+                    ?.takeIf { it.type != VideoSourceType.PY }
+                    ?.let { VideoSourceRegistry.createSource(it) }
+                    ?.takeIf { it.sourceType != VideoSourceType.PY }
+            }.getOrNull()
+            val resolvedUrl = if (nonPySource != null) {
+                try {
+                    nonPySource.play(episode.url).url
+                } catch (e: Exception) {
+                    AppLog.put(
+                        "playPyEpisode: non-py source resolve failed, pluginId=${pluginId.take(2)}, " +
+                            "err=${e.javaClass.simpleName}: ${e.message}"
+                    )
+                    episode.url
+                }
+            } else {
+                val resolved = suspendCancellableCoroutine<String?> { cont ->
+                    HomeBridge.play(pluginId, episode.url) { cont.resume(it) }
+                }
+                try {
+                    JSONObject(resolved ?: "").optString("url", "")
+                } catch (e: Exception) { "" }
             }
-            val resolvedUrl = try {
-                JSONObject(resolved ?: "").optString("url", "")
-            } catch (e: Exception) { "" }
             if (resolvedUrl.isNotEmpty()) {
                 withContext(Main) {
                     if (currentSwitchToken != token) {
