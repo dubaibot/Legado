@@ -88,15 +88,27 @@ class JarVideoSource(
         } catch (e: Exception) {
             throw IllegalStateException("jar spider playerContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
         }
-        val playUrl = json.get("playUrl")
         var resultUrl = ""
         val headers = mutableMapOf<String, String>()
-        if (playUrl is JsonObject) {
-            resultUrl = str(playUrl, "url", "playUrl", "link")
-            parseHeaderString(str(playUrl, "header", "headers", "headerInfo"))
+        // FongMi Spider 规范：playerContent 返回顶层 {"url":"...","header":"..."}；
+        // 部分爬虫兼容 {"playUrl":{"url":"...","header":"..."}} 或 {"playUrl":"..."} 两种形态
+        val playUrl = json.get("playUrl")
+        val playUrlObj = if (playUrl is JsonObject) playUrl else null
+        if (playUrlObj != null) {
+            resultUrl = str(playUrlObj, "url", "playUrl", "link")
+            parseHeaderString(str(playUrlObj, "header", "headers", "headerInfo"))
                 .let { headers.putAll(it) }
-        } else if (playUrl != null) {
+        } else if (playUrl != null && playUrl.isJsonPrimitive) {
             resultUrl = playUrl.asString
+        }
+        // 顶层 url 键（FongMi 通用形式，playUrl 缺失时兜底解析）
+        if (resultUrl.isBlank()) {
+            val topUrl = str(json, "url", "link", "video", "m3u8", "msg")
+            if (topUrl.isNotBlank()) {
+                resultUrl = topUrl.replace("[\\r\\n]+".toRegex(), "")
+                parseHeaderString(str(json, "header", "headers", "headerInfo"))
+                    .let { headers.putAll(it) }
+            }
         }
         if (resultUrl.isBlank()) resultUrl = url
         PlayResult(url = resultUrl, headers = headers)

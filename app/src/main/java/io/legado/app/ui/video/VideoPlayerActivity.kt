@@ -306,8 +306,15 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         // 4.8b（Z9）：恢复键与保存键一致（嗅探前原始 URL）
         val videoUrl = VideoPlay.historyKeyUrl ?: return
         if (videoUrl.isBlank()) return
+        // 直播流不恢复进度（直播是实时的）
+        if (videoUrl.contains("m3u8")) {
+            VideoPlay.probeLiveStream(videoUrl)
+        }
         val articleUrl = getCurrentArticleUrl()
         lifecycleScope.launch {
+            if (videoUrl.contains("m3u8") && VideoPlay.isLiveStreamAwait(videoUrl)) {
+                return@launch
+            }
             val history = PlayHistoryStore.load(articleUrl, videoUrl)
             if (history != null && history.position > 10_000) {
                 // 延迟2s给ExoPlayer prepare时间
@@ -480,7 +487,15 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 VideoPlay.videoTitle = it
             }
             // py 源集数列表：解析 episodesJson 设置 rssEpisodes + pyEpisodesPluginId
-            intent.getStringExtra("episodesJson")?.let { json ->
+            // 注意：VideoPlay.initSource() 会重置 rssEpisodes/rssEpisodeIndex（多线路状态重建），
+            // 此处仅解析暂存，initSource 返回后再回填，避免选集列表被清空
+            val episodeJson = intent.getStringExtra("episodesJson")
+            val initialEpisodeIndexExtra = intent.getIntExtra("initialEpisodeIndex", 0)
+            val pyPluginIdExtra = intent.getStringExtra("pyPluginId")
+            var intentEpisodes: List<RssEpisode>? = null
+            var intentEpisodeIndex = 0
+            var intentPyPluginId: String? = null
+            episodeJson?.let { json ->
                 try {
                     val arr = org.json.JSONArray(json)
                     val episodes = (0 until arr.length()).mapNotNull { i ->
@@ -493,11 +508,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                         )
                     }
                     if (episodes.isNotEmpty()) {
-                        VideoPlay.rssEpisodes = episodes
-                        val idx = intent.getIntExtra("initialEpisodeIndex", 0).coerceIn(0, episodes.size - 1)
-                        VideoPlay.rssEpisodeIndex = idx
-                        intent.getStringExtra("pyPluginId")?.let { VideoPlay.pyEpisodesPluginId = it }
-                        AppLog.put("initFromIntent: episodes set, size=${episodes.size}, idx=$idx, pyPlugin=${VideoPlay.pyEpisodesPluginId?.take(2)}")
+                        intentEpisodes = episodes
+                        intentEpisodeIndex = intent.getIntExtra("initialEpisodeIndex", 0).coerceIn(0, episodes.size - 1)
+                        pyPluginIdExtra?.let { intentPyPluginId = it }
+                        AppLog.put("initFromIntent: episodes parsed, size=${episodes.size}, idx=$intentEpisodeIndex, pyPlugin=${intentPyPluginId?.take(2)}")
                     }
                 } catch (e: Exception) {
                     AppLog.put("initFromIntent: parse episodesJson failed", e)
@@ -530,6 +544,13 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                     AppLog.put("VideoPlayerActivity initSource failed, finish activity, sourceKey=${sourceKey?.take(2)}***")
                     finish()
                     return@launch
+                }
+                // initSource 会重置 rssEpisodes/rssEpisodeIndex（多线路状态重建），
+                // 此处回填 intent 传入的 py 源集数列表，保证首页/订阅源播放器选集列表不丢失
+                intentEpisodes?.let { episodes ->
+                    VideoPlay.rssEpisodes = episodes
+                    VideoPlay.rssEpisodeIndex = intentEpisodeIndex
+                    intentPyPluginId?.let { VideoPlay.pyEpisodesPluginId = it }
                 }
                 // P0-1: 统一 ViewPager2 模式（video-player-dual-layout D2 起按持久化 layoutMode 分发：沉浸式走 ViewPager2，传统布局走 legacyContainer）
                 // 书源/单URL模式：单 Fragment + 禁用滑动

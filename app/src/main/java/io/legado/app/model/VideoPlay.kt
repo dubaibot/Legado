@@ -88,6 +88,64 @@ import kotlin.coroutines.resume
 object VideoPlay : CoroutineScope by MainScope(){
     private const val VIDEO_POS_NAME = "video_pos_" //单链接播放进度
     private const val VIDEO_POS_SAVE_TIME = 60 * 60 * 24 * 20 //20天
+
+    /**
+     * 直播流 URL 探测缓存：m3u8 是否直播（无 #EXT-X-ENDLIST）探测一次结果，
+     * 避免保存/恢复进度时每次重新抓取清单。
+     */
+    private val liveUrlCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * 判断 URL 是否为直播 m3u8 流。仅查缓存，非阻塞。
+     *
+     * - VOD 清单含 #EXT-X-ENDLIST -> false
+     * - 主清单（多码率 master）解析变体后复查
+     * - 无标记（直播语义）-> true
+     */
+    fun isLiveStream(url: String): Boolean =
+        url.lowercase().contains("m3u8") && liveUrlCache[url] == true
+
+    /**
+     * 等待直播探测结果（最多 timeoutMs），供恢复进度等需要确定性判定的场景。
+     */
+    suspend fun isLiveStreamAwait(url: String, timeoutMs: Long = 3_000): Boolean {
+        if (!url.lowercase().contains("m3u8")) return false
+        liveUrlCache[url]?.let { return it }
+        probeLiveStream(url)
+        var waited = 0L
+        while (liveUrlCache[url] == null && waited < timeoutMs) {
+            delay(100)
+            waited += 100
+        }
+        return liveUrlCache[url] == true
+    }
+
+    /**
+     * 异步探测 m3u8 是否直播（起播前/恢复进度前调用，结果写入缓存）。
+     */
+    fun probeLiveStream(url: String) {
+        if (!url.lowercase().contains("m3u8")) return
+        if (liveUrlCache.containsKey(url)) return
+        Coroutine.async(loadScope, IO) {
+            val live = detectLiveM3u8(url)
+            liveUrlCache[url] = live
+        }
+    }
+
+    private fun detectLiveM3u8(url: String): Boolean {
+        val text = try {
+            io.legado.app.data.video.VideoHttpClient.get(url) ?: return false
+        } catch (e: Exception) {
+            return false
+        }
+        return if (io.legado.app.help.video.engine.M3u8Parser.isMasterPlaylist(text)) {
+            val variant = io.legado.app.help.video.engine.M3u8Parser.pickVariantFromText(text, url)
+            if (variant.isNullOrBlank()) return false
+            detectLiveM3u8(variant)
+        } else {
+            !text.contains("#EXT-X-ENDLIST")
+        }
+    }
     private var needClearTemp = true //需要清理缓存
     private const val VIDEO_TEMP_PATH = "video_temp"
     internal val videoTempFile by lazy { File(FileUtils.getCachePath(), VIDEO_TEMP_PATH) }
@@ -818,8 +876,14 @@ object VideoPlay : CoroutineScope by MainScope(){
             originalPlayUrl = mUrl
             AppLog.put("VideoPlay.startPlay entering singleUrl branch, mUrl=${mUrl.take(2)}")
             Coroutine.async(loadScope, IO) {
-                CacheManager.getLong(VIDEO_POS_NAME + mUrl)?.let {
-                    player.seekOnStart = it
+                // 直播流不恢复历史位置（实时直播，恢复旧位置会闪退/黑屏）
+                val live = isLiveStreamAwait(mUrl)
+                // 重置起播位置：避免播放会话切换视频时残留上一个视频的 seekOnStart
+                player.seekOnStart = 0L
+                if (!live) {
+                    CacheManager.getLong(VIDEO_POS_NAME + mUrl)?.let {
+                        player.seekOnStart = it
+                    }
                 }
                 // P0-7：singleUrl 直连同样按书架身份判定（旧行为硬编码 true ⇒ 临时书被当成已入架）；
                 // 无 book 身份（纯 URL 直连/下载播放）时保持「已入架」，与既有 intent 缺省语义一致
@@ -2398,6 +2462,12 @@ object VideoPlay : CoroutineScope by MainScope(){
         // AD-06：切换窗口进度短路——initSource 重建期间旧片 currentPosition 不得写入新 book 落库
         if (switchingInProgress) {
             AppLog.put("saveRead: switchingInProgress, skip progress save")
+            return
+        }
+        // 直播流（m3u8 无 ENDLIST）不保存进度/时长，避免"时间一到退出重进"
+        val liveUrl = historyKeyUrl ?: videoUrl
+        if (liveUrl?.let { isLiveStream(it) } == true) {
+            AppLog.put("saveRead: live stream, skip progress save")
             return
         }
         val book = book

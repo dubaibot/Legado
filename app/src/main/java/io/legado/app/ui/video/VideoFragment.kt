@@ -283,6 +283,9 @@ class VideoFragment : Fragment() {
                         val articleUrl = VideoPlay.rssArticles?.getOrNull(VideoPlay.rssArticleIndex)?.link ?: ""
                         // 4.8b（Z9）：恢复键与保存键一致（嗅探前原始 URL）
                         val videoUrl = VideoPlay.historyKeyUrl ?: return@launch
+                        if (videoUrl.contains("m3u8") && VideoPlay.isLiveStreamAwait(videoUrl)) {
+                            return@launch
+                        }
                         val history = PlayHistoryStore.load(articleUrl, videoUrl)
                         if (history != null && history.position > 10000) {
                             pv.seekTo(history.position)

@@ -194,6 +194,8 @@ class PyHomepageViewModel : ViewModel() {
         private set
 
     init {
+        // 恢复上次选中的首页源（避免每次进入都回到第一个源）
+        selectedSourceId = AppConfig.pyHomePluginId
         refreshSources()
         searchHistory = loadHistory()
         favorites = loadFavorites()
