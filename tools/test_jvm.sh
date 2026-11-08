@@ -24,7 +24,6 @@ EXCLUDES=(
   "danmaku/render/DanmakuCanvasLayer.kt"
   "player/"
   "source/video/LocalParseProxy.kt"
-  "source/SourceRegistry.kt"
 )
 
 SRCS=()
@@ -70,7 +69,8 @@ for cls in \
   SortUrlParserTestKt \
   CmsVideoSourceTestKt \
   DandanplaySourceTestKt \
-  FeedSourceTestKt; do
+  FeedSourceTestKt \
+  SourceRegistryTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
