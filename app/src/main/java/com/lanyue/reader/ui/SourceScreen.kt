@@ -73,10 +73,18 @@ private val STATUS_COLOR: Map<Status, Color> = mapOf(
     Status.SKIP to Color(0xFF9E9E9E)
 )
 
-/** 书源 JSON 字段别名（与 SourceImportParser 保持一致）。 */
-private val FIELD_URL_KEYS = listOf("bookSourceUrl", "sourceUrl", "url", "bookSourceURL")
-private val FIELD_NAME_KEYS = listOf("bookSourceName", "sourceName", "name", "title")
-private val FIELD_TYPE_KEYS = listOf("bookSourceType", "sourceType", "type")
+/** 书源 JSON 字段别名（与 SourceImportParser 保持一致，支持英文/中文两套键名）。 */
+private val FIELD_URL_KEYS =
+    listOf("bookSourceUrl", "sourceUrl", "url", "bookSourceURL", "id", "网址")
+private val FIELD_NAME_KEYS =
+    listOf("bookSourceName", "sourceName", "name", "title", "名称", "书源名称")
+private val FIELD_TYPE_KEYS = listOf("bookSourceType", "sourceType", "type", "类型")
+private val FIELD_GROUP_KEYS =
+    listOf("bookSourceGroup", "sourceGroup", "group", "category", "分组")
+
+/** 书源规则字段：存在其中任一即不是订阅源（订阅源只有最新文章规则，没有搜索/详情/目录/正文）。 */
+private val BOOK_RULE_KEYS =
+    listOf("搜索", "详情", "详细", "目录", "正文", "内容", "ruleSearch", "ruleToc", "ruleContent", "内容搜索", "discover")
 
 private val TYPE_LABELS = listOf("文本", "音频", "图片", "文件")
 
@@ -249,15 +257,26 @@ private fun DetailScreen(source: ImportedBookSource, onBack: () -> Unit) {
                     scope.launch {
                         val fields = source.fields()
                         val r = withContext(Dispatchers.IO) {
-                            SourceDebugger.staticCheck(
-                                url = fields.url,
-                                name = fields.name,
-                                searchUrl = fields.searchUrl,
-                                ruleSearch = fields.ruleSearch,
-                                ruleToc = fields.ruleToc,
-                                ruleContent = fields.ruleContent,
-                                type = fields.type
-                            )
+                            if (fields.isRss) {
+                                // 订阅源：搜索规则回落到原始 ruleSearch，正文规则作为最新文章校验
+                                SourceDebugger.staticCheckRss(
+                                    id = fields.url,
+                                    name = fields.name,
+                                    latestRule = fields.ruleContent,
+                                    searchRule = fields.searchUrl,
+                                    type = fields.type
+                                )
+                            } else {
+                                SourceDebugger.staticCheck(
+                                    url = fields.url,
+                                    name = fields.name,
+                                    searchUrl = fields.searchUrl,
+                                    ruleSearch = fields.ruleSearch,
+                                    ruleToc = fields.ruleToc,
+                                    ruleContent = fields.ruleContent,
+                                    type = fields.type
+                                )
+                            }
                         }
                         report = r
                         busy = false
@@ -338,25 +357,69 @@ private fun ImportedBookSource.fields(): BookFields {
     } catch (e: Throwable) {
         null
     }
+    // 订阅源识别：以 id 属性为地址、没有任何书源规则字段（搜索/详情/目录/正文）。
+    // 文本行格式的 raw 不是 JSON，obj 为 null，一律当作书源。
+    val isRss = obj != null &&
+        !BOOK_RULE_KEYS.any { obj.has(it) } &&
+        (firstStr(obj, listOf("id"))?.startsWith("http") == true)
     return BookFields(
-        url = firstStr(obj, FIELD_URL_KEYS) ?: url,
+        url = firstStr(obj, FIELD_URL_KEYS)?.takeIf { it.startsWith("http") }
+            ?: SourceImportParser.httpBase(
+                firstStr(obj, listOf("搜索", "详情", "详细", "searchUrl"))
+            )
+            ?: url,
         name = firstStr(obj, FIELD_NAME_KEYS) ?: name,
+        group = firstStr(obj, FIELD_GROUP_KEYS),
         searchUrl = firstStr(obj, listOf("searchUrl")),
-        ruleSearch = firstStr(obj, listOf("ruleSearch")),
-        ruleToc = firstStr(obj, listOf("ruleToc")),
-        ruleContent = firstStr(obj, listOf("ruleContent")),
-        type = firstInt(obj, FIELD_TYPE_KEYS) ?: type
+        ruleSearch = ruleText(obj, listOf("搜索", "searchRule", "ruleSearch", "内容搜索")),
+        ruleToc = ruleText(obj, listOf("目录", "ruleToc", "目录规则")),
+        ruleContent = ruleText(obj, listOf("内容", "正文", "最新", "最新规则", "最新内容", "ruleContent")),
+        type = firstInt(obj, FIELD_TYPE_KEYS) ?: type,
+        isRss = isRss
     )
+}
+
+/** 规则字段可能是扁平模板字符串，也可能是嵌套规则对象（取第一个 URL/规则文本）；
+ *  还支持 Legado 的 {"规则": {"搜索": "..."}} 嵌套一层。 */
+private fun ruleText(obj: JsonObject?, keys: List<String>): String? {
+    if (obj == null) return null
+    // 任意 key 的取值范围：对象本身 + 顶层的「规则/rules」子对象
+    val subs = sequenceOf(obj) + listOf("规则", "rules")
+        .mapNotNull { obj.get(it) }
+        .filter { it.isJsonObject }
+        .map { it.asJsonObject }
+    for (k in keys) {
+        for (sub in subs) {
+            val el = sub.get(k) ?: continue
+            when {
+                el.isJsonPrimitive -> {
+                    val v = try { el.asString } catch (e: Throwable) { continue }
+                    if (v.isNotBlank()) return v
+                }
+                el.isJsonObject -> {
+                    val nested = el.asJsonObject
+                    val v = nested.entrySet().firstNotNullOfOrNull { e ->
+                        e.value.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString
+                    }?.trim()?.takeIf { it.isNotBlank() } ?: nested.toString()
+                    return v
+                }
+            }
+        }
+    }
+    return null
 }
 
 private data class BookFields(
     val url: String?,
     val name: String?,
+    val group: String?,
     val searchUrl: String?,
     val ruleSearch: String?,
     val ruleToc: String?,
     val ruleContent: String?,
-    val type: Int
+    val type: Int,
+    /** 订阅源：只有 id 地址与名称，没有书源规则（目录/正文）。 */
+    val isRss: Boolean
 )
 
 private fun firstStr(obj: JsonObject?, keys: List<String>): String? {

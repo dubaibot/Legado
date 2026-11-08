@@ -74,17 +74,32 @@ object SourceImportParser {
         "data", "sources", "bookSources", "bookSource", "list", "items", "result", "results"
     )
 
-    /** 书源地址字段别名。 */
-    private val URL_KEYS = listOf("bookSourceUrl", "sourceUrl", "url", "bookSourceURL")
+    /** 书源地址字段别名。订阅源用 id，乐享系中文格式用「网址」。 */
+    private val URL_KEYS = listOf(
+        "bookSourceUrl", "sourceUrl", "url", "bookSourceURL", "id", "网址"
+    )
 
-    /** 书源名称字段别名。 */
-    private val NAME_KEYS = listOf("bookSourceName", "sourceName", "name", "title")
+    /** 书源名称字段别名。中文格式（乐享导出 / 订阅源）用「名称」。 */
+    private val NAME_KEYS = listOf(
+        "bookSourceName", "sourceName", "name", "title", "名称", "书源名称"
+    )
 
     /** 分组字段别名。 */
-    private val GROUP_KEYS = listOf("bookSourceGroup", "sourceGroup", "group", "category")
+    private val GROUP_KEYS = listOf("bookSourceGroup", "sourceGroup", "group", "category", "分组")
 
-    /** 类型字段别名。 */
-    private val TYPE_KEYS = listOf("bookSourceType", "sourceType", "type")
+    /** 类型字段别名。中文格式用「类型」。 */
+    private val TYPE_KEYS = listOf("bookSourceType", "sourceType", "type", "类型")
+
+    /**
+     * 规则字段别名。真实书源文件里地址字段可能完全缺失——地址藏在
+     * 「搜索」「详情」规则的模板里（`http://x.com/s?name={name}`），
+     * 甚至有订阅合集只有 `id`。凡是带这些字段的对象都算候选书源，
+     * 地址再从规则模板里推导。
+     */
+    private val RULE_KEYS = listOf(
+        "ruleSearch", "ruleToc", "ruleContent",
+        "搜索", "详情", "目录", "正文", "最新", "内容", "发现"
+    )
 
     /**
      * 解析导入内容。
@@ -137,15 +152,14 @@ object SourceImportParser {
         }
 
         val objects = ArrayList<JsonObject>()
-        // 根节点是数组时，顶层每个对象都是"候选书源"：
-        // 即使它缺地址，也要计入拒绝列表告诉用户，而不是静默丢掉。
-        // 嵌套结构无法区分"缺地址的源"与"包裹容器"，仍走 hasUrlField 启发式。
         val missingUrlAtTop = ArrayList<JsonObject>()
+        // 候选书源：带地址字段，或带规则字段（地址可从「搜索/详情」模板推导）。
+        // 两者都没有的对象（裸名称、容器元数据）进 missing，明确告诉用户哪些是残件。
         if (root.isJsonArray) {
             root.asJsonArray.forEach { el ->
                 if (!el.isJsonObject) return@forEach
                 val obj = el.asJsonObject
-                if (hasUrlField(obj)) objects.add(obj) else missingUrlAtTop.add(obj)
+                if (looksLikeSource(obj)) objects.add(obj) else missingUrlAtTop.add(obj)
             }
         } else {
             collectSourceObjects(root, objects, 0)
@@ -153,7 +167,7 @@ object SourceImportParser {
 
         val format = when {
             root.isJsonArray -> "json-array"
-            objects.size == 1 && hasUrlField(root as JsonObject) -> "json-object"
+            objects.size == 1 && looksLikeSource(root as JsonObject) -> "json-object"
             else -> "json-wrapped"
         }
 
@@ -162,34 +176,29 @@ object SourceImportParser {
         val seen = HashMap<String, Int>()
 
         objects.forEachIndexed { index, obj ->
-            val url = firstString(obj, URL_KEYS)?.trim().orEmpty()
-            if (url.isEmpty()) {
-                rejected.add(
-                    ImportResult.Rejected(index, "缺少书源地址", obj.toString().take(120))
+            when (val r = deriveUrl(obj)) {
+                is UrlResult.Ok -> {
+                    val name = firstString(obj, NAME_KEYS)?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: hostOf(r.url)
+                    val group = firstString(obj, GROUP_KEYS)?.trim()?.takeIf { it.isNotEmpty() }
+                    val type = firstInt(obj, TYPE_KEYS)
+                    // 规则模板推导出的地址不带唯一性：同一站点多个源可能共享模板基址，
+                    // 用「基址+名称」去重避免误合并；文件显式声明的地址按原逻辑去重。
+                    val key = if (r.derivedByRule) r.url + "|" + name else r.url
+                    if (seen.containsKey(key)) {
+                        seen[key] = seen[key]!! + 1
+                        return@forEachIndexed
+                    }
+                    seen[key] = 0
+                    accepted.add(ImportedBookSource(r.url, name, group, type, obj.toString()))
+                }
+                is UrlResult.Reject -> rejected.add(
+                    ImportResult.Rejected(index, r.reason, obj.toString().take(120))
                 )
-                return@forEachIndexed
             }
-            if (!SourceValidator.isHttpUrl(url)) {
-                rejected.add(
-                    ImportResult.Rejected(index, "书源地址不是 http/https：" + url, url.take(120))
-                )
-                return@forEachIndexed
-            }
-            val name = firstString(obj, NAME_KEYS)?.trim()?.takeIf { it.isNotEmpty() }
-                ?: hostOf(url)
-            val group = firstString(obj, GROUP_KEYS)?.trim()?.takeIf { it.isNotEmpty() }
-            val type = firstInt(obj, TYPE_KEYS)
-
-            if (seen.containsKey(url)) {
-                // 同文件内重复：只保留第一次出现的，后面的与它合并分组信息
-                seen[url] = seen[url]!! + 1
-                return@forEachIndexed
-            }
-            seen[url] = 0
-            accepted.add(ImportedBookSource(url, name, group, type, obj.toString()))
         }
 
-        // 顶层数组里缺地址的对象：明确记为拒绝，便于用户定位哪一条是残件
+        // 顶层数组里既无地址也无规则的对象：明确记为拒绝，便于用户定位哪一条是残件
         missingUrlAtTop.forEach { obj ->
             rejected.add(
                 ImportResult.Rejected(
@@ -213,13 +222,95 @@ object SourceImportParser {
         return ImportResult(accepted, rejected, dup, format)
     }
 
+    // ============================ 地址推导 ============================
+
     /**
-     * 递归收集「像书源」的对象。
-     *
-     * 判定标准是「含有地址字段」，而不是位置或层级——
-     * 这样无论是 `{"data":[ {...} ]}`、`[ {...} ]` 还是嵌套两层的包裹都能出来。
-     * 深度上限 8 层，防御异常构造的深层嵌套。
+     * 从对象推导书源地址：
+     * 1. 文件显式声明的地址字段（http/https 才合法，其它 scheme 直接拒绝）；
+     * 2. 搜索 / 详情规则里的 http 模板基址（乐享系「搜索」「详情」字段）；
+     * 3. 规则里完全找不到地址 → 拒绝。
      */
+    private fun deriveUrl(obj: JsonObject): UrlResult {
+        val explicit = URL_KEYS.firstNotNullOfOrNull { k ->
+            obj.get(k)?.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString
+                ?: null
+        }?.trim()?.takeIf { it.isNotBlank() }
+
+        if (explicit != null) {
+            return if (explicit.startsWith("http://") || explicit.startsWith("https://")) {
+                UrlResult.Ok(explicit, derivedByRule = false)
+            } else {
+                UrlResult.Reject("书源地址不是 http/https：" + explicit)
+            }
+        }
+
+        // 规则模板：搜索（含嵌套 ruleSearch 对象与扁平 searchUrl）→ 详情（详细）
+        val rule = searchRuleText(obj) ?: firstString(obj, listOf("详情", "详细"))
+        val base = httpBase(rule)
+        if (base != null) return UrlResult.Ok(base, derivedByRule = true)
+        return UrlResult.Reject("缺少书源地址（搜索/详情规则中未见 http 地址模板）")
+    }
+
+    private sealed interface UrlResult {
+        data class Ok(val url: String, val derivedByRule: Boolean) : UrlResult
+        data class Reject(val reason: String) : UrlResult
+    }
+
+    /** 搜索规则文本：支持扁平「搜索」、字符串 ruleSearch、嵌套 ruleSearch 对象。 */
+    private fun searchRuleText(obj: JsonObject): String? {
+        val flat = firstString(obj, listOf("搜索", "searchRule"))
+            ?.trim()?.takeIf { it.isNotBlank() }
+        if (flat != null) return flat
+        val rs = obj.get("ruleSearch")
+        if (rs == null || rs.isJsonNull) {
+            return firstString(obj, listOf("searchUrl"))?.trim()?.takeIf { it.isNotBlank() }
+        }
+        return when {
+            rs.isJsonPrimitive -> rs.asString.trim().takeIf { it.isNotBlank() }
+            rs.isJsonObject -> rs.asJsonObject.entrySet()
+                .firstNotNullOfOrNull { e ->
+                    e.value.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString
+                }?.trim()?.takeIf { it.isNotBlank() }
+            else -> null
+        }
+    }
+
+    /**
+     * 从规则文本里抽出第一个 http 基址：
+     * - 扫描在空白/引号/花括号/`&&`（规则第二段）处截断，`{...}` 占位符自然被切掉；
+     * - 显式声明的地址字段必须是 http，否则按非法拒绝（见 [deriveUrl]）。
+     */
+    fun httpBase(text: String?): String? {
+        val t = text?.trim().orEmpty()
+        if (t.isEmpty()) return null
+        val start = if (t.startsWith("http")) 0 else t.indexOf("http")
+        if (start < 0) return null
+        var j = start + 4
+        while (j < t.length) {
+            val c = t[j]
+            if (c.isWhitespace() || c == '"' || c == '\'' || c == '<' || c == '>' || c == '{') {
+                break
+            }
+            if (t.startsWith("&&", j)) break
+            j++
+        }
+        var base = t.substring(start, j)
+        // 模板基址：占位符前的悬空参数名/分隔符一并裁掉，例如
+        // "http://a.com/s?type={t}" -> "http://a.com/s"
+        if (base.contains('?')) base = base.substringBefore('?')
+        while (base.length > "http://".length + 3 && base.endsWith("/")) base = base.dropLast(1)
+        val authority = base.removePrefix("http://").removePrefix("https://")
+            .substringBefore('/')
+        if (authority.isEmpty()) return null
+        return base
+    }
+
+    /** 对象是否「像书源」：带地址字段或带任意规则字段。 */
+    private fun looksLikeSource(obj: JsonObject): Boolean =
+        URL_KEYS.any { obj.has(it) && !obj.get(it).isJsonNull } ||
+            RULE_KEYS.any { obj.has(it) && !obj.get(it).isJsonNull }
+
+    /** 递归收集「像书源」的对象。 */
     private fun collectSourceObjects(el: JsonElement, out: MutableList<JsonObject>, depth: Int) {
         if (depth > 8) return
         if (out.size >= MAX_ITEMS) return
@@ -231,7 +322,7 @@ object SourceImportParser {
 
             el.isJsonObject -> {
                 val obj = el.asJsonObject
-                if (hasUrlField(obj)) {
+                if (looksLikeSource(obj)) {
                     out.add(obj)
                     return
                 }

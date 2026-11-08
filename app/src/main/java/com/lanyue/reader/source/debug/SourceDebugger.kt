@@ -1,5 +1,7 @@
 package com.lanyue.reader.source.debug
 
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.lanyue.reader.source.model.SourceValidator
 
 /**
@@ -307,6 +309,69 @@ object SourceDebugger {
                 StepResult(
                     Stage.SEARCH, Status.WARN, 0, 0,
                     "配置可用（" + report.summary() + "），需连网实测", ""
+                )
+            )
+        )
+    }
+
+    /** 便捷取字符串字段（不存在或非字符串返回 null）。 */
+    private fun JsonObject.str(key: String): String? =
+        this[key]?.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString
+
+    /**
+     * 订阅源快速自检：订阅源可以没有规则（纯 RSS 兜底），
+     * 用 validateRss 而不是 validateBook，避免拿「缺少目录规则」误报。
+     */
+    fun staticCheckRss(
+        id: String?,
+        name: String?,
+        latestRule: String? = null,
+        searchRule: String? = null,
+        type: Int = 0
+    ): PipelineReport {
+        var ruleArticles: String? = null
+        var ruleTitle: String? = null
+        var ruleLink: String? = null
+        if (!latestRule.isNullOrBlank()) {
+            val parsed = try {
+                JsonParser.parseString(latestRule.trim()).takeIf { it.isJsonObject }?.asJsonObject
+            } catch (e: Throwable) {
+                null
+            }
+            if (parsed != null) {
+                ruleArticles = parsed.str("规则") ?: parsed.str("列表")
+                ruleTitle = parsed.str("标题")
+                ruleLink = parsed.str("链接")
+            }
+        }
+        val report = SourceValidator.validateRss(
+            sourceUrl = id,
+            sourceName = name,
+            sortUrl = null,
+            ruleArticles = ruleArticles,
+            ruleTitle = ruleTitle,
+            ruleLink = ruleLink,
+            searchUrl = searchRule,
+            type = type
+        )
+        if (report.hasError) {
+            val first = report.errors().first()
+            return PipelineReport(
+                id.orEmpty(),
+                listOf(
+                    StepResult(
+                        Stage.SEARCH, Status.FAIL, 0, 0,
+                        "配置错误：" + first.message, ""
+                    )
+                )
+            )
+        }
+        return PipelineReport(
+            id.orEmpty(),
+            listOf(
+                StepResult(
+                    Stage.SEARCH, Status.WARN, 0, 0,
+                    "订阅源配置可用（" + report.summary() + "），需连网实测", ""
                 )
             )
         )

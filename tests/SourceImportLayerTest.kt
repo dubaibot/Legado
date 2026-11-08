@@ -160,6 +160,83 @@ fun main() {
     eq("文本行去重", r12.duplicates, 1)
     check("文本行 raw 含地址", r12.accepted[0].raw.contains("t1.com"))
 
+    // ================= 解析：乐享中文键真实格式 =================
+    // 真实乐享书源：中文键 + 地址藏在「搜索/详情」规则模板里
+    val lexiang = """{"bookSourceGroup":[],"我的书源":[
+        {"名称":"ABC小说","类型":0,"分组":"默认","启用":true,"编码":"UTF-8",
+         "搜索":"http://www.abc.com/s?type={type}&key={name}","详情":"http://www.abc.com/book/{id}",
+         "目录":"$.div//li/a","内容":"$.div//div","最新章节":"","说明":""}]}"""
+    val r13 = SourceImportParser.parse(lexiang)
+    eq("乐享书源接受数", r13.accepted.size, 1)
+    eq("乐享书源名称", r13.accepted[0].name, "ABC小说")
+    eq("乐享书源分组", r13.accepted[0].group, "默认")
+    eq("乐享书源地址从搜索模板推导", r13.accepted[0].url, "http://www.abc.com/s")
+    eq("乐享书源类型", r13.accepted[0].type, 0)
+
+    // 英文规则键 + searchUrl 固定地址的音频书源
+    val enRule = """{"默认":[
+        {"名称":"XYZ听书","类型":1,"分组":"有声",
+         "searchUrl":"http://xyz.audio/s","ruleSearch":"http://xyz.audio/s?name={name}",
+         "ruleToc":"http://xyz.audio/book/{id}","ruleContent":"$.div//a"}]}"""
+    val r14 = SourceImportParser.parse(enRule)
+    eq("英文规则键接受数", r14.accepted.size, 1)
+    eq("英文规则键名称", r14.accepted[0].name, "XYZ听书")
+    eq("英文规则键分组", r14.accepted[0].group, "有声")
+    eq("英文规则键地址", r14.accepted[0].url, "http://xyz.audio/s")
+    eq("英文规则键类型", r14.accepted[0].type, 1)
+
+    // ================= 解析：订阅源（id 字段 + 数组/包裹） =================
+    val feed = """{"订阅列表":[
+        {"id":"http://rss.a.com/feed","名称":"A订阅","分组":"资讯","类型":0},
+        {"id":"http://rss.b.com/feed","名称":"B订阅","分组":"默认","类型":2}]}"""
+    val r15 = SourceImportParser.parse(feed)
+    eq("订阅源接受数", r15.accepted.size, 2)
+    eq("订阅源甲分组", r15.accepted[0].group, "资讯")
+    eq("订阅源乙类型", r15.accepted[1].type, 2)
+    eq("订阅源甲地址", r15.accepted[0].url, "http://rss.a.com/feed")
+    eq("订阅源名称", r15.accepted[1].name, "B订阅")
+
+    // 订阅合集 JSON 数组
+    val feedArr = """[{"id":"http://c.com/f.xml","名称":"订阅丙"},
+                     {"id":"http://d.com/feed","名称":"订阅丁"}]"""
+    val r16 = SourceImportParser.parse(feedArr)
+    eq("订阅数组接受数", r16.accepted.size, 2)
+    eq("订阅数组格式", r16.format, "json-array")
+
+    // 无显式 url 但只有 id 为空串的裸名称对象仍应拒绝（与 r6 一致）
+    val emptyId = """[{"id":"","名称":"空ID无规则"}]"""
+    val r17 = SourceImportParser.parse(emptyId)
+    eq("空 id 无规则仍拒", r17.accepted.size, 0)
+    eq("空 id 无规则拒绝", r17.rejected.size, 1)
+
+    // ================= 解析：推导地址去重 =================
+    // 同基址+同名称 -> 去重；同基址+不同名称 -> 保留
+    val dedupRule = """[
+        {"名称":"同书源","搜索":"http://dup.com/s?q={name}","最新章节":"章节1"},
+        {"名称":"同书源","搜索":"http://dup.com/s?q={name}","最新章节":"章节2"},
+        {"名称":"另一名","搜索":"http://dup.com/s?q={name}","最新章节":"章节3"}
+    ]"""
+    val r18 = SourceImportParser.parse(dedupRule)
+    eq("推导去重后接受", r18.accepted.size, 2)
+    eq("推导重复计数", r18.duplicates, 1)
+    eq("推导保留首次", r18.accepted[0].name, "同书源")
+    eq("推导不同名保留", r18.accepted[1].name, "另一名")
+
+    // 显式地址去重仍按 url 单键
+    val r19 = SourceImportParser.parse(
+        """[{"url":"http://dup.com","name":"显式A"},
+             {"url":"http://dup.com","name":"显式B"}]"""
+    )
+    eq("显式去重接受", r19.accepted.size, 1)
+    eq("显式去重计数", r19.duplicates, 1)
+    eq("显式保留首次", r19.accepted[0].name, "显式A")
+
+    // ================= 解析：订阅源规则原文原样保留 =================
+    val feedRaw = """[{"id":"http://rss.raw.com/feed","名称":"原文订阅","最新":"http://rss.raw.com/list/{pageNum}"}]"""
+    val r20 = SourceImportParser.parse(feedRaw)
+    eq("订阅原文接受", r20.accepted.size, 1)
+    check("订阅原文 raw 保留规则", r20.accepted[0].raw.contains("最新"))
+
     // ================= 解析：空与异常 =================
     eq("空串 isEmpty", SourceImportParser.parse("").isEmpty, true)
     eq("null 格式", SourceImportParser.parse(null).format, "empty")
@@ -414,6 +491,14 @@ fun main() {
     eq("静态自检可用", staticOk.isUsable, true)
     check("静态自检提示实测", staticOk.steps.first().message.contains("实测"),
         staticOk.steps.first().message)
+
+    // 订阅源静态自检：无规则时纯 RSS 兜底不算错
+    val rssOk = SourceDebugger.staticCheckRss("https://rss.a.com/feed", "A订阅", null, null)
+    eq("订阅自检可用", rssOk.isUsable, true)
+    check("订阅自检不计目录", !rssOk.steps.first().message.contains("目录"),
+        rssOk.steps.first().message)
+    val rssBad = SourceDebugger.staticCheckRss("ftp://bad", "坏订阅", null, null)
+    eq("订阅自检地址错误", rssBad.isUsable, false)
 
     // ================= 枚举契约 =================
     eq("阶段 id 解析", Stage.fromId("toc"), Stage.TOC)
