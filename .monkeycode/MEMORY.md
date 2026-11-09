@@ -70,5 +70,17 @@ Entries discovered by the Agent during task execution should follow this format:
   - `android.nonTransitiveRClass=true`（AGP 8 默认）下，非 namespace 子包引用 R 必须显式 `import com.lanyue.reader.R`，否则报错 unresolved reference 'R'
   - Room TypeConverter/备份编解码使用 Gson 时，要在 app 模块声明 `com.google.code.gson:gson`，否则 ksp 阶段报 Converter 无此类
   - 顶层聚合搜索、换源、导入等纯逻辑仍按 `tools/test_jvm.sh` 的纯 JVM 路线验证，Android 打包不来影响这套流程
-  - UI 层（Composable）的坑：`ActivityResultContracts.GetContent()` 构造是无参的，mime 类型在 `launcher.launch("*/*")` 里传；`mutableStateListOf` 的返回值不能按 `by remember { mutableStateListOf<T>() }` 委托（无 getValue 重载，编译报 "Property delegate must have a 'getValue' method"），用普通 `val` 持有即可；`TextButton`/`ElevatedButton` 等 Material3 组件各有独立 import，需逐个补
+   - UI 层（Composable）的坑：`ActivityResultContracts.GetContent()` 构造是无参的，mime 类型在 `launcher.launch("*/*")` 里传；`mutableStateListOf` 的返回值不能按 `by remember { mutableStateListOf<T>() }` 委托（无 getValue 重载，编译报 "Property delegate must have a 'getValue' method"），用普通 `val` 持有即可；`TextButton`/`ElevatedButton` 等 Material3 组件各有独立 import，需逐个补
+
+[Project Knowledge: 音频书源 §6.1 UI 落地细节]
+- Date: 2026-11-09
+- Context: 在 ReaderScreen / ArticleScreen 接入 AudioPlayerScreen，复用 PlayerManager 进程内播放音频直链
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - Material Icons 陷阱：build.gradle 只声明 `androidx.compose.material3:material3`，未含 `material-icons-core`。要写播放/暂停图标按钮时 `Icons.Filled.PlayArrow` / `Pause` 编译直接报 unresolved reference 'Icons'，避免加 `material-icons-core` 依赖（一种方式是用 `OutlinedButton+Text("播放")` 替代 `IconButton+Icon`，零新依赖到位）
+  - PlayerManager API：`ensurePlayer()` / `loadAudio(url, headers)` / `pause()` / `resume()` / `seekTo(Long)` / `release()` / `player: ExoPlayer?`（property）。`player` 在 `ensurePlayer` 前为 null，调用要判空；`seekTo` 不 suspend；`Media3 1.4.1` 的 Player.Listener 没有 `onPositionChanged()`，500ms 轮询 `player.currentPosition/duration/isPlaying` 驱动 UI
+  - AudioPlayerScreen 调用方约定：ReaderScreen/ArticleScreen 保留上一章/下一章按钮，切换章节触发 LaunchedEffect(newUrl) 重新 loadAudio（内部会先 release 旧实例）；AudioPlayerScreen 上不用触发 DanmakuMatchEngine（音频流无画面承载弹幕叠层）
+  - Compose DSL 不允许 `return` 早退：在 `@Composable` 函数体里用 `if (cond) { AudioPlayerScreen(...) } else { Column(...原状...) }` 包裹，不能 `return`
+  - 编辑多 Composable 函数的同一文件时，先用 `grep -n "^@Composable\|^internal fun\|^fun "` 看函数边界，再决定 newString 锚点，避免 edit 修 ReaderScreen 时把 ArticleScreen 或 BookSearchScreen 撞坏
+
 
