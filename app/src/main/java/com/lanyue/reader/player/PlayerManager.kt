@@ -12,6 +12,8 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.lanyue.reader.core.observability.LocalMetrics
+import com.lanyue.reader.data.db.ProgressDao
+import com.lanyue.reader.data.db.entity.PlayRecordEntity
 import okhttp3.OkHttpClient
 
 /**
@@ -38,6 +40,28 @@ class PlayerManager(
 
     var player: ExoPlayer? = null
         private set
+
+    /** 4.9 断点续播：绑定的进度 DAO + 当前播放键。 */
+    private var progressDao: ProgressDao? = null
+    private var progressKey: String = ""
+    private var progressTitle: String = ""
+    private var progressEpisodeIndex: Int = 0
+
+    /**
+     * 4.9 断点续播绑定。在装载媒体源之前调用，绑定剧集标识。
+     * 装载前应先 [loadProgress] 取上次位置，作为 load(..., startPositionMs = ...) 的输入。
+     */
+    fun bindProgress(
+        dao: ProgressDao,
+        videoKey: String,
+        title: String,
+        episodeIndex: Int = 0
+    ) {
+        progressDao = dao
+        progressKey = videoKey
+        progressTitle = title
+        progressEpisodeIndex = episodeIndex
+    }
 
     /** 硬解优先，失败回落软解。 */
     private var preferHardware = true
@@ -172,5 +196,38 @@ class PlayerManager(
         player?.release()
         player = null
         pendingSubtitles = emptyList()
+    }
+
+    /**
+     * 断点续播：装载前查询上次播放进度。
+     * 在 PlayerScreen 装载前调用；返回 null 表示首次播放，startPositionMs 传 0。
+     */
+    suspend fun loadProgress(): PlayRecordEntity? {
+        val key = progressKey
+        val dao = progressDao
+        if (key.isEmpty() || dao == null) return null
+        val rec = dao.playRecord(key)
+        // 进度超过 90% 视为已看完，不恢复（避免回看尾帧）
+        return if (rec != null && rec.durationMs > 0 && rec.positionMs >= rec.durationMs * 0.9f) null else rec
+    }
+
+    /**
+     * 断点续播：持久化当前播放位置到 Room。
+     * PlayerScreen 节流调用（每 5-10s）+ 退出时最终写一次。
+     */
+    suspend fun saveProgress() {
+        val dao = progressDao ?: return
+        val pos = player?.currentPosition ?: 0L
+        val dur = player?.duration ?: 0L
+        dao.upsertPlay(
+            PlayRecordEntity(
+                videoKey = progressKey,
+                title = progressTitle,
+                episodeIndex = progressEpisodeIndex,
+                positionMs = pos,
+                durationMs = dur,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
     }
 }

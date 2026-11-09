@@ -211,6 +211,17 @@ gradle assembleDebug
     Media3 1.4.1 的 `SubtitleConfiguration.Builder` 仅保留 `setLabel` 参数
     （旧版 setTitle / setSelectionUiEnabled 已迁移为 label + 轨道选择 UI 自动开关）。
     装载/移除时保存 `currentPosition` 再 `seekTo` 保持播放进度不丢。
+   断点续播：
+   - `PlayerManager.bindProgress(dao, videoKey, title, episodeIndex)` 绑定剧集标识；
+     key 由 `DanmakuMatchEngine.videoKeyFor(req, sourceId, episodeUrl)` 生成
+     （`online:{sourceId}:{episodeUrl}` 形式，与弹幕 5.4.5 匹配记忆共用同一键空间）。
+   - 装载前 `manager.loadProgress()` 查询 `play_records` 上次位置；
+     播放进度超过 90% 视为已看完，不恢复（避免重复回看尾帧）。
+   - 首屏 60s 内节流写库（LaunchedEffect 与弹幕轮询共用 positionMs 状态）；
+     -1.5.4 `DisposableEffect(Unit).onDispose` 退出最终写；`progressScope`（
+     `SupervisorJob + Dispatchers.IO`）在丢弃调和树后仍能完成 Room 写入并 `manager.release()`。
+   - §4.12 复用既有 `PlayRecordEntity` / `ProgressDao`：`upsertPlay` 用
+     `@Insert(OnConflictStrategy.REPLACE)` 等价 upsert，按 videoKey 主键落到 play_records。
 
 ## 说明
 

@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,8 +52,11 @@ import com.lanyue.reader.source.model.PlayResult
 import com.lanyue.reader.source.model.VideoDetail
 import com.lanyue.reader.source.model.VideoEpisode
 import com.lanyue.reader.source.model.VideoItem
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -260,6 +264,9 @@ internal fun PlayerScreen(
     var isDanmakuPlaying by remember { mutableStateOf(true) }
     /** 当前匹配结果，用于跨窗口预取。 */
     var matched by remember { mutableStateOf<DanmakuMatchEngine.Outcome.Matched?>(null) }
+    /** 断点续播最终写作用域。SupervisorJob + IO：onDispose 后仍可启动最终写，
+     *  且异常不扩散（manager.saveProgress 的 Room 写失败不应阻塞 release）。 */
+    val progressScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
 
     // ExoPlayer 位置 / 播放态轮询给弹幕层（media3 1.4.1 无连续 onPositionChanged）
     LaunchedEffect(manager) {
@@ -275,6 +282,23 @@ internal fun PlayerScreen(
 
     LaunchedEffect(Unit) {
         manager.ensurePlayer()
+
+        // §4.9 断点续播：先算 videoKey + 绑定 + 查询上次位置
+        val progressReq = DanmakuMatchRequest(
+            title = detail.name,
+            episode = parseEpisodeNumber(episode.name)
+        )
+        val vkey = RuntimeGraph.get(context).danmakuEngine.videoKeyFor(
+            progressReq, source.sourceId, episode.url
+        )
+        manager.bindProgress(
+            dao = RuntimeGraph.get(context).progressDao,
+            videoKey = vkey,
+            title = detail.name,
+            episodeIndex = parseEpisodeNumber(episode.name) ?: 0
+        )
+        val resumeMs = runCatching { manager.loadProgress() }
+            .getOrNull()?.positionMs ?: 0L
 
         // §4.8 / §7.3：SNIFF 走嗅探渲染池，DIRECT/PARSE 走既有解析链
         var startUrl: String? = null
@@ -303,19 +327,14 @@ internal fun PlayerScreen(
         }
 
         currentPlayUrl = startUrl
-        manager.load(startUrl, startHeaders)
+        manager.load(startUrl, startHeaders, startPositionMs = resumeMs)
 
         // 弹幕自动匹配 + 首屏 60s 窗口（§4.10.4）
         danmakuEvents = emptyList()
         matched = null
         danmakuState = DanmakuUiState.Loading
-        val req = DanmakuMatchRequest(
-            title = detail.name,
-            episode = parseEpisodeNumber(episode.name)
-        )
-        val vkey = RuntimeGraph.get(context).danmakuEngine.videoKeyFor(req, source.sourceId, episode.url)
         val outcome = runCatching {
-            RuntimeGraph.get(context).danmakuEngine.autoMatch(req, vkey)
+            RuntimeGraph.get(context).danmakuEngine.autoMatch(progressReq, vkey)
         }.getOrDefault(DanmakuMatchEngine.Outcome.NotMatched(vkey))
 
         when (outcome) {
@@ -331,6 +350,24 @@ internal fun PlayerScreen(
                 danmakuState = if (evs.isEmpty()) DanmakuUiState.Failed else DanmakuUiState.Ready
             }
             else -> { danmakuState = DanmakuUiState.NotMatched }
+        }
+    }
+
+    // §4.9 断点续播：每 5s 节流写进度到 Room（与弹幕轮询共用 positionMs）
+    var lastSaveMs by remember { mutableLongStateOf(-1L) }
+    LaunchedEffect(positionMs) {
+        if (lastSaveMs >= 0L && positionMs - lastSaveMs < 5_000L) return@LaunchedEffect
+        lastSaveMs = System.currentTimeMillis()
+        runCatching { manager.saveProgress() }
+    }
+
+    // §4.9 断点续播：退出最终写（含视频切换/页面销毁）
+    DisposableEffect(Unit) {
+        onDispose {
+            progressScope.launch {
+                runCatching { manager.saveProgress() }
+                manager.release()
+            }
         }
     }
 
@@ -435,7 +472,6 @@ internal fun PlayerScreen(
                 }
             }
         }
-        DisposableEffect(Unit) { onDispose { manager.release() } }
     }
 }
 

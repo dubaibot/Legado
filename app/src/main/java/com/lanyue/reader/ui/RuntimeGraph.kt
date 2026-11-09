@@ -14,6 +14,7 @@ import com.lanyue.reader.core.observability.LocalMetrics
 import com.lanyue.reader.core.engine.RssFallbackParser
 import com.lanyue.reader.data.db.DanmakuDao
 import com.lanyue.reader.data.db.LanyueDatabase
+import com.lanyue.reader.data.db.ProgressDao
 import com.lanyue.reader.danmaku.DanmakuMatchEngine
 import com.lanyue.reader.source.danmaku.DandanplaySource
 import com.lanyue.reader.source.model.IDanmakuSource
@@ -48,7 +49,9 @@ object RuntimeGraph {
         /** 弹幕自动匹配引擎（§4.10.3 零操作链路）。 */
         val danmakuEngine: DanmakuMatchEngine,
         /** 4.8 嗅探渲染池 + Snipper 门面：SNIFF 类型解析执行器。 */
-        val sniffer: Sniffer
+        val sniffer: Sniffer,
+        /** 播放/阅读进度 DAO（§4.12 play_records；影视断点续播走这里）。 */
+        val progressDao: ProgressDao
     )
 
     @Volatile
@@ -90,7 +93,8 @@ object RuntimeGraph {
                 videoParses = emptyList(),
                 danmakuDao = db.danmakuDao(),
                 danmakuEngine = danmakuEngine,
-                sniffer = sniffer
+                sniffer = sniffer,
+                progressDao = db.progressDao()
             )
             graph = g
             return g
