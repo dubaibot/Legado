@@ -111,11 +111,31 @@ internal fun AudioPlayerScreen(
         }
 
         Row(
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.fillMaxWidth()
         ) {
             OutlinedButton(onClick = { if (isPlaying) manager.pause() else manager.resume() }) {
                 Text(if (isPlaying) "暂停" else "播放")
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = {
+                    // §4.9：把当前章转交给 AudioPlaybackService 后台播放，
+                    // 通知栏/锁屏控件由 MediaSessionService 接管。
+                    AudioPlaybackService.start(
+                        context,
+                        chapters = listOf(
+                            AudioPlaybackService.AudioChapter(
+                                title = title,
+                                url = url,
+                                headers = headers
+                            )
+                        )
+                    )
+                    onBack()
+                }
+            ) {
+                Text("后台播放")
             }
         }
     }

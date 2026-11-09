@@ -26,44 +26,12 @@ import com.lanyue.reader.ui.RuntimeGraph
  */
 class AudioPlaybackService : MediaSessionService() {
 
-    companion object {
-        private const val CHANNEL_ID = "lanyue_audio_playback"
-        private const val NOTIFICATION_ID = 1001
-        private const val SESSION_ID = "lanyue-audio"
-
-        const val ACTION_PLAY = "com.lanyue.reader.action.AUDIO_PLAY"
-        const val ACTION_PAUSE = "com.lanyue.reader.action.AUDIO_PAUSE"
-        const val ACTION_STOP = "com.lanyue.reader.action.AUDIO_STOP"
-        const val ACTION_NEXT = "com.lanyue.reader.action.AUDIO_NEXT"
-        const val ACTION_PREV = "com.lanyue.reader.action.AUDIO_PREV"
-
-        const val EXTRA_CHAPTERS = "com.lanyue.reader.extra.CHAPTERS"
-        const val EXTRA_CURRENT_INDEX = "com.lanyue.reader.extra.CURRENT_INDEX"
-
-        /** §4.9 章节条目：UI 解析音频书源正文 Audio 后打包传入。 */
-        data class AudioChapter(
-            val title: String,
-            val url: String,
-            val headers: Map<String, String> = emptyMap()
-        )
-
-        /** §4.9 起播：UI 解析完音频章节列表后调用本方法。 */
-        fun start(context: Context, chapters: List<AudioChapter>, startIndex: Int = 0) {
-            val intent = Intent(context, AudioPlaybackService::class.java).apply {
-                action = ACTION_PLAY
-                putExtra(EXTRA_CHAPTERS, Gson().toJson(chapters))
-                putExtra(EXTRA_CURRENT_INDEX, startIndex)
-            }
-            context.startForegroundService(intent)
-        }
-
-        /** 控制操作（暂停/播放/上一章/下一章/停止）走普通 startService。 */
-        fun control(context: Context, action: String) {
-            Intent(context, AudioPlaybackService::class.java).apply {
-                this.action = action
-            }.also { context.startService(it) }
-        }
-    }
+    /** §4.9 章节条目：UI 解析音频书源正文 Audio 后打包传入。 */
+    data class AudioChapter(
+        val title: String,
+        val url: String,
+        val headers: Map<String, String> = emptyMap()
+    )
 
     private val playerManager by lazy {
         PlayerManager(applicationContext, RuntimeGraph.get(applicationContext).metrics)
@@ -241,5 +209,37 @@ class AudioPlaybackService : MediaSessionService() {
         session = null
         playerManager.release()
         super.onDestroy()
+    }
+
+    companion object {
+        private const val CHANNEL_ID = "lanyue_audio_playback"
+        private const val NOTIFICATION_ID = 1001
+        private const val SESSION_ID = "lanyue-audio"
+
+        const val ACTION_PLAY = "com.lanyue.reader.action.AUDIO_PLAY"
+        const val ACTION_PAUSE = "com.lanyue.reader.action.AUDIO_PAUSE"
+        const val ACTION_STOP = "com.lanyue.reader.action.AUDIO_STOP"
+        const val ACTION_NEXT = "com.lanyue.reader.action.AUDIO_NEXT"
+        const val ACTION_PREV = "com.lanyue.reader.action.AUDIO_PREV"
+
+        const val EXTRA_CHAPTERS = "com.lanyue.reader.extra.CHAPTERS"
+        const val EXTRA_CURRENT_INDEX = "com.lanyue.reader.extra.CURRENT_INDEX"
+
+        /** §4.9 起播：UI 解析完音频章节列表后调用本方法。 */
+        fun start(context: Context, chapters: List<AudioPlaybackService.AudioChapter>, startIndex: Int = 0) {
+            val intent = Intent(context, AudioPlaybackService::class.java).apply {
+                action = ACTION_PLAY
+                putExtra(EXTRA_CHAPTERS, Gson().toJson(chapters))
+                putExtra(EXTRA_CURRENT_INDEX, startIndex)
+            }
+            context.startForegroundService(intent)
+        }
+
+        /** 控制操作（暂停/播放/上一章/下一章/停止）走普通 startService。 */
+        fun control(context: Context, action: String) {
+            Intent(context, AudioPlaybackService::class.java).apply {
+                this.action = action
+            }.also { context.startService(it) }
+        }
     }
 }
