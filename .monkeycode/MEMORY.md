@@ -83,4 +83,19 @@ Entries discovered by the Agent during task execution should follow this format:
   - Compose DSL 不允许 `return` 早退：在 `@Composable` 函数体里用 `if (cond) { AudioPlayerScreen(...) } else { Column(...原状...) }` 包裹，不能 `return`
   - 编辑多 Composable 函数的同一文件时，先用 `grep -n "^@Composable\|^internal fun\|^fun "` 看函数边界，再决定 newString 锚点，避免 edit 修 ReaderScreen 时把 ArticleScreen 或 BookSearchScreen 撞坏
 
+[Project Knowledge: §4.9 MediaSession 接 ExoPlayer 的编译与生命周期要点]
+- Date: 2026-11-09
+- Context: AudioPlaybackService 从 LifecycleService 升级到 MediaSessionService，接 ExoPlayer 锁屏控件
+- Category: Troubleshooting & Debugging / Build Methods
+- Instructions:
+  - ServiceCompat 没有 `FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK` 常量——常量在 `android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK`（javap 校验）；`ServiceCompat.startForeground(Service, int id, Notification, int type)` 存在但常量要引用 ServiceInfo
+  - `Notification.MediaStyle.setShowActionsInCompactView(...)` 参数是三个 `int` 图标资源 ID（如 `android.R.drawable.ic_media_previous` / `ic_media_play` / `ic_media_next`），不是 PendingIntent——传 PendingIntent 会编译报"Argument type mismatch: actual type is 'PendingIntent!', but 'Int' was expected"
+  - `session?.setPlayer(playerManager.player)` 会因为 `ExoPlayer?` nullable 报"Argument type mismatch: actual 'ExoPlayer?', expected 'Player'"——用 `playerManager.player?.let { session?.setPlayer(it) }`
+  - `MediaSession.Builder(context, player)` 构造时必须给非空 Player——所以要么先 `ensurePlayer()` 再调 `MediaSession.Builder(this, playerManager.ensurePlayer())`，要么延迟到 onStartCommand ACTION_PLAY loadChapter 时再建
+  - `MediaSessionService.onGetSession(controllerInfo)` 每次 controller 连接都会回调，必须返回同一个 session 实例（lazy 单例 `session ?: build().also { session = it }`），不能每次构造新 MediaSession 否则会不断创建 session 句柄泄漏
+  - MediaSessionService 会自动 add 返回的 session——不需要显式调 `MediaSessionService.addSession` 或 `removeSession`
+  - MediaSession 里 GetScreen play/pause/stop 由系统自动透传到 player（player 需通过 `setPlayer` 绑定）；翻章这种 MediaSession 没有内建命令的逻辑走通知栏 action 或 Player.setMediaItems 队列
+
+## 说明
+
 

@@ -237,11 +237,32 @@ gradle assembleDebug
 - 字幕/弹幕：音频书源无弹幕/弹幕叠层需求（音频流无画面承载），`AudioPlayerScreen` 不
   触发 DanmakuMatchEngine；如未来接入音频弹幕（基于音频时间轴），走 §5.4.5 catch-up
   字幕偏移路径扩展。
-- 后台播放：`AudioPlaybackService` 为骨架（通知栏播/暂停 action），尚未接 media3
-  MediaSession 做前台后台无缝衔接；AudioPlayerScreen 先用 PlayerManager 进程内
-  播放满足 mini 落地路径。
+- 后台播放：`AudioPlaybackService` 升级为 MediaSessionService 形态（§4.9 详见下节）。
+  AudioPlayerScreen UI 态仍走 PlayerManager 进程内播放（§6.1 mini 落地路径），
+  后台 Service 态走 PlayerManager 实例 + MediaSession 锁屏控件。
 - UI 控制：用 OutlinedButton+Text 实现播放/暂停（避免引入 material-icons 依赖），
   Slider 显示 `00:00..mm:ss` 时间轴，`formatDuration` 统一格式化。
+
+## §4.9 音频书源后台服务（AudioPlaybackService）
+
+- Service 形态：继承 `MediaSessionService`（media3-session 1.4.1），`onGetSession` 返回单例
+  `MediaSession`（`session ?: build().also { session = it }`）；session 绑定到 PlayerManager.player
+  通过 `playerManager.player?.let { session?.setPlayer(it) }`（nullable 防御）。
+- 起播入口：`AudioPlaybackService.start(context, chapters: List<AudioChapter>, startIndex)` —— UI
+  解析音频书源正文 Audio 后打包章节队列（Gson Array<AudioChapter> 序列化），Service 接收后
+  `loadChapter(chapters[currentIndex])` → `ensurePlayer() + loadAudio(url, headers) + setPlayer(session)`。
+- Service 类型：`foregroundServiceType=mediaPlayback`（Android 14+ 强制 type 声明）；
+  `ServiceCompat.startForeground(service, id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)`。
+  注意：`FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK` 常量在 `android.content.pm.ServiceInfo`，不在 `ServiceCompat`。
+- 控制按钮：通知三 action `prev | play/pause | next`（android.R.drawable.ic_media_* 图标）；MediaStyle
+  紧凑视图通过 setShowActionsInCompactView(prevIcon, playIcon, nextIcon)——参数是图标资源 ID，不是 PendingIntent。
+- MediaSession 锁屏控件：Play/Pause/Stop 由 media3 自动透传到 ExoPlayer（player.setPlayer 绑定）；
+  翻章（prev/next）不在 media3 内建命令里，走通知 action 触发 `ACTION_PREV / ACTION_NEXT`。
+- 生命周期：onDestroy 先 `session.release()` 再 `playerManager.release()`（顺序避免 media3 释放链
+  访问已释放 session）；ACTION_STOP → `release + stopSelf`；ACTION_PLAY 空队列 → 直接 `stopSelf`。
+- PlayerListener 不在 §4.9 服务态接（§6.1 AudioPlayerScreen 进程内 500ms 轮询驱动 UI，Service 态
+  锁屏控件由 MediaSessionService 托管）；如未来要播放进度自动翻页，接 `session.setPlayer` + Player.Listener
+  `onMediaItemTransmission` 或者 ExoPlay playlist。
 
 ## 说明
 
