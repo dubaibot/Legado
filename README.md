@@ -223,6 +223,26 @@ gradle assembleDebug
    - §4.12 复用既有 `PlayRecordEntity` / `ProgressDao`：`upsertPlay` 用
      `@Insert(OnConflictStrategy.REPLACE)` 等价 upsert，按 videoKey 主键落到 play_records。
 
+## 音频书源 §6.1
+
+- 音频书源（`bookSourceType=1`）正文解析：`LegadoBookSource.getContent` 返回
+  `ContentResult.Audio(url, headers)` → `ReaderScreen` 装载 `AudioPlayerScreen`；
+  订阅源音频条目 → `ArticleScreen` 装载 `AudioPlayerScreen`。
+- `AudioPlayerScreen` 复用 §4.9 PlayerManager：`loadAudio(url, headers)` 装载音频直链
+  （不注入字幕 cap 带），`PlayerView` 承载 ExoPlayer 视觉（可视化频谱/进度条由
+  media3-ui 默认控件提供），500ms 轮询 `currentPosition/duration/isPlaying` 驱动
+  Slider 进度与播放/暂停按钮。
+- 章节翻页：ReaderScreen 保留上一章/下一章按钮；切换章节触发 `LaunchedEffect(current.url)`
+  重新 `loadAudio`（先 `release` 旧实例再 `ensurePlayer` 新实例）。
+- 字幕/弹幕：音频书源无弹幕/弹幕叠层需求（音频流无画面承载），`AudioPlayerScreen` 不
+  触发 DanmakuMatchEngine；如未来接入音频弹幕（基于音频时间轴），走 §5.4.5 catch-up
+  字幕偏移路径扩展。
+- 后台播放：`AudioPlaybackService` 为骨架（通知栏播/暂停 action），尚未接 media3
+  MediaSession 做前台后台无缝衔接；AudioPlayerScreen 先用 PlayerManager 进程内
+  播放满足 mini 落地路径。
+- UI 控制：用 OutlinedButton+Text 实现播放/暂停（避免引入 material-icons 依赖），
+  Slider 显示 `00:00..mm:ss` 时间轴，`formatDuration` 统一格式化。
+
 ## 说明
 
 本项目不内置、不分发任何书籍或影视内容，也不内置任何源规则；
