@@ -118,7 +118,13 @@ class JarVideoSource(
             }
         }
         if (resultUrl.isBlank()) resultUrl = url
-        PlayResult(url = resultUrl, headers = headers)
+        // FongMi 协议 parse 字段：0=直链（含抖音 TOS 等无扩展名签名直链）、1=网页需嗅探；
+        // 兼容 int 与字符串两种 JSON 形态，缺失/非法时 -1（消费端按 URL 形状判定）
+        val parseFlag = json.get("parse")?.takeIf { it.isJsonPrimitive }?.let {
+            it.asString.trim().toIntOrNull() ?: -1
+        } ?: -1
+        AppLog.putDebug("JarSource.play: parse=$parseFlag, headerKeys=${headers.keys.joinToString(",")}")
+        PlayResult(url = resultUrl, headers = headers, parse = parseFlag)
     }
 
     override suspend fun danmaku(videoId: String): DanmakuList = DanmakuList()

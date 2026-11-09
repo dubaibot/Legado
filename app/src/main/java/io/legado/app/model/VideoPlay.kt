@@ -843,8 +843,16 @@ object VideoPlay : CoroutineScope by MainScope(){
 
     /**
      * 开始播放
+     *
+     * @param playHeaders jar/py 源 playerContent 返回的头（Referer/UA/Cookie 等），合并进起播头；
+     *   其他入口（RSS/书源/intent 直连）缺省 emptyMap 走源配置头，行为不变
+     * @param jarParse FongMi 协议 parse 字段（0=直链跳过嗅探；1/-1=按 URL 形状判定）
      */
-    fun startPlay(player: StandardGSYVideoPlayer) {
+    fun startPlay(
+        player: StandardGSYVideoPlayer,
+        playHeaders: Map<String, String> = emptyMap(),
+        jarParse: Int = -1,
+    ) {
         // video-source-multiline-l0-preload AD-03：同 key 300ms 防抖（消除 logs9 双起播铁证：同影片 5ms 内两次 startPlay）
         // key = 章节 URL ?: 当前视频 URL；key 空白（URL 未就绪）时不防抖，护首播/initSource 早期；
         // 新影片（key 不同）不受限；与 switchToken 解耦（token 在两次调用间已递增，同 token 防抖拦不住）。
@@ -864,7 +872,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         // startPlay 内层 async 挂 loadScope 不受 switchArticleJob/playEpisodeJob cancel 覆盖，
         // 迟到回调 setUp 前必须校验 token，防止连续切换时旧回调覆盖当前播放会话
         val startPlayToken = currentSwitchToken
-        AppLog.put("VideoPlay.startPlay called: singleUrl=$singleUrl, source=${source?.getKey()?.take(2)}, videoUrl=${videoUrl?.take(2)}, token=$startPlayToken")
+        AppLog.put("VideoPlay.startPlay called: singleUrl=$singleUrl, source=${source?.getKey()?.take(2)}, videoUrl=${videoUrl?.take(2)}, token=$startPlayToken, jarParse=$jarParse, headers=${playHeaders.size}")
         if (source == null && !singleUrl) {
             AppLog.put("VideoPlay.startPlay early return: source=null and !singleUrl")
             return
@@ -899,9 +907,12 @@ object VideoPlay : CoroutineScope by MainScope(){
                 AppLog.put("VideoPlay.startPlay AnalyzeUrl ok, headerMap.size=${analyzeUrl.headerMap.size}, url=${analyzeUrl.url.take(2)}")
                 // 嗅探补全（TVbox/jar 源适配）：singleUrl 非流媒体格式时走三层降级采集
                 // （MacCMS player_aaaa → DOM 正则 → WebView 抓包），命中候选后携带嗅探头起播；
-                // 直播流永不嗅探；无法解析出流媒体时不把播放页 URL 交给 ExoPlayer（防 3003）。
+                // 直播流永不嗅探；jar 协议 parse=0 时 url 为可直接播放的直链（含抖音 TOS 等
+                // 无扩展名签名直链——嗅探它永远抓不到新视频请求，只会白等超时），跳过嗅探；
+                // 无法解析出流媒体时不把播放页 URL 交给 ExoPlayer（防 3003）。
+                val jarDirect = jarParse == 0
                 val resolved = VideoUrlExtractor.resolvePlayerPageUrl(analyzeUrl.url)
-                val sniffed = if (live || VideoUrlExtractor.isDirectVideoStreamUrl(resolved)) {
+                val sniffed = if (live || jarDirect || VideoUrlExtractor.isDirectVideoStreamUrl(resolved)) {
                     null
                 } else {
                     try {
@@ -913,7 +924,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                         null
                     }
                 }
-                if (sniffed == null && !VideoUrlExtractor.isDirectVideoStreamUrl(resolved)) {
+                if (sniffed == null && !jarDirect && !VideoUrlExtractor.isDirectVideoStreamUrl(resolved)) {
                     AppLog.put("startPlay singleUrl: 无法解析视频流 URL, sniffed=${sniffed == null}, resolvedType=nonstream")
                     withContext(Main) {
                         if (currentSwitchToken != startPlayToken) {
@@ -924,9 +935,14 @@ object VideoPlay : CoroutineScope by MainScope(){
                     return@async
                 }
                 val playUrl = sniffed?.url?.takeIf { it.isNotBlank() } ?: resolved
+                // jar/py playerContent 声明的头（Referer/UA/Cookie）是源站实测环境，
+                // 覆盖 AnalyzeUrl 推断头（source=null 时后者本为空）；嗅探命中时仍由
+                // HeaderResolver 以嗅探现场头最优先合并
+                val baseHeaders = LinkedHashMap(analyzeUrl.headerMap)
+                playHeaders.forEach { (k, v) -> if (v.isNotBlank()) baseHeaders[k] = v }
                 val headMap = sniffed?.let {
-                    HeaderResolver.merge(it, analyzeUrl.headerMap, null, playUrl)
-                } ?: analyzeUrl.headerMap
+                    HeaderResolver.merge(it, baseHeaders, null, playUrl)
+                } ?: baseHeaders
                 withContext(Main) {
                     if (currentSwitchToken != startPlayToken) {
                         AppLog.put("startPlay singleUrl: token expired, drop late callback")
@@ -2355,15 +2371,22 @@ object VideoPlay : CoroutineScope by MainScope(){
             // Python 模块，HomeBridge.play → PythonEnv.module(pluginId) 返回 null → 永远
             // 「视频链接解析失败」永不起播。非 py 源直接经 VideoSource.play 解析（统一接口口径），
             // py 源才继续走 HomeBridge Python 桥接。
+            // PlayResult 完整透传：headers（源站实测 Referer/UA/Cookie）与 parse（0=直链）
+            // 此前只取 .url 导致头丢失（Exo 裸 UA 请求被 CDN 拒）+ 无扩展名直链被误嗅探
             val nonPySource = runCatching {
                 VideoSourceRegistry.getSourceInfo(pluginId)
                     ?.takeIf { it.type != VideoSourceType.PY }
                     ?.let { VideoSourceRegistry.createSource(it) }
                     ?.takeIf { it.sourceType != VideoSourceType.PY }
             }.getOrNull()
+            var resolvedHeaders: Map<String, String> = emptyMap()
+            var resolvedParse = -1
             val resolvedUrl = if (nonPySource != null) {
                 try {
-                    nonPySource.play(episode.url).url
+                    val playResult = nonPySource.play(episode.url)
+                    resolvedHeaders = playResult.headers
+                    resolvedParse = playResult.parse
+                    playResult.url
                 } catch (e: Exception) {
                     AppLog.put(
                         "playPyEpisode: non-py source resolve failed, pluginId=${pluginId.take(2)}, " +
@@ -2389,7 +2412,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                     singleUrl = true
                     val stdPlayer = player as? StandardGSYVideoPlayer
                     if (stdPlayer != null) {
-                        startPlay(stdPlayer)
+                        startPlay(stdPlayer, resolvedHeaders, resolvedParse)
                     }
                 }
             } else {

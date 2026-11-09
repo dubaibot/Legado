@@ -1,0 +1,12 @@
+{
+  "key": "bitte-yiwu",
+  "name": "比特┃不卡",
+  "api": "csp_BttwooGuard",
+  "jar": "https://raw.githubusercontent.com/ne7359/tvurl/master/jar/fan.txt;9d5f341aa5f3353b50cc3bc16b4f3e8a;https://raw.githubusercontent.com/qist/tvbox/master/jar/fan.txt",
+  "type": 3,
+  "extend": "",
+  "timeout": 10,
+  "searchable": 1,
+  "quickSearch": 1,
+  "changeable": 1
+}

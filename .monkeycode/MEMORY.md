@@ -185,4 +185,18 @@ Entries discovered by the Agent during task execution should follow this format:
   - VideoPlayerActivity 的 intent sourceType 是 SourceType.book=0/rss=1，不是 io.legado.app.data.video.SourceType
   - 修复入口在 PyHomepageViewModel.playVideo（按 source.sourceType==JAR 置 gate，其余路径透传），
     onDestroy 复位 gate=false
-  - b11 实测：BUILD SUCCESSFUL in 22m 25s，PngStripDataSourceFactory 字符串在 classes3.dex 保留
+   - b11 实测：BUILD SUCCESSFUL in 22m 25s，PngStripDataSourceFactory 字符串在 classes3.dex 保留
+
+[非 py 视频源播放必须走 VideoSource.play，不可经 HomeBridge 桥接]
+- Date: 2026-11-09（b14 头透传/parse 协议知识合并 2026-11-08 条目）
+- Context: 排查 TVbox jar 源导入后不可播：PyHomepageViewModel.playVideo 对全部 VideoSource 类型统一传 pyPluginId 到 VideoPlayerActivity；VideoPlay.playRssEpisode 分支 1（pyPluginId!=null && source==null）一律走 playPyEpisode → HomeBridge.play，而 jar/tvbox_xxx 等非 py 源 ID 并非 Python 模块，PythonEnv.module(id)=null → 永远「视频链接解析失败」，源返回的 m3u8 从不消费
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - playPyEpisode 入口先查 VideoSourceRegistry.getSourceInfo(pluginId)；type!=PY（或 createSource 后 sourceType!=PY）直接走 VideoSource.play(episode.url) 解析（所有 VideoSource 子类均有 play(url): PlayResult），py 源维持 HomeBridge.play
+  - VideoSource.play 的返回 PlayResult 必须完整透传（url + headers + parse），异常时回退 episode.url 原值交 GSY 层处理
+  - FongMi playerContent 的 parse 字段语义：0=url 是可直接播放的流媒体直链（含抖音 TOS tos-cn-v-* 等无扩展名签名直链）、1=网页需嗅探；「无扩展名」≠「播放页」，对视频直链做 WebView 嗅探永远抓不到新视频请求只会白等超时（真机铁证：R5网络抓包 path=/tos-cn-v-5f73e7/... 15s 超时 → 加载视频链接失败）
+  - jar 返回的 headers（Referer/UA/Cookie）是源站实测环境，丢弃后 Exo 裸 UA 请求会被 CDN 拒（真机铁证：headerMap.size=0 + m3u8 BUFFERING_TIMEOUT）；startPlay 增加 playHeaders/jarParse 参数，jarParse==0 跳过嗅探、jar 头并入 baseHeaders（嗅探命中时仍由 HeaderResolver 嗅探头最优先）
+  - TVbox/jar spider 播放页常返回非流媒体 URL（播放页/JS 跳转），direct m3u8 之外必须过三层嗅探：startPlay singleUrl 分支接入 extractVideoUrlForEpisode（MacCMS player_aaaa→DOM→WebView），命中候选经 HeaderResolver.merge 携带嗅探头起播；无法解析出流媒体时报错屏，禁把播放页 URL 交给 ExoPlayer（防 3003）
+  - 嗅探只对非流媒体且非 parse=0 的 URL 触发，直链 m3u8 快速路径与直播流均跳过，零行为变更
+  - 同名陷阱：io.legado.app.constant.SourceType（book/rss int）与 io.legado.app.data.video.SourceType（video 枚举）同名，VideoPlay.kt 用 import alias VideoSourceType 区分，勿直接 import 后混用
+  - b12/b13/b14 实测：BUILD SUCCESSFUL（20m1s / 23m11s），APK 已产出 110413 版本 x64/armeabi-v7a/universal

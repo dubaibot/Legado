@@ -72,6 +72,12 @@ data class DanmakuList(
 data class PlayResult(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
+    /**
+     * FongMi Spider 协议 parse 字段（playerContent 返回的 "parse"）：
+     * 0 = url 已是可直接播放的流媒体直链（含无扩展名的签名直链，如抖音 TOS）；1 = url 是需嗅探的网页。
+     * -1 = 未声明（jar 未返回该字段），保持按 URL 形状判定的既有行为。
+     */
+    val parse: Int = -1,
 )
 
 /**
