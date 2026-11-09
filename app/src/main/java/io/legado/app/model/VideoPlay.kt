@@ -897,17 +897,45 @@ object VideoPlay : CoroutineScope by MainScope(){
                     chapter = null
                 )
                 AppLog.put("VideoPlay.startPlay AnalyzeUrl ok, headerMap.size=${analyzeUrl.headerMap.size}, url=${analyzeUrl.url.take(2)}")
+                // 嗅探补全（TVbox/jar 源适配）：singleUrl 非流媒体格式时走三层降级采集
+                // （MacCMS player_aaaa → DOM 正则 → WebView 抓包），命中候选后携带嗅探头起播；
+                // 直播流永不嗅探；无法解析出流媒体时不把播放页 URL 交给 ExoPlayer（防 3003）。
+                val resolved = VideoUrlExtractor.resolvePlayerPageUrl(analyzeUrl.url)
+                val sniffed = if (live || VideoUrlExtractor.isDirectVideoStreamUrl(resolved)) {
+                    null
+                } else {
+                    try {
+                        VideoUrlExtractor.extractVideoUrlForEpisode(resolved, source, book)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLog.put("startPlay singleUrl: extractVideoUrlForEpisode failed, url=${resolved.take(2)}", e)
+                        null
+                    }
+                }
+                if (sniffed == null && !VideoUrlExtractor.isDirectVideoStreamUrl(resolved)) {
+                    AppLog.put("startPlay singleUrl: 无法解析视频流 URL, sniffed=${sniffed == null}, resolvedType=nonstream")
+                    withContext(Main) {
+                        if (currentSwitchToken != startPlayToken) {
+                            return@withContext
+                        }
+                        postEvent(EventBus.VIDEO_PLAY_ERROR, "播放失败：视频链接解析失败，请重试或切换线路")
+                    }
+                    return@async
+                }
+                val playUrl = sniffed?.url?.takeIf { it.isNotBlank() } ?: resolved
+                val headMap = sniffed?.let {
+                    HeaderResolver.merge(it, analyzeUrl.headerMap, null, playUrl)
+                } ?: analyzeUrl.headerMap
                 withContext(Main) {
                     if (currentSwitchToken != startPlayToken) {
                         AppLog.put("startPlay singleUrl: token expired, drop late callback")
                         return@withContext
                     }
-                    player.mapHeadData = analyzeUrl.headerMap
-                    currentPlayHeaders = analyzeUrl.headerMap
-                    // Bug8 修复：统一解析播放器页面 URL，避免 3003 错误
-                    val url = VideoUrlExtractor.resolvePlayerPageUrl(analyzeUrl.url)
-                    player.setUp(url, cachePlay, File(appCtx.externalCache, "exoplayer"), videoTitle)
-                    AppLog.put("VideoPlay.startPlay setUp done, autoPlay=$autoPlay, starting playLogic")
+                    player.mapHeadData = headMap
+                    currentPlayHeaders = headMap
+                    player.setUp(playUrl, cachePlay, File(appCtx.externalCache, "exoplayer"), videoTitle)
+                    AppLog.put("VideoPlay.startPlay setUp done, autoPlay=$autoPlay, sniffed=${sniffed != null}, starting playLogic")
                     if (autoPlay) {
                         player.startPlayLogic()
                     }
