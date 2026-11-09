@@ -183,4 +183,11 @@ class DanmakuMatchEngine(
             )
         )
     }
+
+    /**
+     * 由匹配结果的 [DanmakuSourceEntity] 重建 [IDanmakuSource] 实例，
+     * 供上层（如 PlayerScreen）拉取弹幕评论。
+     * 工厂由注入时确定，保证与 autoMatch 使用同一构造链。
+     */
+    fun sourceFor(entity: DanmakuSourceEntity): IDanmakuSource? = sourceFactory(entity)
 }

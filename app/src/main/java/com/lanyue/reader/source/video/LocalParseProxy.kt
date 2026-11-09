@@ -35,7 +35,7 @@ import java.security.SecureRandom
  */
 class LocalParseProxy(
     private val net: NetworkDispatcher,
-    private val parses: List<TvBoxParser.ParseRule>,
+    var parses: List<TvBoxParser.ParseRule>,
     private val sessionTtlMs: Long = DEFAULT_SESSION_TTL_MS,
     private val maxSessions: Int = DEFAULT_MAX_SESSIONS,
     private val now: () -> Long = System::currentTimeMillis

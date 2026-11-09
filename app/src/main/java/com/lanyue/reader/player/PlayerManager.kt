@@ -1,6 +1,7 @@
 package com.lanyue.reader.player
 
 import android.content.Context
+import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -64,10 +65,51 @@ class PlayerManager(
     }
 
     /**
+     * 4.9 字幕配置：SRT / ASS 外挂。
+     * Media3 通过 MediaItem.SubtitleConfiguration 装载字幕轨道；
+     * url/mimeType/language/title/label 全部暴露供业务层定制。
+     */
+    data class SubtitleConfig(
+        val url: String,
+        val mimeType: String,
+        val language: String,
+        val title: String,
+        val label: String
+    )
+
+    /**
+     * 累加待装载字幕。后续 load() 装载时自动注入
+     * （§4.9 「装载前注入」路径）。同一 url 视为同轨覆盖。
+     */
+    fun addSubtitle(
+        url: String,
+        mimeType: String = "text/x-ssa",
+        language: String = "zh",
+        title: String = "字幕",
+        label: String = ""
+    ) {
+        if (url.isBlank()) return
+        val filtered = pendingSubtitles.filterNot { it.url == url }
+        pendingSubtitles = filtered + SubtitleConfig(url, mimeType, language, title, label)
+    }
+
+    fun clearSubtitles() {
+        pendingSubtitles = emptyList()
+    }
+
+    private var pendingSubtitles: List<SubtitleConfig> = emptyList()
+
+    /**
      * 装载播放源。[headers] 用于防盗链直链。
      * URL 形如 127.0.0.1:{port}/{token}/... 时同样走本方法（LocalParseProxy）。
+     * [subtitles] 显式指定字幕列表；未指定时回退到 [pendingSubtitles]（addSubtitle 累加）。
      */
-    fun load(url: String, headers: Map<String, String> = emptyMap(), startPositionMs: Long = 0L) {
+    fun load(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        startPositionMs: Long = 0L,
+        subtitles: List<SubtitleConfig> = emptyList()
+    ) {
         val exo = ensurePlayer()
         val dataSourceFactory = DefaultDataSource.Factory(
             context,
@@ -76,7 +118,21 @@ class PlayerManager(
             }
         )
 
-        val mediaItem = MediaItem.fromUri(url)
+        val chosen = if (subtitles.isNotEmpty()) subtitles else pendingSubtitles
+        val builder = MediaItem.Builder().setUri(url)
+        if (chosen.isNotEmpty()) {
+            val configs = chosen.map { sub ->
+                val label = listOf(sub.title, sub.label).filter(String::isNotEmpty).joinToString(" ")
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
+                    .setMimeType(sub.mimeType)
+                    .setLanguage(sub.language)
+                    .setLabel(label)
+                    .build()
+            }
+            builder.setSubtitleConfigurations(configs)
+        }
+        val mediaItem = builder.build()
+
         val source = when {
             url.contains(".m3u8", ignoreCase = true) ->
                 HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
@@ -92,8 +148,9 @@ class PlayerManager(
         exo.playWhenReady = true
     }
 
-    /** 音频书源：复用同一播放器，切音频属性。 */
+    /** 音频书源：复用同一播放器，切音频属性。（音频模式不加载字幕） */
     fun loadAudio(url: String, headers: Map<String, String> = emptyMap()) {
+        clearSubtitles()
         load(url, headers)
     }
 
@@ -101,10 +158,9 @@ class PlayerManager(
         player?.setPlaybackSpeed(speed)
     }
 
-    /** 4.9 字幕：SRT / ASS 外挂。 */
-    fun addSubtitle(url: String, mimeType: String = "text/x-ssa") {
-        // Media3 字幕由 MediaItem.SubtitleConfiguration 提供，装载前注入
-    }
+    /** 4.9 字幕：通过 [addSubtitle] + [load] 装载前注入 MediaItem.SubtitleConfiguration。 */
+    fun addSubtitle(url: String, mimeType: String = "text/x-ssa") =
+        addSubtitle(url, mimeType, language = "zh", title = "字幕", label = "")
 
     fun pause() = player?.pause()
 
@@ -115,5 +171,6 @@ class PlayerManager(
     fun release() {
         player?.release()
         player = null
+        pendingSubtitles = emptyList()
     }
 }

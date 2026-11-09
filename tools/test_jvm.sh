@@ -19,11 +19,13 @@ EXCLUDES=(
   "data/db/SourceDaos.kt"
   "core/security/KeystoreSecretStore.kt"
   "core/engine/RssFallbackParser.kt"
+  "core/engine/WebViewJsRuntime.kt"
   "danmaku/DanmakuMatchEngine.kt"
   "danmaku/render/DanmakuFormatConverter.kt"
   "danmaku/render/DanmakuCanvasLayer.kt"
   "player/"
   "source/video/LocalParseProxy.kt"
+  "source/video/WebViewSnifferPool.kt"
   "LanyueApp.kt"
   "ui/"
 )
@@ -54,6 +56,7 @@ for cls in \
   ReadingLayerTestKt \
   BackupLayerTestKt \
   SourceImportLayerTestKt \
+  SourceEntityConverterTestKt \
   ShelfAggregateLayerTestKt \
   DanmakuFilterTestKt \
   SecurityGuardTestKt \

@@ -53,11 +53,24 @@ import com.lanyue.reader.source.debug.SourceDebugger.Status
 import com.lanyue.reader.source.import.SourceImportParser
 import com.lanyue.reader.source.import.SourceImportParser.ImportedBookSource
 import com.lanyue.reader.source.import.SourceImportParser.ImportResult
+import com.lanyue.reader.source.model.IVideoSource
+import com.lanyue.reader.source.model.SearchBookItem
+import com.lanyue.reader.source.model.SubscriptionItem
+import com.lanyue.reader.source.model.TocItem
+import com.lanyue.reader.source.model.VideoDetail
+import com.lanyue.reader.source.model.VideoEpisode
+import com.lanyue.reader.source.model.VideoItem
+import com.lanyue.reader.data.db.entity.VideoSiteEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import com.lanyue.reader.core.engine.NetworkException
+import com.lanyue.reader.core.net.HttpRequest
+import com.lanyue.reader.source.video.CmsVideoSource
+import com.lanyue.reader.source.video.TvBoxParser
+import com.lanyue.reader.source.model.PlayResult
 
 /**
  * 首个交互迭代：书源导入 -> 列表 -> 点击书源跑静态自检。
@@ -88,15 +101,52 @@ private val BOOK_RULE_KEYS =
 
 private val TYPE_LABELS = listOf("文本", "音频", "图片", "文件")
 
-private val TEXT_STYLE_DIM = TextStyle(color = Color(0xFF808080))
-private val TEXT_STYLE_BAD = TextStyle(color = Color(0xFFB00020))
+internal val TEXT_STYLE_DIM = TextStyle(color = Color(0xFF808080))
+internal val TEXT_STYLE_BAD = TextStyle(color = Color(0xFFB00020))
+
+/** 页面路由：Home -> 书源运行链路 / 订阅源运行链路 / 静态体检。 */
+internal sealed interface Route {
+    data object Home : Route
+    data class BookSearch(val source: ImportedBookSource) : Route
+    data class BookDetail(val source: ImportedBookSource, val item: SearchBookItem, val referrer: String) : Route
+    data class Reader(
+        val source: ImportedBookSource,
+        val item: SearchBookItem,
+        val referrer: String,
+        val chapter: TocItem,
+        val toc: List<TocItem>
+    ) : Route
+    data class RssBrowse(val source: ImportedBookSource) : Route
+    data class Article(val source: ImportedBookSource, val item: SubscriptionItem, val referrer: String) : Route
+    data class Check(val source: ImportedBookSource) : Route
+    data class VideoDetail(val source: IVideoSource, val item: VideoItem) : Route
+    data class VideoExplore(val row: VideoSiteRow) : Route
+    data class Player(
+        val source: IVideoSource,
+        val detail: com.lanyue.reader.source.model.VideoDetail,
+        val episode: VideoEpisode,
+        val playResult: PlayResult
+    ) : Route
+}
+
+/** 影视站点行：来自 TvBox 配置展开，复用同一记源 CmsVideoSource。 */
+internal data class VideoSiteRow(
+    val site: VideoSiteEntity,
+    val source: IVideoSource
+) {
+    val key: String get() = site.siteKey
+    val label: String get() = site.name
+}
 
 @Composable
 fun SourceApp() {
     val sources = remember { mutableStateListOf<ImportedBookSource>() }
     var lastImport by remember { mutableStateOf<ImportResult?>(null) }
     var readStatus by remember { mutableStateOf<String?>(null) }
-    var detail by remember { mutableStateOf<ImportedBookSource?>(null) }
+    var route by remember { mutableStateOf<Route>(Route.Home) }
+    val videoSites = remember { mutableStateListOf<VideoSiteRow>() }
+    var tvUrl by remember { mutableStateOf("") }
+    var tvErr by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -120,20 +170,159 @@ fun SourceApp() {
         }
     }
 
+    /**
+     * §1.5 / §3.4 影视配置导入：优酷 TVBox json URL
+     * -> 拉取 -> TvBoxParser.parse -> 展开站点 -> CmsVideoSource
+     * -> 校验 -> 去重 -> 注入 videoSites 列表
+     */
+    fun importVideo(url: String) {
+        val g = RuntimeGraph.get(context)
+        scope.launch {
+            tvErr = null
+            val trimmed = url.trim()
+            if (trimmed.isEmpty()) {
+                tvErr = "请先填写配置 URL"
+                return@launch
+            }
+            if (!trimmed.startsWith("http")) {
+                tvErr = "配置 URL 必须是 http(s) 链接"
+                return@launch
+            }
+            val resp = runCatching {
+                g.net.execute(
+                    HttpRequest(
+                        url = trimmed,
+                        method = "GET",
+                        sourceId = "tvbox-config",
+                        timeoutMs = 20_000L
+                    ),
+                    traceId = "import-tvbox-" + trimmed
+                )
+            }.getOrNull()
+            val body = resp?.body
+            if (body.isNullOrEmpty()) {
+                val code = resp?.code?.toString() ?: "?"
+                tvErr = "拉取失败（HTTP $code）"
+                return@launch
+            }
+            val parsed = runCatching { TvBoxParser().parse(trimmed, body) }.getOrNull()
+            val parsedOk = parsed.let {
+                when (it) {
+                    is TvBoxParser.Result.Ok -> it.config
+                    is TvBoxParser.Result.Invalid -> null
+                    else -> null
+                }
+            }
+            if (parsedOk == null) {
+                tvErr = "配置 JSON 不合法：" +
+                    (when (parsed) {
+                        is TvBoxParser.Result.Ok -> ""
+                        is TvBoxParser.Result.Invalid -> parsed.reason
+                        else -> ""
+                    })
+                return@launch
+            }
+            // 刷新 RuntimeGraph 的本代理 parses（§7.3 type 2 由本代理解析） + 启动服务
+            RuntimeGraph.updateVideoParses(context, parsedOk.parses)
+
+            val added = parsedOk.sites.filter { it.enabled }.filterNot { site ->
+                videoSites.any { it.site.configUrl == site.configUrl && it.site.siteKey == site.siteKey }
+            }
+            added.forEach { site ->
+                val src = CmsVideoSource(
+                    entity = site,
+                    net = g.net,
+                    metrics = g.metrics,
+                    parses = parsedOk.parses,
+                    flags = parsedOk.flags
+                )
+                videoSites.add(VideoSiteRow(site, src))
+            }
+            tvErr = if (added.isEmpty()) "无新站点（可能全部已存在/全部被关停）"
+            else null
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
-        if (detail != null) {
-            DetailScreen(
-                source = detail!!,
-                onBack = { detail = null }
-            )
-        } else {
-            HomeScreen(
+        when (val r = route) {
+            Route.Home -> HomeScreen(
                 sources = sources,
                 lastImport = lastImport,
                 readStatus = readStatus,
+                videoSites = videoSites,
+                tvUrl = tvUrl,
+                tvErr = tvErr,
                 onImport = { filePicker.launch("*/*") },
-                onOpen = { detail = it },
+                onTvUrlChange = { tvUrl = it },
+                onImportVideo = { importVideo(it) },
+                onOpenVideo = { row -> route = Route.VideoExplore(row) },
+                onOpen = { src ->
+                    route = if (src.fields().isRss) Route.RssBrowse(src) else Route.BookSearch(src)
+                },
                 onDismissImport = { lastImport = null; readStatus = null }
+            )
+            is Route.BookSearch -> BookSearchScreen(
+                source = r.source,
+                onBack = { route = Route.Home },
+                onCheck = { route = Route.Check(r.source) },
+                onOpenItem = { item, ref -> route = Route.BookDetail(r.source, item, ref) }
+            )
+            is Route.BookDetail -> BookDetailScreen(
+                source = r.source,
+                item = r.item,
+                referrerUrl = r.referrer,
+                onBack = { route = Route.BookSearch(r.source) },
+                onOpenChapter = { chapter, toc, ref ->
+                    route = Route.Reader(r.source, r.item, ref, chapter, toc)
+                }
+            )
+            is Route.Reader -> ReaderScreen(
+                source = r.source,
+                chapter = r.chapter,
+                toc = r.toc,
+                referrerUrl = r.referrer,
+                bookUrl = r.item.bookUrl,
+                onBack = { route = Route.BookDetail(r.source, r.item, r.referrer) }
+            )
+            is Route.RssBrowse -> RssBrowseScreen(
+                source = r.source,
+                onBack = { route = Route.Home },
+                onCheck = { route = Route.Check(r.source) },
+                onOpenItem = { item, ref -> route = Route.Article(r.source, item, ref) }
+            )
+            is Route.Article -> ArticleScreen(
+                source = r.source,
+                item = r.item,
+                referrerUrl = r.referrer,
+                onBack = { route = Route.RssBrowse(r.source) }
+            )
+            is Route.Check -> DetailScreen(source = r.source, onBack = { route = Route.Home })
+            is Route.VideoDetail -> VideoDetailScreen(
+                source = r.source,
+                item = r.item,
+                onBack = { route = Route.Home },
+                onPlay = { src, det, ep ->
+                    scope.launch {
+                        val pr = withContext(Dispatchers.IO) {
+                            runCatching { src.getPlay(ep) }.getOrNull()
+                        } ?: return@launch
+                        route = Route.Player(src, det, ep, pr)
+                    }
+                }
+            )
+            is Route.VideoExplore -> VideoExploreScreen(
+                source = r.row.source,
+                onBack = { route = Route.Home },
+                onOpenItem = { item ->
+                    route = Route.VideoDetail(r.row.source, item)
+                }
+            )
+            is Route.Player -> PlayerScreen(
+                source = r.source,
+                detail = r.detail,
+                episode = r.episode,
+                playResult = r.playResult,
+                onBack = { route = Route.Home }
             )
         }
     }
@@ -144,7 +333,13 @@ private fun HomeScreen(
     sources: List<ImportedBookSource>,
     lastImport: ImportResult?,
     readStatus: String?,
+    videoSites: List<VideoSiteRow>,
+    tvUrl: String,
+    tvErr: String?,
     onImport: () -> Unit,
+    onTvUrlChange: (String) -> Unit,
+    onImportVideo: (String) -> Unit,
+    onOpenVideo: (VideoSiteRow) -> Unit,
     onOpen: (ImportedBookSource) -> Unit,
     onDismissImport: () -> Unit
 ) {
@@ -206,6 +401,55 @@ private fun HomeScreen(
 
         item {
             Text(stringResource(R.string.onboarding_note), style = TEXT_STYLE_DIM)
+        }
+
+        item {
+            Column(Modifier.fillMaxWidth()) {
+                Text("影视配置导入", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = tvUrl,
+                        onValueChange = onTvUrlChange,
+                        label = { Text("TVBox JSON URL") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = { onImportVideo(tvUrl) }) { Text("导入") }
+                }
+                Spacer(Modifier.height(4.dp))
+                if (tvErr != null) {
+                    Text(tvErr!!, style = TEXT_STYLE_BAD, modifier = Modifier.padding(top = 4.dp))
+                }
+                Spacer(Modifier.height(4.dp))
+                if (videoSites.isEmpty()) {
+                    Text("尚未导入影视配置", style = TEXT_STYLE_DIM)
+                } else {
+                    videoSites.forEach { row ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                                .clickable { onOpenVideo(row) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(row.label, fontWeight = FontWeight.Medium)
+                                Text(
+                                    row.site.api ?: (row.site.configUrl + "#" + row.key),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = TEXT_STYLE_DIM
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

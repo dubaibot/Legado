@@ -142,6 +142,7 @@ bash tools/ci.sh
 | `tests/ReadingLayerTest.kt` | 阅读设置往返 + 翻页状态机 + 分页链路（126 项） |
 | `tests/BackupLayerTest.kt` | 备份编解码容错 + 合并策略（89 项） |
 | `tests/SourceImportLayerTest.kt` | 书源导入解析与同步策略（161 项） |
+| `tests/SourceEntityConverterTest.kt` | 导入书源实体转换器（Legado JSON 字段映射、URL 推导、规则归一化、别名解析、嵌套 JSON/flat 规则提取）（54 项） |
 | `tests/ShelfAggregateLayerTest.kt` | 聚合搜索 + 书架操作 + 换源映射（101 项） |
 | `tests/DanmakuFilterTest.kt` | 弹幕渲染参数 + 过滤屏蔽/合并去重/同屏截断（55 项） |
 | `tests/SecurityGuardTest.kt` | 安全闸门（URL/SSRF/重定向/限流/HTML 判定） + 权限分级（114 项） |
@@ -178,10 +179,38 @@ gradle assembleDebug
 
 产物 `app/build/outputs/apk/debug/app-debug.apk`（debug 签名）。
 已验证：包名 `com.lanyue.reader`，版本 0.1.0，minSdk 26 / targetSdk 34；
-`aapt2 dump badging` + `apksigner verify` 通过。首屏为书源管理页：通过系统文件选择器
-导入书源文件（Legado Json / 订阅），点击书源进入离线调试管线（`SourceDebugger.staticCheck`）
-显示搜索/详情/目录/正文四阶段体检结果；声明不内置任何源。
-并注册 `lanYue://booksource|rssSource|video|danmaku` 四个深度链接 scheme。
+`aapt2 dump badging` + `apksigner verify` 通过。首屏为书源/影视源管理页：
+
+- 书源导入：通过系统文件选择器导入书源文件（Legado Json / 订阅 Json）→ 点击书源进入
+  运行链路页（`SourceRuntimeScreen`）：书源 搜索 → 详情+目录 → 正文阅读；订阅源
+  分类 → 文章列表 → 正文（无 `ruleContent` 走 WebView 原样打开）；顶栏「体检」入口调
+  `SourceDebugger.staticCheck` 四阶段自检。声明不内置任何源。并注册 `lanYue://booksource|rssSource|video|danmaku` 四个深度链接 scheme。
+- 影视配置导入：首页「影视配置导入」输入框填入 TVBox JSON 配置 URL 点「导入」→
+  `TvBoxParser.parse` 展开多站点 → `CmsVideoSource` 装配 → 刷新 `RuntimeGraph.updateVideoParses`
+  （§7.3 type 2 由 `LocalParseProxy` 本地代理解析）→ 展开站点列表；点击站点进影视发现页
+  （§3.4 分类 FilterChip → 海报网格）→ 详情页（§3.5 线路 + 选集 FilterChip）→ 播放页（§3.7
+  `PlayerScreen` + `PlayerManager` 装载 DIRECT / PARSE 本地代理 / SNIFF 嗅探渲染池三态装载）。
+  SNIFF 链路：PlayService 产出 `PlayResult.kind = SNIFF` → `PlayerScreen` 调
+  `RuntimeGraph.sniffer.sniff(pageUrl, Priority.USER_PLAYBACK, domainAllowed)` →
+  `WebViewSnifferPool.open` 创建独立 WebView 实例，主线程拦截
+  `WebViewClient.shouldInterceptRequest` 观察所有请求 URL（Content-Type 因
+  onLoadResource 不提供响应头，统一按 URL 后缀判定），首个 `isMedia` 命中的 URL 立即
+  返回 → `PlayerScreen` 用 `hit.url / hit.headers` 装载 ExoPlayer。会话结束
+  `navigateToBlankAndClear`（`about:blank` + `clearHistory`）+ `destroy`。
+  Cookie 经 `CookieManager.setCookie` 注入，复用 §4.6 单一真源。
+  播放页额外提供弹幕叠层与外挂字幕：
+  - 弹幕：播放发起时按 `DanmakuMatchRequest(detail.name, episode.number)` 走
+    `DanmakuMatchEngine.autoMatch` → 命中即 `fetchComments(from=0, window=60s)`，
+    `DanmakuCanvasLayer` 叠在 `PlayerView` 之上；位置由 `PlayerManager` 500ms 轮询驱动；
+    跨 60s 窗口边界时 `fetchComments(nextWindow, ...)` 增量拉取。
+    未匹配时底部展示「未匹配到弹幕」状态。`DanmakuMatchEngine.COMMENT_WINDOW_MS / PREFETCH_THRESHOLD_MS`
+    沿用 §4.10.4 配置。弹幕引擎厂由 `RuntimeGraph.graph.danmakuEngine` 暴露。
+  - 字幕：底部 `OutlinedTextField` 输入 `.srt / .vtt / .ass` URL → 装载按钮调用
+    `PlayerManager.addSubtitle(url, mimeType)` + reload → ExoPlayer 通过
+    `MediaItem.SubtitleConfiguration` 装载前注入，启用系统原生字幕轨道选择 UI。
+    Media3 1.4.1 的 `SubtitleConfiguration.Builder` 仅保留 `setLabel` 参数
+    （旧版 setTitle / setSelectionUiEnabled 已迁移为 label + 轨道选择 UI 自动开关）。
+    装载/移除时保存 `currentPosition` 再 `seekTo` 保持播放进度不丢。
 
 ## 说明
 
