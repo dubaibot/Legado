@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
+import com.lanyue.reader.player.AudioPlayerScreen
 import com.lanyue.reader.source.book.LegadoBookSource
 import com.lanyue.reader.source.import.SourceEntityConverter
 import com.lanyue.reader.source.import.SourceImportParser.ImportedBookSource
@@ -252,12 +253,17 @@ internal fun ReaderScreen(
     var webUrl by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(true) }
     var current by remember { mutableStateOf(chapter) }
+    /** §6.1 音频书源结果装载：AudioPlayerScreen 替代正文文本显示。 */
+    var audioUrl by remember { mutableStateOf<String?>(null) }
+    var audioHeaders by remember { mutableStateOf(emptyMap<String, String>()) }
+    var showAudio by remember { mutableStateOf(false) }
 
     LaunchedEffect(current.url) {
         busy = true
         error = null
         text = null
         webUrl = null
+        showAudio = false
         try {
             val entity = SourceEntityConverter.toBookEntity(source.raw)
                 ?: throw IllegalStateException("该源缺少可运行的地址，无法读取正文")
@@ -266,7 +272,12 @@ internal fun ReaderScreen(
             val url = resolveUrl(referrerUrl.ifBlank { bookUrl }, current.url)
             when (val r = withContext(Dispatchers.IO) { src.getContent(url) }) {
                 is ContentResult.Html -> text = htmlToText(r.html)
-                is ContentResult.Audio -> text = "音频章节（播放链路后续轮次提供）：\n" + r.url
+                is ContentResult.Audio -> {
+                    audioUrl = r.url
+                    audioHeaders = r.headers
+                    showAudio = true
+                    return@LaunchedEffect
+                }
                 is ContentResult.WebViewFallback -> webUrl = url
             }
         } catch (e: Exception) {
@@ -276,35 +287,44 @@ internal fun ReaderScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = onBack) { Text("← 目录") }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                current.title,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val idx = toc.indexOfFirst { it.url == current.url }
-            OutlinedButton(
-                onClick = { if (idx > 0) current = toc[idx - 1] },
-                enabled = idx > 0 && !busy
-            ) { Text("上一章") }
-            OutlinedButton(
-                onClick = { if (idx in 0 until toc.size - 1) current = toc[idx + 1] },
-                enabled = idx < toc.size - 1 && !busy
-            ) { Text("下一章") }
-        }
-        if (busy) Text("加载正文…", style = TEXT_STYLE_DIM)
-        error?.let { Text(it, style = TEXT_STYLE_BAD) }
-        webUrl?.let { u -> WebViewPane(u, Modifier.weight(1f)) }
-        text?.let { t ->
-            LazyColumn(Modifier.weight(1f)) {
-                item { Text(t) }
+    if (showAudio && audioUrl != null) {
+        AudioPlayerScreen(
+            title = current.title,
+            url = audioUrl!!,
+            headers = audioHeaders,
+            onBack = { showAudio = false }
+        )
+    } else {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onBack) { Text("← 目录") }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    current.title,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val idx = toc.indexOfFirst { it.url == current.url }
+                OutlinedButton(
+                    onClick = { if (idx > 0) current = toc[idx - 1] },
+                    enabled = idx > 0 && !busy
+                ) { Text("上一章") }
+                OutlinedButton(
+                    onClick = { if (idx in 0 until toc.size - 1) current = toc[idx + 1] },
+                    enabled = idx < toc.size - 1 && !busy
+                ) { Text("下一章") }
+            }
+            if (busy) Text("加载正文…", style = TEXT_STYLE_DIM)
+            error?.let { Text(it, style = TEXT_STYLE_BAD) }
+            webUrl?.let { u -> WebViewPane(u, Modifier.weight(1f)) }
+            text?.let { t ->
+                LazyColumn(Modifier.weight(1f)) {
+                    item { Text(t) }
+                }
             }
         }
     }
@@ -441,6 +461,10 @@ internal fun ArticleScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var webUrl by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(true) }
+    /** §6.1 音频书源结果装载：AudioPlayerScreen 替代正文文本显示。 */
+    var audioUrl by remember { mutableStateOf<String?>(null) }
+    var audioHeaders by remember { mutableStateOf(emptyMap<String, String>()) }
+    var showAudio by remember { mutableStateOf(false) }
 
     LaunchedEffect(item.url) {
         if (item.contentType != RssContentType.WEB) {
@@ -462,7 +486,12 @@ internal fun ArticleScreen(
             val url = resolveUrl(referrerUrl, item.url)
             when (val r = withContext(Dispatchers.IO) { src.getContent(url) }) {
                 is ContentResult.Html -> text = htmlToText(r.html)
-                is ContentResult.Audio -> text = "音频直链：" + r.url
+                is ContentResult.Audio -> {
+                    audioUrl = r.url
+                    audioHeaders = r.headers
+                    showAudio = true
+                    return@LaunchedEffect
+                }
                 is ContentResult.WebViewFallback -> webUrl = url
             }
         } catch (e: Exception) {
@@ -472,30 +501,39 @@ internal fun ArticleScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = onBack) { Text("← 返回") }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                item.title,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (item.contentType == RssContentType.VIDEO) {
-            Text("视频条目：播放链路后续轮次提供", style = TEXT_STYLE_DIM)
-        }
-        if (item.contentType == RssContentType.IMAGE) {
-            Text("图片条目：浏览链路后续轮次提供", style = TEXT_STYLE_DIM)
-        }
-        if (busy) Text("加载正文…", style = TEXT_STYLE_DIM)
-        error?.let { Text(it, style = TEXT_STYLE_BAD) }
-        webUrl?.let { u -> WebViewPane(u, Modifier.weight(1f)) }
-        text?.let { t ->
-            LazyColumn(Modifier.weight(1f)) {
-                item { Text(t) }
+    if (showAudio && audioUrl != null) {
+        AudioPlayerScreen(
+            title = item.title,
+            url = audioUrl!!,
+            headers = audioHeaders,
+            onBack = { showAudio = false }
+        )
+    } else {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onBack) { Text("← 返回") }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    item.title,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (item.contentType == RssContentType.VIDEO) {
+                Text("视频条目：播放链路后续轮次提供", style = TEXT_STYLE_DIM)
+            }
+            if (item.contentType == RssContentType.IMAGE) {
+                Text("图片条目：浏览链路后续轮次提供", style = TEXT_STYLE_DIM)
+            }
+            if (busy) Text("加载正文…", style = TEXT_STYLE_DIM)
+            error?.let { Text(it, style = TEXT_STYLE_BAD) }
+            webUrl?.let { u -> WebViewPane(u, Modifier.weight(1f)) }
+            text?.let { t ->
+                LazyColumn(Modifier.weight(1f)) {
+                    item { Text(t) }
+                }
             }
         }
     }
