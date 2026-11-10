@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.lanyue.reader.bookshelf.ShelfOps.ShelfBook
 import com.lanyue.reader.source.import.SourceImportParser.ImportedBookSource
+import com.lanyue.reader.source.model.SearchBookItem
 import kotlin.math.roundToInt
 /**
  * §2.5.1 常规底栏：书架、书源、订阅、影视、我的。
@@ -49,6 +50,7 @@ fun RootShell() {
     var tab by remember { mutableStateOf(MainTab.Shelf) }
     var sourceCenter by remember { mutableStateOf(false) }
     var openSearch by remember { mutableStateOf(false) }
+    var detail by remember { mutableStateOf<SearchBookItem?>(null) }
     var shelfHint by remember { mutableStateOf<ShelfBook?>(null) }
     val sources = remember { mutableStateListOf<ImportedBookSource>() }
     val videoSites = remember { mutableStateListOf<VideoSiteRow>() }
@@ -59,7 +61,12 @@ fun RootShell() {
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(modifier = Modifier.fillMaxSize().weight(1f), color = MaterialTheme.colorScheme.background) {
             if (openSearch) {
-                SearchScreen(onBack = { openSearch = false })
+                SearchScreen(
+                    onBack = { openSearch = false },
+                    onOpenBook = { item -> detail = item; openSearch = false }
+                )
+            } else if (detail != null) {
+                BookDetailScreen(book = detail!!, onBack = { detail = null })
             } else if (sourceCenter) {
                 SourceCenterScreen(onBack = { sourceCenter = false })
             } else {

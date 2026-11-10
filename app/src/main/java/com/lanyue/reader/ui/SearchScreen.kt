@@ -3,6 +3,7 @@ package com.lanyue.reader.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,7 +63,7 @@ import kotlinx.coroutines.withContext
  * §3.8 独立搜索页（book / rss / video 三路并发）。
  */
 @Composable
-fun SearchScreen(onBack: () -> Unit) {
+fun SearchScreen(onBack: () -> Unit, onOpenBook: (SearchBookItem) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val g = remember { RuntimeGraph.get(context) }
@@ -128,7 +129,9 @@ fun SearchScreen(onBack: () -> Unit) {
                                     title = c.primary.name,
                                     sub = c.primary.author ?: "未知作者",
                                     origin = c.primary.originName ?: "书源",
-                                    badge = "书"
+                                    badge = "书",
+                                    bookUrl = c.primary.bookUrl,
+                                    originId = c.primary.origin
                                 )
                             )
                         }
@@ -246,7 +249,19 @@ fun SearchScreen(onBack: () -> Unit) {
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Row(
-                                Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .clickable {
+                                        if (type == SearchType.BOOK && row.bookUrl.isNotEmpty()) {
+                                            onOpenBook(
+                                                SearchBookItem(
+                                                    name = row.title,
+                                                    bookUrl = row.bookUrl,
+                                                    origin = row.originId,
+                                                    originName = row.origin
+                                                )
+                                            )
+                                        }
+                                    },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(row.title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -283,5 +298,7 @@ private data class SearchRow(
     val title: String,
     val sub: String,
     val origin: String,
-    val badge: String
+    val badge: String,
+    val bookUrl: String = "",
+    val originId: String = ""
 )

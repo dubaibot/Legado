@@ -119,3 +119,12 @@ Entries discovered by the Agent during task execution should follow this format:
   - 底部导航栏隐藏动画做法（RootShell.kt）：NavigationBar 外层 `.offset { IntOffset(0, barOffsetPx.roundToInt()) }` + `.alpha(1f - 位移/栏高)`，`detectVerticalDragGestures` 挂 NavigationBar 自身（避免与内层 LazyColumn 抢手势），过半吸附目标 64.dp
 
 
+
+[Project Knowledge: release R8 打包流程与内存配额坑]
+- Date: 2026-11-10
+- Context: app/build.gradle.kts 默认 release 已开 isMinifyEnabled=true；assembleRelease 触发 R8 压缩
+- Category: Build Methods
+- Instructions:
+  - release 构建：`background_terminal_create` 跑 `/opt/gradle-8.10.2/bin/gradle :app:assembleRelease --no-daemon --console=plain`，约 4-5 分钟
+  - Gradle daemon 默认 -Xmx4g；R8 峰值会撑到 3GB+。cgroup memory_percent=40（≈3.11GiB）时 OOM killed，daemon 直接消失报 "Gradle build daemon disappeared unexpectedly"；memory_percent=60（≈4.67GiB）才稳定通过
+  - release 无 signingConfig，产物为 `app-release-unsigned.apk`，用调试 keystore 签名：`apksigner sign --ks /root/.android/debug.keystore --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android`，verify v2/v3 OK；APK 3.5MB（R8 收缩）
