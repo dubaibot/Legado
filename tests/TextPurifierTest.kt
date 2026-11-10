@@ -260,12 +260,12 @@ fun main() {
         eq("统计 total", r.stats.total, 2)
     }
 
-    java.io.File("/mnt/work/lanyue20/out_purify.txt").writeText(
+    java.io.File("/mnt/work/lanyue21/out_purify.txt").writeText(
         if (failures.isEmpty()) "NONE" else failures.joinToString("\n"), Charsets.UTF_8)
     println("PASS = $pass")
     println("FAIL = ${failures.size}")
     if (failures.isNotEmpty()) {
-        java.io.File("/mnt/work/lanyue20/out_purify.txt").writeText(failures.joinToString("\n"), Charsets.UTF_8)
+        java.io.File("/mnt/work/lanyue21/out_purify.txt").writeText(failures.joinToString("\n"), Charsets.UTF_8)
     }
     if (failures.isNotEmpty()) System.exit(1)
 }

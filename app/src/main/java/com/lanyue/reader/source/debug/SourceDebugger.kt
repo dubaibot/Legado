@@ -1,6 +1,7 @@
 package com.lanyue.reader.source.debug
 
 import com.lanyue.reader.source.model.SourceValidator
+import com.lanyue.reader.source.purify.TextPurifier
 
 /**
  * 书源调试管线（纯逻辑，无网络 / 无协程）。
@@ -195,8 +196,18 @@ object SourceDebugger {
      * 按字符数分三档：过短判失败（多半抓到导航栏或空容器）、
      * 偏短判警告（可能是短章节，也可能是规则截断）。
      */
-    fun checkContent(text: String?, sample: String = ""): StepResult {
-        val body = text.orEmpty().trim()
+    fun checkContent(
+        text: String?,
+        sample: String = "",
+        /**
+         * 可选净化器。传了就先净化再判定长短。
+         * 判定必须在净化后进行：未净化的正文里常混着水印与站点后缀，
+         * 字符数会被这些噪声抬高，把本该判「过短」的页面判成通过。
+         */
+        purifier: TextPurifier? = null
+    ): StepResult {
+        val raw = text.orEmpty()
+        val body = (if (purifier != null) purifier.purifyContent(raw).text else raw).trim()
         if (body.isEmpty()) {
             return StepResult(
                 Stage.CONTENT, Status.FAIL, 0, 0,

@@ -213,7 +213,7 @@ fun main() {
         eq("解码规则不作用于标题", p.purifyTitle("标题广告").text, "标题广告")
     }
 
-    java.io.File("/mnt/work/lanyue20/out_codec.txt").writeText(
+    java.io.File("/mnt/work/lanyue21/out_codec.txt").writeText(
         if (failures.isEmpty()) "NONE" else failures.joinToString("\n"), Charsets.UTF_8)
     println("PASS = $pass")
     println("FAIL = ${failures.size}")

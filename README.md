@@ -191,6 +191,29 @@ null / `"title"` / `"content"` 的字符串约定，拼错不报错、整条规�
 跨站通用的部分（盗版水印、站点后缀）会保留下来——如果源级把全局整份顶掉，
 其他站点的这些脏数据会重新冒出来。
 
+### 净化管线（第二十一轮）
+
+`source/purify/PurifyPipeline`：把「全局规则 + 书源 replaceRule」合成一份可执行的
+净化配置，并在进程内按源缓存，供正文/标题两条链路直接取用。
+
+三次调用拼配置是最容易出错的地方：书源 JSON 解一次、全局规则合一次、排序再一次，
+分散在调用方就会各写各的。管线收口成 `profileFor(sourceId, replaceRuleJson)`，
+结果按源缓存，书源或全局规则变动时用 `invalidate(sourceId)` 精确失效，
+避免整表清空导致所有源重新解析。
+
+合成顺序是**先全局、后源级覆盖**，与 `PurifyRuleCodec.merge` 的语义一致：
+同一 `(pattern, scope)` 由源作者决定，跨站通用的全局规则保留。缓存键包含
+规则原文的哈希，源作者改一条规则后无需手动刷新。
+
+`purifyContent` / `purifyTitle` 直接返回 `PurifyResult`，把 `TextPurifier`
+的作用域分流、比例回退、空匹配跳过等保护一并继承下来；调用方拿到的
+`stats.applied` 可直接展示成「本次净化命中 N 条」，便于作者判断规则是否真的生效。
+
+`SourceDebugger.checkContent` 增加了可选 `purifier` 参数。**判定必须在净化之后**：
+未净化的正文里常混着水印与站点后缀，字符数被噪声抬高，会把本该判「过短」的页面
+判成通过——调试面板因此永远显示绿色，作者完全看不出问题。传入净化器后先净化
+再比长度，噪声撑起来的假通过会被降级成警告。
+
 ## 合规门禁
 
 ```bash
@@ -228,6 +251,7 @@ bash tools/ci.sh
 | `tests/SortUrlParserTest.kt` | 1.4.4 sortUrl 动态生成与静态分类解析（名::url 换行/&& 双分隔、trim/空行过滤、@js: 与 <js> IIFE 包装且 traceId/NORMAL 池透传、JS 失败与异常降级、100 分类截断与边界恰好等值）（32 项） |
 | `tests/TextPurifierTest.kt` | 替换净化：非法正则/空匹配串容错、字面量与正则分流、作用域与 order、首行模式、空白归一、比例回退、规则自检（58 项） |
 | `tests/PurifyRuleCodecTest.kt` | replaceRule 编解码：isRegex 缺省为字面量、scope 未知值提示与退回、坏 JSON/缺字段容错、数字与字符串形态、编解码往返、源级覆盖全局的合并语义（74 项） |
+| `tests/PurifyPipelineTest.kt` | 净化管线：全局+源级合成与覆盖、按源缓存与精确失效、坏 replaceRule 透传、正文/标题分流、端到端 JSON→管线→净化、调试判定在净化后进行（46 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 

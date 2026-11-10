@@ -72,7 +72,8 @@ for cls in \
   TvBoxParserTestKt \
   SortUrlParserTestKt \
   TextPurifierTestKt \
-  PurifyRuleCodecTestKt; do
+  PurifyRuleCodecTestKt \
+  PurifyPipelineTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
