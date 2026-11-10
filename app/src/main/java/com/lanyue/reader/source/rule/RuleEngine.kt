@@ -82,6 +82,59 @@ class RuleEngine(
     ): String? = evalList(html, rule, ctx, needsRealDom).firstOrNull()
 
     /**
+     * 逐项求值：先按 selectorRule 选出列表项 HTML，再对每项独立执行 itemRule。
+     * 对应 Legado 书源「bookList 定位列表项 + name/bookUrl 相对每项」的逐字段提取。
+     * itemRule 为空时退化为取项自身文本（Legado 默认书名规则）。空 selector 返回空列表。
+     */
+    suspend fun evalListPerItem(
+        html: String,
+        selectorRule: String?,
+        itemRule: String?,
+        ctx: RuleContext,
+        needsRealDom: Boolean = false
+    ): List<String> {
+        val sel = selectorRule?.trim().orEmpty()
+        if (sel.isEmpty()) return emptyList()
+        val doc = parseDomOrThrow(html, ctx, needsRealDom)
+        val parts = sel.split("@").filter { it.isNotBlank() }
+        if (parts.isEmpty()) return emptyList()
+
+        // 选择器链：去掉末尾的取值指令，逐段执行并做链式选择
+        val isDirective = isExtractDirective(parts.last())
+        val selectorParts = if (isDirective) parts.dropLast(1) else parts
+        if (selectorParts.isEmpty()) return emptyList()
+
+        var els: Elements = Elements()
+        selectorParts.forEachIndexed { index, raw ->
+            val (css, pickAt) = splitIndexSuffix(raw)
+            els = if (index == 0) {
+                doc.select(css)
+            } else {
+                val nested = Elements()
+                els.forEach { el -> nested.addAll(el.select(css)) }
+                nested
+            }
+            if (pickAt != null) {
+                val idx = if (pickAt < 0) els.size + pickAt else pickAt
+                val picked = els.getOrNull(idx)
+                els = if (picked == null) Elements() else Elements(picked)
+            }
+        }
+
+        val item = itemRule?.trim().orEmpty()
+        return if (item.isEmpty()) {
+            // 默认书名：直接取项自身文本（对齐 Legado 未配 name 规则的行为）
+            els.map { it.text().trim() }.filter { it.isNotEmpty() }
+        } else {
+            val out = ArrayList<String>()
+            for (el in els) {
+                out.addAll(evalList(el.outerHtml(), item, ctx, needsRealDom))
+            }
+            out
+        }
+    }
+
+    /**
      * 执行 `@put` 写入。
      *
      * value 自身是一条独立规则；为空或与主体规则相同时回落到本段结果，
@@ -279,8 +332,8 @@ class RuleEngine(
                 el.html()
             directive == "content" ->
                 if (el.hasAttr("content")) el.attr("content") else el.text()
-            directive.startsWith("abs:") ->
-                absolutize(el.attr(directive.removePrefix("abs:")), baseUrl)
+        directive.startsWith("abs:") ->
+            absolutize(el.attr(directive.removePrefix("abs:")), baseUrl)
             directive.startsWith("attr:") ->
                 el.attr(directive.removePrefix("attr:"))
             else ->
@@ -289,7 +342,7 @@ class RuleEngine(
     }
 
     /**
-     * 把相对地址补成绝对地址（@abs:href 用）。
+     * 把相对地址补成绝对地址。
      *
      * 只做常见形态，不引入 URI 解析开销：
      *   //host/a   -> 继承 baseUrl 的 scheme
@@ -297,7 +350,7 @@ class RuleEngine(
      *   a/b        -> 拼在 baseUrl 目录后
      *   已是绝对地址则原样返回
      */
-    private fun absolutize(value: String, baseUrl: String?): String {
+    fun absolutize(value: String, baseUrl: String?): String {
         val v = value.trim()
         if (v.isEmpty()) return ""
         if (v.startsWith("http://") || v.startsWith("https://")) return v

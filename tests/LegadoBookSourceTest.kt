@@ -163,7 +163,7 @@ fun main() {
     val items = runBlocking { src1.search("a b", 2) }
     eq("搜索命中原文条目", items.size, 2)
     eq("第一条名", items[0].name, "剑起")
-    eq("第一条链接", items[0].bookUrl, "/book/1")
+    eq("第一条链接补绝对地址", items[0].bookUrl, "http://src.lanyue.test/book/1")
     eq("来源回填", items[0].origin, "http://src.lanyue.test/B")
     eq("来源名回填", items[0].originName, "测试书源")
     check("URL key 占位符替换", http1.lastReq?.url?.contains("q=a+b") == true, "got ${http1.lastReq?.url}")
@@ -324,6 +324,52 @@ fun main() {
     )
     runBlocking { srcE.explore(catSorts[0], 1) }
     eq("相对分类URL拼接", httpE.lastReq?.url, "http://src.lanyue.test/cat/xuanhuan")
+
+    // ---------------- 真实 Legado 书源格式：小写键名 + 逐项规则 ----------------
+    // 书源 JSON：{"bookList":".list li","name":"@a@text","bookUrl":"@a@href", "分类":{...}}
+    // 逐项计算：name/bookUrl 是相对每一项元素（li）的规则
+    val http20 = FakeHttpChannel()
+    http20.pushOk(SEARCH_HTML)
+    val src20 = makeSrc(
+        entity(
+            searchUrl = "http://a/s",
+            ruleSearch = """{"bookList":".list li","name":"@a@text","bookUrl":"@a@href"}"""
+        ),
+        http20
+    )
+    val items20 = runBlocking { src20.search("k", 1) }
+    eq("小写bookList取书名", items20.size, 2)
+    eq("小写bookList书名1", items20[0].name, "剑起")
+    eq("逐项bookUrl补域名", items20[0].bookUrl, "http://a/book/1")
+    eq("逐项bookUrl链接2", items20[1].bookUrl, "http://a/book/2")
+
+    // explore 小写键名 + 分类
+    val http21 = FakeHttpChannel()
+    http21.pushOk(SEARCH_HTML)
+    val src21 = makeSrc(
+        entity(
+            exploreUrl = "http://src.lanyue.test",
+            ruleExplore = """{"bookList":".list li","name":"@a@text","bookUrl":"@a@href","分类":{"玄幻":"/x"}}"""
+        ),
+        http21
+    )
+    val sorts21 = runBlocking { src21.getSorts() }
+    eq("小写键名分类条数", sorts21.size, 1)
+    eq("小写键名分类名", sorts21[0].name, "玄幻")
+    val items21 = runBlocking { src21.explore(sorts21[0], 1) }
+    eq("小写键名探索出书", items21.size, 2)
+    eq("小写键名探索书名", items21[0].name, "剑起")
+    eq("小写键名探索绝对链接", items21[0].bookUrl, "http://src.lanyue.test/book/1")
+
+    // 大写 BookList 兼容
+    val http22 = FakeHttpChannel()
+    http22.pushOk(SEARCH_HTML)
+    val src22 = makeSrc(
+        entity(ruleExplore = """{"BookList":".list li","name":"@a@text","bookUrl":"@a@href"}"""),
+        http22
+    )
+    val items22 = runBlocking { src22.explore(SortRule("全部", "http://src.lanyue.test"), 1) }
+    eq("大写BookList兼容", items22.size, 2)
 
     // searchUrl 带 @js 且无 parser -> 返回空，不把脚本传给网络
     val srcJsSearch = makeSrc(entity(searchUrl = "@js:V", ruleSearch = "class.list@li@a"))

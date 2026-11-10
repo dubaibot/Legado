@@ -70,7 +70,7 @@ class LegadoBookSource(
         val url = UrlTemplate.fill(resolved, key, page)
         val html = fetchHtml(url, "search")
         val ctx = ruleContext(url, "search")
-        return parseBookItems(html, searchBookListRule(), ctx)
+        return parseBookItems(html, listSpec(entity.ruleSearch), ctx)
     }
 
     override suspend fun explore(sort: SortRule, page: Int): List<SearchBookItem> {
@@ -81,7 +81,7 @@ class LegadoBookSource(
         val abs = resolveAbsolute(url)
         val html = fetchHtml(abs, "explore")
         val ctx = ruleContext(abs, "explore")
-        return parseBookItems(html, exploreListRule(), ctx)
+        return parseBookItems(html, listSpec(entity.ruleExplore), ctx)
     }
 
     /** 搜索/源地址可能也是 @js: 动态脚本。 */
@@ -169,11 +169,64 @@ class LegadoBookSource(
         else -> null
     }
 
-    /** ruleExplore 是嵌套对象时取 BookList 列表规则。 */
-    private fun exploreListRule(): String? {
-        val raw = entity.ruleExplore ?: return null
-        val obj = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return raw
-        return obj.get("BookList")?.asString ?: raw
+    /**
+     * ruleExplore/ruleSearch 是嵌套对象时提取 bookList、name、bookUrl。
+     *
+     * 对齐 Legado 书源 JSON：Gson 键名首字母小写（bookList/name/bookUrl），
+     * 兼容大写 BookList。未写成 JSON 时整体当图书列表规则字符串（旧版行为）。
+     */
+    data class ListRuleSpec(
+        val listRule: String? = null,
+        val nameRule: String? = null,
+        val urlRule: String? = null
+    )
+
+    private fun listSpec(rawJson: String?): ListRuleSpec {
+        val raw = rawJson?.trim().orEmpty()
+        if (raw.isEmpty()) return ListRuleSpec()
+        val obj = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
+        if (obj == null) return ListRuleSpec(listRule = raw)
+        return ListRuleSpec(
+            listRule = obj.get("bookList")?.asString ?: obj.get("BookList")?.asString ?: raw,
+            nameRule = obj.get("name")?.asString,
+            urlRule = obj.get("bookUrl")?.asString ?: obj.get("url")?.asString
+        )
+    }
+
+    /**
+     * 书源未配 bookUrl 的默认链接规则：
+     * 先取项内第一个 <a> 的 href 并补绝对地址，再退化为项自身 href。
+     * 相对地址补域名对齐 Legado `@abs:href`（NetworkUtils.getAbsoluteURL）。
+     */
+    private val DEFAULT_URL_RULE = "@a@abs:href||a@abs:href"
+
+    private suspend fun parseBookItems(
+        html: String,
+        spec: ListRuleSpec,
+        ctx: RuleEngine.RuleContext
+    ): List<SearchBookItem> {
+        val listRule = spec.listRule ?: return emptyList()
+        val nameRule = spec.nameRule   // 空则取项文本（Legado 默认）
+        val urlRule = spec.urlRule ?: DEFAULT_URL_RULE
+
+        val names = rules.evalListPerItem(html, listRule, nameRule, ctx)
+        if (names.isEmpty()) return emptyList()
+
+        val links = rules.evalListPerItem(html, listRule, urlRule, ctx)
+        return names.mapIndexedNotNull { index, name ->
+            val link = links.getOrNull(index)?.trim().orEmpty()
+            var absolute: String = ""
+            if (link.isNotEmpty() && !link.startsWith("javascript:")) {
+                absolute = rules.absolutize(link, ctx.baseUrl)
+            }
+            if (absolute.isEmpty()) return@mapIndexedNotNull null
+            SearchBookItem(
+                name = name,
+                bookUrl = absolute,
+                origin = sourceId,
+                originName = entity.bookSourceName
+            )
+        }
     }
 
     override suspend fun getDetail(url: String): BookDetail {
@@ -251,38 +304,6 @@ class LegadoBookSource(
             throw NetworkException("http " + response.code + " for " + url, response.code)
         }
         return response.body ?: ""
-    }
-
-    private suspend fun parseBookItems(
-        html: String,
-        listRule: String?,
-        ctx: RuleEngine.RuleContext
-    ): List<SearchBookItem> {
-        if (listRule.isNullOrBlank()) return emptyList()
-
-        val names = rules.evalList(html, listRule, ctx)
-        if (names.isEmpty()) return emptyList()
-
-        val links = rules.evalList(html, listRule + "@attr:href", ctx)
-        return names.mapIndexedNotNull { index, name ->
-            val link = links.getOrNull(index)
-            if (link.isNullOrBlank()) return@mapIndexedNotNull null
-            SearchBookItem(
-                name = name,
-                bookUrl = link,
-                origin = sourceId,
-                originName = entity.bookSourceName
-            )
-        }
-    }
-
-    /** ruleSearch 嵌套对象里的 bookList。 */
-    private fun searchBookListRule(): String? {
-        val raw = entity.ruleSearch ?: return null
-        if (!raw.trimStart().startsWith("{")) return raw
-        return runCatching {
-            JsonParser.parseString(raw).asJsonObject.get("bookList")?.asString
-        }.getOrNull()
     }
 
     /** 1.4.7 音频 URL 解析：纯 URL，或 JSON 含 url 字段，或 ,{headers JSON} 后缀。 */
