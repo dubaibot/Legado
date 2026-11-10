@@ -291,39 +291,99 @@ fun main() {
     eq("防盗链 header 注入", (c16 as ContentResult.Audio).headers["Referer"], "http://c.com")
 
     // ---------------- 发现分类 getSorts ----------------
-    // 静态 JSON 分类
-    val srcCat = makeSrc(
-        entity(ruleExplore = """{"BookList":"class.list@li@a","分类":{"玄幻":"/cat/xuanhuan","都市":{"分类名称":"都市","URL":"/cat/dushi"}}}""")
-    )
-    val catSorts = runBlocking { srcCat.getSorts() }
-    eq("静态分类条数", catSorts.size, 2)
-    eq("静态分类名", catSorts[0].name, "玄幻")
-    eq("静态分类相对URL", catSorts[0].url, "/cat/xuanhuan")
-    eq("静态分类对象URL", catSorts[1].url, "/cat/dushi")
+    // 对齐真实 Legado exploreKinds()：分类来自 exploreUrl 字段，ruleExplore 是列表规则
 
-    // 无 sortParser 时动态分类跳过，不把 @js 脚本当 URL 返回
-    val srcDyn = runBlocking { makeSrc(entity(ruleExplore = """{"分类":{"玄幻":"@js:sorts"}}""")).getSorts() }
-    eq("无parser动态分类跳过", srcDyn.size, 0)
-
-    // 静态 name::url 行解析
+    // 静态 name::url 行解析（最常见形态）
     val srcLines = runBlocking {
-        makeSrc(entity(ruleExplore = "玄幻::/x&&都市::/d")).getSorts()
+        makeSrc(entity(exploreUrl = "玄幻::/x&&都市::/d")).getSorts()
     }
     eq("静态行分类条数", srcLines.size, 2)
+    eq("静态行分类1", srcLines[0].name, "玄幻")
     eq("静态行分类2", srcLines[1].name, "都市")
 
-    // explore 相对 URL 拼接为绝对地址
+    // JSON 数组 ExploreKind 形态：title/url 键；type 非 url 的控件项跳过
+    val srcArr = runBlocking {
+        makeSrc(
+            entity(
+                exploreUrl = """[{"title":"玄幻","url":"/x"},{"title":"按钮","type":"button"},{"name":"全本","url":"/q"}]"""
+            )
+        ).getSorts()
+    }
+    eq("JSON数组分类条数", srcArr.size, 2)
+    eq("JSON数组分类名", srcArr[0].name, "玄幻")
+    eq("JSON数组分类URL", srcArr[0].url, "/x")
+    eq("JSON数组name键回退", srcArr[1].name, "全本")
+
+    // JSON 对象 {"分类":{...}} 旧版形态
+    val srcObj = runBlocking {
+        makeSrc(entity(exploreUrl = """{"分类":{"玄幻":"/cat/xuanhuan","都市":{"分类名称":"都市","URL":"/cat/dushi"}}}""")).getSorts()
+    }
+    eq("对象分类条数", srcObj.size, 2)
+    eq("对象分类相对URL", srcObj[0].url, "/cat/xuanhuan")
+    eq("对象分类URL", srcObj[1].url, "/cat/dushi")
+
+    // 历史：ruleExplore 内嵌「分类」仍作回退兼容
+    val srcCat = runBlocking {
+        makeSrc(
+            entity(
+                ruleExplore = """{"BookList":"class.list@li@a","分类":{"玄幻":"/cat/xuanhuan","都市":{"分类名称":"都市","URL":"/cat/dushi"}}}"""
+            )
+        ).getSorts()
+    }
+    eq("legacy分类条数", srcCat.size, 2)
+    eq("legacy分类名", srcCat[0].name, "玄幻")
+
+    // exploreUrl 动态脚本且无 parser -> 降级空（不把脚本串当 URL）
+    val srcDyn = runBlocking { makeSrc(entity(exploreUrl = "@js:sorts")).getSorts() }
+    eq("无parser动态分类降级", srcDyn.size, 0)
+
+    // explore 相对分类 URL 拼接到源地址（对齐 Legado AnalyzeUrl baseUrl=bookSourceUrl）
     val httpE = FakeHttpChannel()
     httpE.pushOk(SEARCH_HTML)
     val srcE = makeSrc(
-        entity(
-            ruleExplore = """{"BookList":"class.list@li@a","分类":{"玄幻":"/cat/xuanhuan"}}""",
-            exploreUrl = "http://src.lanyue.test/cat"
-        ),
+        entity(exploreUrl = """{"分类":{"玄幻":"/cat/xuanhuan"}}"""),
         httpE
     )
-    runBlocking { srcE.explore(catSorts[0], 1) }
+    val sortE = runBlocking { srcE.getSorts() }[0]
+    runBlocking { srcE.explore(sortE, 1) }
     eq("相对分类URL拼接", httpE.lastReq?.url, "http://src.lanyue.test/cat/xuanhuan")
+
+    // {{page-1}} 算术占位符：首请求页码 0（Legado {{page-1}} 经 JS 求值的等价行为）
+    val httpPg = FakeHttpChannel()
+    httpPg.pushOk(SEARCH_HTML)
+    val srcPg = makeSrc(entity(exploreUrl = "玄幻::/top/{{page-1}}.html"), httpPg)
+    val sortPg = runBlocking { srcPg.getSorts() }[0]
+    runBlocking { srcPg.explore(sortPg, 1) }
+    eq("page-1 首请求", httpPg.lastReq?.url, "http://src.lanyue.test/top/0.html")
+    httpPg.pushOk(SEARCH_HTML)
+    runBlocking { srcPg.explore(sortPg, 3) }
+    eq("page-1 第三页", httpPg.lastReq?.url, "http://src.lanyue.test/top/2.html")
+
+    // URL 选项 ,{json}：POST 分页 + 表单 Content-Type（Legado UrlOption 子集）
+    val httpOpt = FakeHttpChannel()
+    httpOpt.pushOk(SEARCH_HTML)
+    val srcOpt = makeSrc(entity(exploreUrl = "玄幻::http://a/e,{\"method\":\"POST\",\"body\":\"page={{page}}\"}"), httpOpt)
+    val sortOpt = runBlocking { srcOpt.getSorts() }[0]
+    runBlocking { srcOpt.explore(sortOpt, 2) }
+    eq("URL选项拆分地址", httpOpt.lastReq?.url, "http://a/e")
+    eq("URL选项POST方法", httpOpt.lastReq?.method, "POST")
+    eq("URL选项body占位符", httpOpt.lastReq?.body?.decodeToString(), "page=2")
+    eq("URL选项表单Content-Type", httpOpt.lastReq?.headers?.get("Content-Type"), "application/x-www-form-urlencoded")
+
+    // exploreUrl 是分类配置文本时禁止当 URL 请求（防线：不打垃圾地址）
+    val httpBlob = FakeHttpChannel()
+    val srcBlob = makeSrc(
+        entity(exploreUrl = """{"bookList":"class.x"}""", ruleExplore = "class.list@li@a"),
+        httpBlob
+    )
+    eq("配置文本无分类", runBlocking { srcBlob.getSorts() }.size, 0)
+    check("配置文本非干净URL", srcBlob.fallbackExploreUrl() == null)
+    eq("配置文本当URL判空", runBlocking { srcBlob.explore(SortRule("全部", """{"bookList":"class.x"}"""), 1) }, emptyList<SearchBookItem>())
+    eq("配置文本不发请求", httpBlob.count, 0)
+
+    // 干净 URL 形态仍可作「全部分类」兜底
+    val srcClean = makeSrc(entity(exploreUrl = "http://a/e"))
+    eq("干净URL兜底", srcClean.fallbackExploreUrl(), "http://a/e")
 
     // ---------------- 真实 Legado 书源格式：小写键名 + 逐项规则 ----------------
     // 书源 JSON：{"bookList":".list li","name":"@a@text","bookUrl":"@a@href", "分类":{...}}
@@ -343,23 +403,24 @@ fun main() {
     eq("逐项bookUrl补域名", items20[0].bookUrl, "http://a/book/1")
     eq("逐项bookUrl链接2", items20[1].bookUrl, "http://a/book/2")
 
-    // explore 小写键名 + 分类
+    // explore 真实书源形态：exploreUrl 承载分类行，ruleExplore 承载列表规则
     val http21 = FakeHttpChannel()
     http21.pushOk(SEARCH_HTML)
     val src21 = makeSrc(
         entity(
-            exploreUrl = "http://src.lanyue.test",
-            ruleExplore = """{"bookList":".list li","name":"@a@text","bookUrl":"@a@href","分类":{"玄幻":"/x"}}"""
+            exploreUrl = "玄幻::/x",
+            ruleExplore = """{"bookList":".list li","name":"@a@text","bookUrl":"@a@href"}"""
         ),
         http21
     )
     val sorts21 = runBlocking { src21.getSorts() }
-    eq("小写键名分类条数", sorts21.size, 1)
-    eq("小写键名分类名", sorts21[0].name, "玄幻")
+    eq("真实形态分类条数", sorts21.size, 1)
+    eq("真实形态分类名", sorts21[0].name, "玄幻")
     val items21 = runBlocking { src21.explore(sorts21[0], 1) }
-    eq("小写键名探索出书", items21.size, 2)
-    eq("小写键名探索书名", items21[0].name, "剑起")
-    eq("小写键名探索绝对链接", items21[0].bookUrl, "http://src.lanyue.test/book/1")
+    eq("真实形态探索请求地址", http21.lastReq?.url, "http://src.lanyue.test/x")
+    eq("真实形态探索出书", items21.size, 2)
+    eq("真实形态探索书名", items21[0].name, "剑起")
+    eq("真实形态探索绝对链接", items21[0].bookUrl, "http://src.lanyue.test/book/1")
 
     // 大写 BookList 兼容
     val http22 = FakeHttpChannel()

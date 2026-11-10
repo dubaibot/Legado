@@ -48,8 +48,9 @@ private enum class ExpMode { Categories, Books }
  *
  * 视图 1「分类网格」（3 列）：「全部分类」卡片 + ruleExplore 解析出的分类卡片。
  * 视图 2「书籍网格」（3 列）：点击分类后展示书籍，点击书进入详情页（onOpenItem）。
- * 分类解析：LegadoBookSource.getSorts()——ruleExplore 中「分类」JSON 或「name::url」静态行；
- * 无分类时直接以 exploreUrl/bookSourceUrl 列表态。
+ * 分类解析：LegadoBookSource.getSorts()——对齐真实 Legado exploreKinds()，
+ * 分类来自 exploreUrl 字段（JSON 数组 / {"分类":{...}} / 「name::url」静态行 / @js 动态）；
+ * 无分类且 exploreUrl 是单个干净 URL 时走「全部分类」兜底。
  */
 @Composable
 internal fun BookExploreScreen(
@@ -84,9 +85,16 @@ internal fun BookExploreScreen(
         error = null
         scope.launch {
             try {
-                val (src, entity) = legado()
+                val src = legado().first
                 page = p
-                val sort = selected ?: SortRule("全部分类", entity.exploreUrl ?: entity.bookSourceUrl)
+                val sort = selected ?: run {
+                    // exploreUrl 是分类配置文本时不能当 URL 请求（打出垃圾地址必 404）
+                    val fallback = src.fallbackExploreUrl()
+                        ?: throw IllegalStateException(
+                            "exploreUrl 无法解析出分类：请检查源 discover/发现字段格式"
+                        )
+                    SortRule("全部分类", fallback)
+                }
                 val list = withContext(Dispatchers.IO) { src.explore(sort, p) }
                 books = if (p == 1) list else books + list
                 loadedAll = list.size < 20

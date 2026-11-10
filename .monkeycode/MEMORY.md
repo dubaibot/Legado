@@ -128,3 +128,17 @@ Entries discovered by the Agent during task execution should follow this format:
   - release 构建：`background_terminal_create` 跑 `/opt/gradle-8.10.2/bin/gradle :app:assembleRelease --no-daemon --console=plain`，约 4-5 分钟
   - Gradle daemon 默认 -Xmx4g；R8 峰值会撑到 3GB+。cgroup memory_percent=40（≈3.11GiB）时 OOM killed，daemon 直接消失报 "Gradle build daemon disappeared unexpectedly"；memory_percent=60（≈4.67GiB）才稳定通过
   - release 无 signingConfig，产物为 `app-release-unsigned.apk`，用调试 keystore 签名：`apksigner sign --ks /root/.android/debug.keystore --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android`，verify v2/v3 OK；APK 3.5MB（R8 收缩）
+
+### 书源规则对齐真实 Legado 行为排查
+- Date: 2026-11-10
+- Context: 书源「发现页该分类为空/列表规则不匹配」等规则解析类问题排查
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 书源解析行为必须拉取真实 Legado 源码对照，不要凭文档猜：用户主仓 origin/main 分支就是真实 Legado 源码（`git show origin/main:app/src/main/java/io/legado/app/...`），关键字段在 `data/entities/rule/ExploreRule.kt`、`help/source/BookSourceExtensions.kt`（exploreKinds）、`model/webBook/BookList.kt`、`model/analyzeRule/AnalyzeUrl.kt`
+  - 发现分类的载体是 exploreUrl 字段（exploreKinds 只认 JSON 数组 [{title,url}]、name::url 行、@js 脚本输出后按数组/行解析三种形态），ruleExplore 从不承载分类——ruleExplore 是书籍列表规则 JSON（bookList/name/bookUrl），把分类写在 ruleExplore 会导致测试自洽而真源全挂
+  - AnalyzeUrl 支持 URL 选项后缀 `,{json}`（method/headers/body/charset），POST 分页类源必须拆分后缀再请求；`{{page-1}}` 等算术经 JS 求值，正则子集 `{{page±N}}` 可覆盖
+  - ExploreKind 的 type=text/button/toggle/select 是配合 infoMap 的输入控件，非可点分类，解析时按 type 过滤
+  - 书源 JSON 键名首字母小写（Gson 按属性名匹配：bookList/name/bookUrl/coverUrl），兼容旧式大写 BookList 键；显式 null 字段用 `as? JsonPrimitive` + `!isJsonNull` 安全读取，JsonNull.asString 会抛异常
+  - bookList 语义：定位列表项（如 `.list li`），name/bookUrl 是相对每一项元素的子规则（如 `@a@text`/`@a@href`），而非整页整规则；未配 name 时默认取项文本
+  - 书源链接一律在取值后统一以 baseUrl 补绝对域名等同 Legado `getString(isUrl=true)` + `NetworkUtils.getAbsoluteURL(redirectUrl, str)`；`@abs:href` 只补返回值，书源写 `@href` 时也要在外部补
+  - `ruleExplore`/`ruleSearch` 是字符串化 JSON 或直接规则串两种形态，提取逻辑需同时兼容
