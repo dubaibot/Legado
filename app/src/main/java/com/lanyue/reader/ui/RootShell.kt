@@ -48,6 +48,7 @@ fun RootShell() {
     val density = LocalDensity.current
     var tab by remember { mutableStateOf(MainTab.Shelf) }
     var sourceCenter by remember { mutableStateOf(false) }
+    var openSearch by remember { mutableStateOf(false) }
     var shelfHint by remember { mutableStateOf<ShelfBook?>(null) }
     val sources = remember { mutableStateListOf<ImportedBookSource>() }
     val videoSites = remember { mutableStateListOf<VideoSiteRow>() }
@@ -57,7 +58,9 @@ fun RootShell() {
 
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(modifier = Modifier.fillMaxSize().weight(1f), color = MaterialTheme.colorScheme.background) {
-            if (sourceCenter) {
+            if (openSearch) {
+                SearchScreen(onBack = { openSearch = false })
+            } else if (sourceCenter) {
                 SourceCenterScreen(onBack = { sourceCenter = false })
             } else {
                 when (tab) {
@@ -67,7 +70,8 @@ fun RootShell() {
                             shelfHint = book
                             tab = MainTab.Source
                         },
-                        onOpenDownloads = { tab = MainTab.Mine }
+                        onOpenDownloads = { tab = MainTab.Mine },
+                        onOpenSearch = { openSearch = true }
                     )
                     MainTab.Source -> SourceApp(
                         sources = sources,

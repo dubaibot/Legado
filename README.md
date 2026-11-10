@@ -228,6 +228,11 @@ gradle assembleDebug
 `RootShell` 提供底部五栏导航的顶栏 + `MainTab` 体系：
 
 - 书架（§3.1 `ShelfScreen`）：收藏网格/列表双视图，搜索、分组筛选，多选移出/批量删除；
+  顶栏「全网」进入独立搜索页（§3.8）。
+
+独立搜索页（§3.8 `SearchScreen`）：书/订阅/影视三路切换 + 并发搜索（多源聚合 + 源级限速与隔离），
+结果行展示标题/作者或分类/来源标签，底部汇总「N/M 个源有结果」，历史按类型落库
+`search_history` 表并及时回填。
 - 订阅（§3.3 `SubsScreen`）：订阅源分类 → 文章列表 → 正文（无 `ruleContent` 走 WebView 原样打开）；
 - 影视（§3.4 `VideoTabScreen`）：站点选择 → 分类 FilterChip 海报网格 → 详情（线路+选集）→ 播放页
   （DIRECT / 本地代理 / 嗅探三态装载，弹幕叠层 + 字幕 + 断点续播见上节）；

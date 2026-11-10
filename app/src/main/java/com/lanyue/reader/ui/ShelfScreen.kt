@@ -60,7 +60,8 @@ enum class ShelfGroup(val label: String) {
 @Composable
 internal fun ShelfScreen(
     onOpenBook: (ShelfBook) -> Unit,
-    onOpenDownloads: () -> Unit
+    onOpenDownloads: () -> Unit,
+    onOpenSearch: () -> Unit
 ) {
     val context = LocalContext.current
     val ops = remember { RuntimeGraph.get(context).shelfOps }
@@ -94,6 +95,7 @@ internal fun ShelfScreen(
             IconButton(onClick = { sort = nextSort(sort) }) {
                 Text("⇅", fontSize = 20.sp)
             }
+            TextButton(onClick = onOpenSearch) { Text("全网") }
         }
 
         // 分组 chips
