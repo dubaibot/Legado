@@ -34,7 +34,13 @@ data class BookSourceEntity(
     val userEditedFields: String? = null,
     /** 1.4.3 搜索失败降级本地标记。 */
     val searchDegraded: Boolean = false,
-    val searchFailCount: Int = 0
+    val searchFailCount: Int = 0,
+    /**
+     * Legado 书源 replaceRule 原文（JSON 数组串）。
+     * 按原样存储而不是解析成表：书源更新时要能原样回写，且解析失败也不能丢原文。
+     * 解析与校验交给 PurifyRuleCodec，见 source/purify/。
+     */
+    val replaceRule: String? = null
 )
 
 /**

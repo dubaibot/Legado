@@ -21,7 +21,7 @@ app/src/main/java/com/lanyue/reader/
 │   ├── import/        书源导入解析（Legado JSON / 订阅合集）
 │   ├── repo/          源仓库与同步
 │   ├── debug/         书源离线调试管线（搜索→详情→目录→正文串链路）
-│   ├── purify/        正文/标题替换净化（ReplaceRule 执行与规则自检）
+│   ├── purify/        正文/标题替换净化（ReplaceRule 执行、自检、书源 replaceRule 编解码）
 │   ├── book/ rss/ video/ danmaku/   各站点适配器
 ├── bookshelf/         书架操作层（增删/分组/排序）与换源进度映射
 ├── data/
@@ -165,6 +165,32 @@ null / `"title"` / `"content"` 的字符串约定，拼错不报错、整条规�
 
 `TextPurifier.validate` 供书源编辑器做规则自检，返回可直接展示的中文问题列表。
 
+### 书源 replaceRule 接入（第二十轮）
+
+`source/purify/PurifyRuleCodec`：把书源 JSON 里的 `replaceRule` 解成可执行规则，
+并解决两个按 Legado 文档直译必然写错的地方。
+
+- **`isRegex` 的默认值是 false，不是 true**。Legado 书源作者不写 `isRegex` 时，
+  这条规则是字面量替换。若按我们 `ReplaceRule` 的默认值 true 去反序列化，
+  作者写的 `(*广告*)` 会被当成正则编译失败，整条规则静默失效——而且作者无从察觉。
+  所以解码时缺省一律取 false。
+- **作用域拼错必须能被看见**。Legado 用 `null` / `"title"` / `"content"` 字符串约定，
+  写成 `"titel"` 不报错、整条规则静默不生效。这里对未知值给出中文问题提示并退回
+  `ALL`，让作者在编辑器里能直接发现。
+
+其余容错都按「坏数据不废整份书源」处理：坏 JSON 标记 `broken` 并放弃规则但不抛异常；
+单条缺 `pattern` 或不是对象只跳过该条，其余照常保留；空 `pattern` 与负 `sortOrder`
+保留原值并给出提示（保留是为了让作者能看见并修掉，而不是被静默删除）；
+布尔与整数字段容忍 `"true"` / `1` 这类手写形态。
+
+`BookSourceEntity` 新增 `replaceRule` 字段，按原样存 JSON 串而非拆表：
+书源更新时要能原样回写，解析失败也不能丢原文。
+
+`PurifyRuleCodec.merge` 的语义是**源级覆盖全局、而非整体替换**。
+同一 `(pattern, scope)` 视为同一条规则，由源作者的决定优先；但全局规则里
+跨站通用的部分（盗版水印、站点后缀）会保留下来——如果源级把全局整份顶掉，
+其他站点的这些脏数据会重新冒出来。
+
 ## 合规门禁
 
 ```bash
@@ -201,6 +227,7 @@ bash tools/ci.sh
 | `tests/TvBoxParserTest.kt` | TVBox 配置解析（接口配置展开多站点、type3 drpy/jar 区分与裁剪标记、parses 解析链、lives 持久化字段、hotSearch 裁剪、非法配置 Invalid、可选字段 null 不炸）（63 项） |
 | `tests/SortUrlParserTest.kt` | 1.4.4 sortUrl 动态生成与静态分类解析（名::url 换行/&& 双分隔、trim/空行过滤、@js: 与 <js> IIFE 包装且 traceId/NORMAL 池透传、JS 失败与异常降级、100 分类截断与边界恰好等值）（32 项） |
 | `tests/TextPurifierTest.kt` | 替换净化：非法正则/空匹配串容错、字面量与正则分流、作用域与 order、首行模式、空白归一、比例回退、规则自检（58 项） |
+| `tests/PurifyRuleCodecTest.kt` | replaceRule 编解码：isRegex 缺省为字面量、scope 未知值提示与退回、坏 JSON/缺字段容错、数字与字符串形态、编解码往返、源级覆盖全局的合并语义（74 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 
