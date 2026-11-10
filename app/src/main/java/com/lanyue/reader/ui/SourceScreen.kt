@@ -108,6 +108,7 @@ internal val TEXT_STYLE_BAD = TextStyle(color = Color(0xFFB00020))
 /** 页面路由：Home -> 书源运行链路 / 订阅源运行链路 / 静态体检。 */
 internal sealed interface Route {
     data object Home : Route
+    data class BookExplore(val source: ImportedBookSource) : Route
     data class BookSearch(val source: ImportedBookSource) : Route
     data class BookDetail(val source: ImportedBookSource, val item: SearchBookItem, val referrer: String) : Route
     data class Reader(
@@ -299,9 +300,15 @@ internal fun SourceApp(
                 onImportVideo = { importVideo(it) },
                 onOpenVideo = { row -> route = Route.VideoExplore(row) },
                 onOpen = { src ->
-                    route = if (src.fields().isRss) Route.RssBrowse(src) else Route.BookSearch(src)
+                    route = if (src.fields().isRss) Route.RssBrowse(src) else Route.BookExplore(src)
                 },
                 onDismissImport = { lastImport = null; readStatus = null }
+            )
+            is Route.BookExplore -> BookExploreScreen(
+                source = r.source,
+                onBack = { route = Route.Home },
+                onCheck = { route = Route.Check(r.source) },
+                onOpenItem = { item, ref -> route = Route.BookDetail(r.source, item, ref) }
             )
             is Route.BookSearch -> BookSearchScreen(
                 source = r.source,
@@ -313,7 +320,7 @@ internal fun SourceApp(
                 source = r.source,
                 item = r.item,
                 referrerUrl = r.referrer,
-                onBack = { route = Route.BookSearch(r.source) },
+                onBack = { route = Route.BookExplore(r.source) },
                 onOpenChapter = { chapter, toc, ref ->
                     route = Route.Reader(r.source, r.item, ref, chapter, toc)
                 },

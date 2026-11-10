@@ -74,7 +74,68 @@ class LegadoBookSource(
         val url = UrlTemplate.fillPage(sort.url, page)
         val html = fetchHtml(url, "explore")
         val ctx = ruleContext(url, "explore")
-        return parseBookItems(html, entity.ruleExplore, ctx)
+        return parseBookItems(html, exploreListRule(), ctx)
+    }
+
+    /**
+     * 1.4.4 书源发现分类：优先解析 ruleExplore 内嵌 JSON 的「分类」字段，
+     * 结构：{"BookList":"...","分类":{"玄幻":"/category/xuanhuan/","都市":{"分类名称":"都市","URL":"..."}}}；
+     * 分类值可为字符串 URL 或对象 {分类名称,URL}。
+     * 无「分类」时退化为「分类名::url」多行静态解析。无分类时返回空，UI 只展示列表态。
+     */
+    suspend fun getSorts(): List<SortRule> {
+        val raw = entity.ruleExplore ?: return emptyList()
+        val obj = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
+        if (obj != null) {
+            val list = categoryRules(obj.get("分类"))
+            if (!list.isNullOrEmpty()) return list
+        }
+        return parseStaticLines(raw)
+    }
+
+    private fun parseStaticLines(raw: String): List<SortRule> {
+        val lines = raw.split("\n", "&&").map { it.trim() }.filter { it.isNotEmpty() }
+        return lines.mapNotNull { line ->
+            val idx = line.indexOf("::")
+            if (idx <= 0) return@mapNotNull null
+            val name = line.substring(0, idx).trim()
+            val url = line.substring(idx + 2).trim()
+            if (name.isEmpty() || url.isEmpty()) return@mapNotNull null
+            SortRule(name, url)
+        }
+    }
+
+    private fun categoryRules(cat: com.google.gson.JsonElement?): List<SortRule>? =
+        when (cat) {
+            is com.google.gson.JsonObject -> {
+                cat.entrySet().mapNotNull { (name, v) ->
+                    val url = URLFrom(v)
+                    if (name.isNotBlank() && !url.isNullOrBlank()) SortRule(name, url) else null
+                }
+            }
+            is com.google.gson.JsonArray -> cat.mapNotNull { element ->
+                if (element is com.google.gson.JsonObject) {
+                    val name = element.get("分类名称")?.asString ?: element.get("name")?.asString ?: return@mapNotNull null
+                    URLFrom(element).takeIf { !it.isNullOrBlank() }
+                        ?.let { SortRule(name, it) }
+                } else null
+            }
+            null -> null
+            else -> null
+        }
+
+    private fun URLFrom(v: com.google.gson.JsonElement?): String? = when (v) {
+        null -> null
+        is com.google.gson.JsonPrimitive -> v.asString
+        is com.google.gson.JsonObject -> v.get("URL")?.asString ?: v.get("url")?.asString
+        else -> null
+    }
+
+    /** ruleExplore 是嵌套对象时取 BookList 列表规则。 */
+    private fun exploreListRule(): String? {
+        val raw = entity.ruleExplore ?: return null
+        val obj = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return raw
+        return obj.get("BookList")?.asString ?: raw
     }
 
     override suspend fun getDetail(url: String): BookDetail {
