@@ -70,9 +70,32 @@ class SortUrlParser(
         return Result(parsed.take(MAX_SORTS), truncated, degraded = false)
     }
 
+    /**
+     * 解析可动态化的 URL 字符串：@js:/<js> 脚本原样执行，返回执行结果（脚本应 return 地址）；
+     * 静态字符串原样返回。失败返回 null（调用方按降级处理，不抛异常、不把脚本当 URL）。
+     */
+    suspend fun resolveUrl(raw: String, traceId: String): String? {
+        if (!raw.contains("@js:") && !raw.contains("<js>")) return raw
+        val script = if (raw.contains("@js:")) {
+            raw.substringAfter("@js:")
+        } else {
+            raw.substringAfter("<js>").substringBefore("</js>")
+        }
+        val out = runCatching {
+            js.eval(
+                script = "(function(){ " + script + " })()",
+                mode = JsExecMode.MAIN,
+                tier = PoolTier.NORMAL,
+                traceId = traceId
+            ) { _, _ -> true }
+        }.getOrNull()?.trim()
+        return out.takeUnless { it.isNullOrBlank() }.also {
+            if (it == null) metrics.degradation(traceId, "resolve_url_js_failed")
+        }
+    }
+
     /** 静态解析：「名::url」，一行一个，也支持 && 串联。 */
-    fun parseStatic(raw: String): List<SortRule> {
-        val lines = raw.split(LINE_SEP, ALT_SEP)
+    fun parseStatic(raw: String): List<SortRule> {        val lines = raw.split(LINE_SEP, ALT_SEP)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 

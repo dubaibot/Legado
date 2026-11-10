@@ -325,6 +325,14 @@ fun main() {
     runBlocking { srcE.explore(catSorts[0], 1) }
     eq("相对分类URL拼接", httpE.lastReq?.url, "http://src.lanyue.test/cat/xuanhuan")
 
+    // searchUrl 带 @js 且无 parser -> 返回空，不把脚本传给网络
+    val srcJsSearch = makeSrc(entity(searchUrl = "@js:V", ruleSearch = "class.list@li@a"))
+    eq("无parser动态搜索地址跳过", runBlocking { srcJsSearch.search("x", 1) }, emptyList<SearchBookItem>())
+
+    // explore 传入 @js 分类（无 parser）-> 返回空
+    val srcJsExplore = makeSrc(entity(ruleExplore = "BookList::class.list@li@a"))
+    eq("动态分类URL无parser跳过", runBlocking { srcJsExplore.explore(SortRule("x", "@js:V"), 1) }, emptyList<SearchBookItem>())
+
     println()
     println("PASS = $pass   FAIL = $fail")
     if (fail > 0) kotlin.system.exitProcess(1)

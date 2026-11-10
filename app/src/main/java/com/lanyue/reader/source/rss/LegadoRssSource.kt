@@ -119,6 +119,11 @@ class LegadoRssSource(
 
     private suspend fun fetch(url: String, op: String): String {
         val traceId = sourceId + ":" + op
+        // 防线：拦截流失的非法 scheme（@js: 脚本当 URL 使用的兜底）
+        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file://")) {
+            metrics.failure(traceId, "rss_source", "bad_scheme:" + url.take(32))
+            throw NetworkException("非法地址（缺少 http/https scheme），不发起请求")
+        }
         val resp = net.execute(
             HttpRequest(
                 url = url,

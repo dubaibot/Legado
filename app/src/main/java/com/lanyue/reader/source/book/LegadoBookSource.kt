@@ -65,19 +65,30 @@ class LegadoBookSource(
 
     override suspend fun search(key: String, page: Int): List<SearchBookItem> {
         val searchUrl = entity.searchUrl ?: return emptyList()
+        val resolved = resolveDynamic(searchUrl, "search") ?: return emptyList()
         // 1.4.3 占位符替换；无占位符时原样请求（不自动追加 ?q=）
-        val url = UrlTemplate.fill(searchUrl, key, page)
+        val url = UrlTemplate.fill(resolved, key, page)
         val html = fetchHtml(url, "search")
         val ctx = ruleContext(url, "search")
         return parseBookItems(html, searchBookListRule(), ctx)
     }
 
     override suspend fun explore(sort: SortRule, page: Int): List<SearchBookItem> {
-        val url = UrlTemplate.fillPage(sort.url, page)
+        val rawUrl = if (sort.url.contains("@js:") || sort.url.contains("<js>")) {
+            sortParser?.resolveUrl(sort.url, "$sourceId:explore") ?: return emptyList()
+        } else sort.url
+        val url = UrlTemplate.fillPage(rawUrl, page)
         val abs = resolveAbsolute(url)
         val html = fetchHtml(abs, "explore")
         val ctx = ruleContext(abs, "explore")
         return parseBookItems(html, exploreListRule(), ctx)
+    }
+
+    /** 搜索/源地址可能也是 @js: 动态脚本。 */
+    private suspend fun resolveDynamic(raw: String, op: String): String? {
+        if (!raw.contains("@js:") && !raw.contains("<js>")) return raw
+        val parser = sortParser ?: return null
+        return parser.resolveUrl(raw, "$sourceId:$op")
     }
 
     /** 分类值可能是相对路径（/category/x），相对 exploreUrl/源地址拼接。 */
@@ -220,6 +231,11 @@ class LegadoBookSource(
 
     private suspend fun fetchHtml(url: String, op: String): String {
         val traceId = sourceId + ":" + op
+        // 防线：拦截流失的非法 scheme（@js: 脚本/相对 URL 未解析）
+        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file://")) {
+            metrics.failure(traceId, "book_source", "bad_scheme:" + url.take(32))
+            throw NetworkException("非法地址（缺少 http/https scheme），不发起请求")
+        }
         val response = net.execute(
             HttpRequest(
                 url = url,
