@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 
 KC=${KC:-/tmp/opencode/kotlinc/kotlinc/bin/kotlinc}
 CP_DIR=${CP_DIR:-/tmp/opencode}
-JARS="$CP_DIR/coroutines-core.jar:$CP_DIR/jsoup.jar:$CP_DIR/gson.jar:$CP_DIR/okhttp.jar:$CP_DIR/okio.jar:$CP_DIR/conscrypt.jar"
+JARS="$CP_DIR/kotlin-stdlib22.jar:$CP_DIR/coroutines-core.jar:$CP_DIR/jsoup.jar:$CP_DIR/gson.jar:$CP_DIR/okhttp.jar:$CP_DIR/okio.jar:$CP_DIR/conscrypt.jar"
 OUT=${OUT:-/tmp/opencode/out}
 
 mkdir -p "$OUT"
@@ -44,7 +44,7 @@ TESTS=$(find tests -name "*.kt" | sort)
 
 "$KC" -jvm-target 17 \
   -classpath "$JARS" \
-  -include-runtime -d "$OUT/tests.jar" \
+  -d "$OUT/tests.jar" \
   "${SRCS[@]}" $CP_DIR/stub/android/util/Log.kt $CP_DIR/stub/androidx/room/Entity.kt $CP_DIR/stub/androidx/room/PrimaryKey.kt $CP_DIR/stub/androidx/room/Index.kt $TESTS 2>&1
 
 echo "== 编译通过，运行测试 =="
@@ -70,7 +70,8 @@ for cls in \
   SourceValidatorTestKt \
   CapabilityResolverTestKt \
   TvBoxParserTestKt \
-  SortUrlParserTestKt; do
+  SortUrlParserTestKt \
+  TextPurifierTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""

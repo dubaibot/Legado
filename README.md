@@ -21,6 +21,7 @@ app/src/main/java/com/lanyue/reader/
 │   ├── import/        书源导入解析（Legado JSON / 订阅合集）
 │   ├── repo/          源仓库与同步
 │   ├── debug/         书源离线调试管线（搜索→详情→目录→正文串链路）
+│   ├── purify/        正文/标题替换净化（ReplaceRule 执行与规则自检）
 │   ├── book/ rss/ video/ danmaku/   各站点适配器
 ├── bookshelf/         书架操作层（增删/分组/排序）与换源进度映射
 ├── data/
@@ -139,6 +140,31 @@ app/src/main/java/com/lanyue/reader/
   另有两道保护：同 100ms 桶内「模式 + 文本」相同的视为重复只留一条，
   以及 `maxPerSecond` 每秒密度上限，防止刷屏瞬间把轨道打满。
 
+## 替换净化（第十九轮）
+
+`source/purify/TextPurifier`：正文与标题的替换净化，对齐 Legado `ReplaceRule` 能力。
+
+规则按 `order` 升序执行，`order` 相同则保持声明顺序，保证结果可复现。
+作用域用 `PurifyScope` 枚举（`CONTENT` / `TITLE` / `ALL`）显式声明；Legado 那边是
+null / `"title"` / `"content"` 的字符串约定，拼错不报错、整条规则静默失效。
+
+四条保护都是为了修掉会真实毁掉整章正文的情形：
+
+- **非法正则只废这一条**。编译失败计入 `failed` 后继续执行后续规则，不中断整章净化；
+  替换模板里的非法分组引用（只有 2 组却写 `$9`）同样只废这一条。
+- **非正则规则绝不走正则引擎**。书源作者写 `(*广告*)` 这类字面量时，
+  当正则会编译失败或让元字符改写语义，所以字面量分支只做 `String.replace`。
+- **空匹配串直接跳过**。`replace("", x)` 会把 x 塞进每个字符间隙，一次就把正文毁掉。
+- **净化后长度骤降则回退原文**。错误规则（例如把 `.` 当正文全替）会把正文清空，
+  这种结果比不净化更糟；比例闸只对正文生效，标题天然会大幅缩短，用同一阈值会误判。
+
+另有 `firstLineOnly` 只处理首行，用于「章节标题混进正文首行」的场景——
+整篇替换会误伤正文里的同名字符串。空白归一化处理非断空格 / 全角空格 / 行尾空白，
+并把连续空行折叠成一个：爬来的正文里这几类字符极常见，不归一化会让去重与搜索全部失效。
+超过 `maxTextLength` 的文本整篇放行，避免灾难性回溯拖死主线程。
+
+`TextPurifier.validate` 供书源编辑器做规则自检，返回可直接展示的中文问题列表。
+
 ## 合规门禁
 
 ```bash
@@ -174,6 +200,7 @@ bash tools/ci.sh
 | `tests/CapabilityResolverTest.kt` | 源配置文件级能力判定（能力位 miss/降级/订阅兜底/影视双开启映射，entity 数据形状直连接口契约）（19 项） |
 | `tests/TvBoxParserTest.kt` | TVBox 配置解析（接口配置展开多站点、type3 drpy/jar 区分与裁剪标记、parses 解析链、lives 持久化字段、hotSearch 裁剪、非法配置 Invalid、可选字段 null 不炸）（63 项） |
 | `tests/SortUrlParserTest.kt` | 1.4.4 sortUrl 动态生成与静态分类解析（名::url 换行/&& 双分隔、trim/空行过滤、@js: 与 <js> IIFE 包装且 traceId/NORMAL 池透传、JS 失败与异常降级、100 分类截断与边界恰好等值）（32 项） |
+| `tests/TextPurifierTest.kt` | 替换净化：非法正则/空匹配串容错、字面量与正则分流、作用域与 order、首行模式、空白归一、比例回退、规则自检（58 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 
