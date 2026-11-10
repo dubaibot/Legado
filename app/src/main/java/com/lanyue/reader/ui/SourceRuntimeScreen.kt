@@ -586,7 +586,7 @@ internal fun htmlToText(html: String): String {
 }
 
 /** 内核错误码到用户提示（对齐 4.3 产品级文案）。 */
-private fun friendlyError(e: Exception): String = when {
+internal fun friendlyError(e: Exception): String = when {
     e.message?.contains("timeout", ignoreCase = true) == true ||
         e.message?.contains("超时") == true -> "加载超时，请检查网络后重试"
     e.message?.contains("http 403") == true ||
