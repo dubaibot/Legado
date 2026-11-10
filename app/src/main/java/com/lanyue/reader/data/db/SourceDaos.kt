@@ -176,6 +176,9 @@ interface DanmakuDao {
     @Query("UPDATE danmaku_sources SET verified = :verified WHERE id = :id")
     suspend fun setVerified(id: String, verified: Boolean)
 
+    @Query("UPDATE danmaku_sources SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+
     /** 4.10.5 匹配记忆：按 视频标识 + 弹幕源 查。 */
     @Query("SELECT * FROM danmaku_bindings WHERE videoKey = :videoKey AND danmakuSourceId = :sourceId")
     suspend fun binding(videoKey: String, sourceId: String): DanmakuBindingEntity?

@@ -22,7 +22,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lanyue.reader.R
 import com.lanyue.reader.bookshelf.ShelfOps.ShelfBook
+import com.lanyue.reader.data.db.entity.RuleSubEntity
 import com.lanyue.reader.data.backup.BackupCodec
 import com.lanyue.reader.data.backup.BackupCodec.DecodeResult
 import com.lanyue.reader.data.backup.BackupPayload
@@ -54,28 +57,264 @@ internal fun MineScreen(onOpenSource: () -> Unit) {
     var backupOpen by remember { mutableStateOf(false) }
     var aboutOpen by remember { mutableStateOf(false) }
 
+    var ruleSubOpen by remember { mutableStateOf(false) }
+    var cacheOpen by remember { mutableStateOf(false) }
+    var settingOpen by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text("我的", fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
 
         TextButton(onClick = onOpenSource, modifier = Modifier.fillMaxWidth()) {
             MineRow("源管理", "书源 / 订阅 / 影视 / 弹幕")
         }
-        MineRow("缓存管理", "媒体缓存服务已就绪（§4.11 MediaDownloadService），任务界面落地中")
+        TextButton(onClick = { ruleSubOpen = true }, modifier = Modifier.fillMaxWidth()) {
+            MineRow("规则订阅管理", "订阅规则集合的查看 / 启用 / 刷新 / 删除")
+        }
+        TextButton(onClick = { cacheOpen = true }, modifier = Modifier.fillMaxWidth()) {
+            MineRow("缓存管理", "缓存文件清单与 LRU 清理")
+        }
         TextButton(onClick = { backupOpen = true }, modifier = Modifier.fillMaxWidth()) {
             MineRow("备份恢复", "导出 / 导入本地备份")
         }
-        MineRow("设置中心", "一级设置项落地中，当前默认见 §2 / §6 验收单")
+        TextButton(onClick = { settingOpen = true }, modifier = Modifier.fillMaxWidth()) {
+            MineRow("设置中心", "界面 / 阅读 / 播放 / 弹幕 / 网络 / 安全 / 高级")
+        }
         TextButton(onClick = { aboutOpen = true }, modifier = Modifier.fillMaxWidth()) {
             MineRow("关于", "版本与声明")
         }
     }
 
+    if (ruleSubOpen) {
+        RuleSubPanel(onClose = { ruleSubOpen = false })
+    }
+    if (cacheOpen) {
+        CachePanel(onClose = { cacheOpen = false })
+    }
+    if (settingOpen) {
+        SettingsPanel(
+            onClose = { settingOpen = false },
+            onOpenBackup = { backupOpen = true },
+            onOpenAbout = { aboutOpen = true }
+        )
+    }
     if (backupOpen) {
         BackupPanel(onClose = { backupOpen = false })
     }
     if (aboutOpen) {
         AboutDialog(onClose = { aboutOpen = false })
     }
+}
+
+/** §3.9 规则订阅管理：查看 / 启停 / 删除订阅规则集合。 */
+@Composable
+private fun RuleSubPanel(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val g = RuntimeGraph.get(context)
+    var busy by remember { mutableStateOf(false) }
+    var toast by remember { mutableStateOf<String?>(null) }
+    val rows = remember { mutableStateListOf<RuleSubEntity>() }
+
+    fun refresh() {
+        scope.launch {
+            rows.clear()
+            g.db.ruleSubDao().all().forEach { rows.add(it) }
+        }
+    }
+
+    LaunchedEffect(Unit) { refresh() }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("规则订阅管理（§4.3）") },
+        text = {
+            Column(
+                Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "共 ${rows.size} 组订阅；订阅刷新由后台轮询按 currentInterval 触发，这里只维护启停与删除。",
+                    style = TEXT_STYLE_DIM
+                )
+                if (rows.isEmpty()) {
+                    Text("暂无订阅规则，可在源管理中心的「订阅」分类导入后查看。", style = TEXT_STYLE_DIM)
+                }
+                rows.forEach { sub ->
+                    Column(
+                        Modifier.fillMaxWidth().padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row {
+                            Text(sub.name, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(8.dp))
+                            Text(sub.sourceType, style = TEXT_STYLE_DIM)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                scope.launch {
+                                    g.db.ruleSubDao().upsert(sub.copy(enabled = !sub.enabled))
+                                    toast = if (sub.enabled) "已停用" else "已启用"
+                                    refresh()
+                                }
+                            }) { Text(if (sub.enabled) "已启用" else "已停用") }
+                            TextButton(onClick = {
+                                scope.launch {
+                                    g.db.ruleSubDao().delete(sub.id)
+                                    toast = "已删除 ${sub.name}"
+                                    refresh()
+                                }
+                            }) { Text("删除") }
+                        }
+                    }
+                }
+                toast?.let { Text(it, style = TEXT_STYLE_DIM) }
+            }
+        },
+        confirmButton = { Button(onClick = onClose) { Text("完成") } }
+    )
+}
+
+/** §3.9 缓存管理：展示缓存清单与体积，支持一键 LRU 清理未锁定文件。 */
+@Composable
+private fun CachePanel(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val g = RuntimeGraph.get(context)
+    var loadedBy by remember { mutableStateOf(false) }
+    var totalMb by remember { mutableStateOf(0L) }
+    var count by remember { mutableStateOf(0) }
+    var locked by remember { mutableStateOf(0) }
+    var toast by remember { mutableStateOf<String?>(null) }
+
+    fun load() {
+        scope.launch {
+            val files = g.db.downloadDao().cacheFiles()
+            totalMb = files.sumOf { it.sizeBytes } / (1024L * 1024L)
+            count = files.size
+            locked = files.count { it.locked }
+            loadedBy = true
+        }
+    }
+    LaunchedEffect(Unit) { load() }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("缓存管理（§4.11）") },
+        text = {
+            Column(
+                Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (loadedBy) {
+                    Text("缓存体积：${totalMb} MB，共 $count 个文件（$locked 个锁定，不参与清理）。")
+                }
+                TextButton(onClick = { load() }) { Text("刷新清单") }
+                TextButton(onClick = {
+                    scope.launch {
+                        val files = g.db.downloadDao().cacheFiles().filter { !it.locked }
+                        g.db.downloadDao().evictLru(files.size)
+                        load()
+                        toast = "已清理 ${files.size} 个未锁定缓存文件"
+                    }
+                }) { Text("清理未锁定缓存（LRU）") }
+                toast?.let { Text(it, style = TEXT_STYLE_DIM) }
+            }
+        },
+        confirmButton = { Button(onClick = onClose) { Text("完成") } }
+    )
+}
+
+/** §3.11 设置中心：一级设置项最小可用面（弹幕渲染、诊断日志、跳转备份/关于）。 */
+@Composable
+private fun SettingsPanel(onClose: () -> Unit, onOpenBackup: () -> Unit, onOpenAbout: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val g = RuntimeGraph.get(context)
+    val prefs = context.getSharedPreferences("lanyue_settings", android.content.Context.MODE_PRIVATE)
+    var renderingOn by remember { mutableStateOf(prefs.getBoolean("danmaku_rendering", true)) }
+    var diagOn by remember { mutableStateOf(prefs.getBoolean("diag_log", false)) }
+    var toast by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("设置中心（§3.11）") },
+        text = {
+            Column(
+                Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // 界面
+                Text("界面", fontWeight = FontWeight.Bold)
+                Text(
+                    "主题跟随系统深浅色（§2.1）；底栏支持隐藏（§2.5.1）、抽屉手势稳定。",
+                    style = TEXT_STYLE_DIM
+                )
+                // 阅读
+                Text("阅读", fontWeight = FontWeight.Bold)
+                Text(
+                    "默认开启「底部工具条 / 顶部工具条 / 滑动翻页」手势，字号与行距见阅读器设置。",
+                    style = TEXT_STYLE_DIM
+                )
+                // 播放
+                Text("播放", fontWeight = FontWeight.Bold)
+                Text(
+                    "影视默认倍速从 0.5x 起步，可在播放条直接切换（§3.9）。",
+                    style = TEXT_STYLE_DIM
+                )
+                // 弹幕
+                Text("弹幕", fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    androidx.compose.material3.Switch(
+                        checked = renderingOn,
+                        onCheckedChange = { want ->
+                            renderingOn = want
+                            prefs.edit().putBoolean("danmaku_rendering", want).apply()
+                            toast = if (want) "已开启弹幕渲染（默认）" else "已关闭弹幕渲染（默认不渲染）"
+                        }
+                    )
+                    Text(if (renderingOn) "弹幕渲染已开启" else "弹幕渲染已关闭", style = TEXT_STYLE_DIM)
+                }
+                TextButton(onClick = {
+                    scope.launch {
+                        g.danmakuDao.clearBindings()
+                        toast = "已清除所有弹幕源匹配记录"
+                    }
+                }) { Text("清除弹幕源匹配记录") }
+                // 网络
+                Text("网络", fontWeight = FontWeight.Bold)
+                Text(
+                    "默认直连 LAN 内网测速、DHCP / 静态地址；代理配置当前提供开关，证书安装见 §7.3 PRIVATE。",
+                    style = TEXT_STYLE_DIM
+                )
+                // 安全
+                Text("安全", fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    androidx.compose.material3.Switch(
+                        checked = diagOn,
+                        onCheckedChange = { want ->
+                            diagOn = want
+                            prefs.edit().putBoolean("diag_log", want).apply()
+                        }
+                    )
+                    Text(if (diagOn) "诊断日志已开启" else "诊断日志已关闭", style = TEXT_STYLE_DIM)
+                }
+                // 备份
+                Text("备份", fontWeight = FontWeight.Bold)
+                TextButton(onClick = { onOpenBackup() }) { Text("备份恢复（§5.5）") }
+                // 高级
+                Text("高级", fontWeight = FontWeight.Bold)
+                Text(
+                    "短按底栏居中键切换「多选 / 导出 APK」；WebView 诊断、镜像缓存、自研组件等高级开关随对应页面内并提供。",
+                    style = TEXT_STYLE_DIM
+                )
+                // 关于
+                TextButton(onClick = { onOpenAbout() }) { Text("关于蓝阅（§6.6）") }
+                toast?.let { Text(it, style = TEXT_STYLE_DIM) }
+                Text("当前原型用于功能闭环演示：部分高级项只读，藏书全流程贯通。", style = TEXT_STYLE_DIM)
+            }
+        },
+        confirmButton = { Button(onClick = onClose) { Text("完成") } }
+    )
 }
 
 @Composable

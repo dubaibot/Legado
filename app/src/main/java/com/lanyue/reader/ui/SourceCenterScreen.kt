@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lanyue.reader.data.db.entity.BookSourceEntity
+import com.lanyue.reader.data.db.entity.DanmakuSourceEntity
 import com.lanyue.reader.data.db.entity.RssSourceEntity
 import com.lanyue.reader.data.db.entity.VideoSiteEntity
 import com.lanyue.reader.source.import.SourceImportParser
@@ -55,11 +56,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
 
-/** §3.10 源管理中心的三段：小说书源 / 订阅源 / 影视站点。 */
+/** §3.10 源管理中心：小说书源 / 订阅源 / 影视站点 / 弹幕源。 */
 enum class SourceSection(val label: String) {
     BOOK("小说源"),
     RSS("订阅源"),
     VIDEO("影视源"),
+    DANMAKU("弹幕源"),
 }
 
 @Composable
@@ -76,6 +78,7 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
     val books = remember { mutableStateListOf<BookSourceEntity>() }
     val rss = remember { mutableStateListOf<RssSourceEntity>() }
     val videos = remember { mutableStateListOf<VideoSiteEntity>() }
+    val danmaku = remember { mutableStateListOf<DanmakuSourceEntity>() }
 
     /** 检测摘要：key = 主键（书源 url / 订阅 sourceUrl / 视频 configUrl#siteKey）。 */
     val summaries = remember { mutableStateMapOf<String, String>() }
@@ -91,10 +94,12 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
     fun keyOf(src: BookSourceEntity) = "book:" + src.bookSourceUrl
     fun keyOf(src: RssSourceEntity) = "rss:" + src.sourceUrl
     fun keyOf(src: VideoSiteEntity) = "video:" + src.configUrl + "#" + src.siteKey
+    fun keyOf(src: DanmakuSourceEntity) = "danmaku:" + src.id
     fun keyOfOfAny(src: Any): String = when (src) {
         is BookSourceEntity -> keyOf(src)
         is RssSourceEntity -> keyOf(src)
         is VideoSiteEntity -> keyOf(src)
+        is DanmakuSourceEntity -> keyOf(src)
         else -> ""
     }
 
@@ -102,6 +107,7 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
         is BookSourceEntity -> src.bookSourceName.ifBlank { src.bookSourceUrl }
         is RssSourceEntity -> src.sourceName.ifBlank { src.sourceUrl }
         is VideoSiteEntity -> src.name.ifBlank { src.siteKey }
+        is DanmakuSourceEntity -> src.name.ifBlank { src.apiBase }
         else -> ""
     }
 
@@ -113,6 +119,7 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
             SourceSection.BOOK -> books.clear().also { books.addAll(g.db.bookSourceDao().all()) }
             SourceSection.RSS -> rss.clear().also { rss.addAll(g.db.rssSourceDao().all()) }
             SourceSection.VIDEO -> videos.clear().also { videos.addAll(g.db.videoDao().allSites()) }
+            SourceSection.DANMAKU -> danmaku.clear().also { danmaku.addAll(g.db.danmakuDao().all()) }
         }
     }
 
@@ -165,6 +172,12 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
                         if (keyOf(b) in selected) dao.upsertSite(b.copy(enabled = enabled))
                     }
                 }
+                SourceSection.DANMAKU -> {
+                    val dao = g.db.danmakuDao()
+                    danmaku.forEach { b ->
+                        if (keyOf(b) in selected) dao.setEnabled(b.id, enabled)
+                    }
+                }
             }
             toast = "已${if (enabled) "启用" else "禁用"} ${selected.size} 条"
         }
@@ -189,6 +202,9 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
                     val siteKey = body.substringAfter('#')
                     g.db.videoDao().deleteSite(config, siteKey)
                 }
+                SourceSection.DANMAKU -> keys.forEach { k ->
+                    g.db.danmakuDao().delete(k.removePrefix("danmaku:"))
+                }
             }
             selected.clear()
             selecting = false
@@ -201,6 +217,7 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
             SourceSection.BOOK -> books.find { it.bookSourceUrl == editKey?.removePrefix("book:") }
             SourceSection.RSS -> rss.find { it.sourceUrl == editKey?.removePrefix("rss:") }
             SourceSection.VIDEO -> videos.find { it.configUrl + "#" + it.siteKey == editKey?.removePrefix("video:") }
+            SourceSection.DANMAKU -> danmaku.find { it.id == editKey?.removePrefix("danmaku:") }
         } ?: run { editKey = null; return }
         scope.launch {
             when (target) {
@@ -211,6 +228,9 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
                     target.copy(sourceName = editName, sourceGroup = editGroup)
                 )
                 is VideoSiteEntity -> g.db.videoDao().upsertSite(
+                    target.copy(name = editName)
+                )
+                is DanmakuSourceEntity -> g.db.danmakuDao().upsert(
                     target.copy(name = editName)
                 )
             }
@@ -225,6 +245,7 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
         SourceSection.BOOK -> books.filter { it.matchQuery(query) }
         SourceSection.RSS -> rss.filter { it.matchQuery(query) }
         SourceSection.VIDEO -> videos.filter { it.matchQuery(query) }
+        SourceSection.DANMAKU -> danmaku.filter { (it.name + " " + it.apiBase).contains(query) }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -239,6 +260,7 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
                 SourceSection.BOOK -> "${books.size} 源 · ${books.count { it.enabled }} 启用"
                 SourceSection.RSS -> "${rss.size} 源 · ${rss.count { it.enabled }} 启用"
                 SourceSection.VIDEO -> "${videos.size} 站点 · ${videos.count { it.enabled }} 启用"
+                SourceSection.DANMAKU -> "${danmaku.size} 源 · ${danmaku.count { it.enabled }} 启用"
             }
             Text(stats)
         }
@@ -393,6 +415,7 @@ internal fun SourceCenterScreen(onBack: () -> Unit) {
                                         is BookSourceEntity -> g.db.bookSourceDao().delete(src.bookSourceUrl)
                                         is RssSourceEntity -> g.db.rssSourceDao().delete(src.sourceUrl)
                                         is VideoSiteEntity -> g.db.videoDao().deleteSite(src.configUrl, src.siteKey)
+                                        is DanmakuSourceEntity -> g.db.danmakuDao().delete(src.id)
                                     }
                                     toast = "已删除 " + entityName(section, src)
                                 }
