@@ -30,3 +30,13 @@ data class FingerprintObservation(
     val tlsHandshakeFailed: Boolean,
     val certificateConfigError: Boolean
 )
+
+/**
+ * 4.6 通道执行契约：OkHttp/Cronet/WebView 三通道统一入参。
+ *
+ * 网络调度依赖本接口而非具体实现，便于 JVM 单测注入假通道验证
+ * 降级链、Cookie 注入回写等执行期行为。
+ */
+interface HttpChannel {
+    suspend fun execute(req: HttpRequest): HttpResponse
+}

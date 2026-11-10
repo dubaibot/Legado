@@ -15,12 +15,19 @@ app/src/main/java/com/lanyue/reader/
 │   ├── security/      权限与桥接安全
 │   └── observability/ 本地指标（仅落盘，不外发）
 ├── source/
+│   ├── model/         源字段/类型契约（SearchBookItem / TocItem / SourceResult）
 │   ├── rule/          规则层（RuleSyntax 语法 / RuleChain 编排 / RuleEngine 执行）
-│   └── video/         TVBox 兼容与本地解析代理
+│   ├── aggregate/     多源聚合搜索（去重、书名归并、空作者回填）
+│   ├── import/        书源导入解析（Legado JSON / 订阅合集）
+│   ├── repo/          源仓库与同步
+│   ├── debug/         书源离线调试管线（搜索→详情→目录→正文串链路）
+│   ├── book/ rss/ video/ danmaku/   各站点适配器
+├── bookshelf/         书架操作层（增删/分组/排序）与换源进度映射
 ├── data/
-│   ├── db/            Room 数据库 / 实体 / DAO（书源、订阅、影视、弹幕）
+│   ├── db/            Room 数据库 / 实体 / DAO（书源、订阅、影视、弹幕、书架）
 │   └── backup/        备份 DTO / JSON 编解码 / 导入合并策略
-└── tools/             合规与架构门禁脚本
+├── danmaku/ player/   弹幕层 / 播放器（断点与播放进度持久化）
+└── tools/             合规与架构门禁脚本 + 纯 JVM 单测脚本
 ```
 
 ## 规则引擎
@@ -80,6 +87,35 @@ app/src/main/java/com/lanyue/reader/
   纯函数实现，输入「本机主键+时间戳快照」与备份内容，输出待写记录。
   用户手工编辑过的书源受保护，导入不会覆盖调好的规则；备份内部重复条目按后者去重。
 
+## 聚合搜索层（第八轮）
+
+`source/aggregate/SearchAggregator`：多源搜索结果做「一本书一行」的合并去重：
+
+- `normalizeText` 做全/半角归一 + 去装饰标点后比较，使「《斗破苍穹》」与「斗破苍穹！」归为同一本；
+- 聚合键为「归一化书名 + 作者」，同 sourceUrl 与同键的重复条目只保留首条；
+- 缺作者时只做宽松并入：同名聚类存在多个时互不合并，恰好同名聚类唯一时才归入，
+  宁可多一行也不错误合并；
+- 聚类排序：多源命中数降序（越多源收录越可能是「正主」），其次按精确命中关键字加权，
+  再按首个命中源的优先级；
+- 源状态由 `SourceStatus` 传递（成功/空/失败/超时/隔离），聚合模块只负责汇总、不决定跳过；
+- 每个聚类带 `origin -> 条目` 的备选表，直接喂给下方换源菜单。
+
+## 书架操作层（第八轮）
+
+- `bookshelf/ShelfOps`：内存书架上的增删分组排序全为纯函数。
+  重复加书只刷新元信息（封面/简介/最新章），用户域（分组、排序序、阅读位置）绝不被覆盖；
+  移出为软删除，进度保留，`parked()` 列出「稍后再读」候选。
+- `bookshelf/SourceSwapper`：换源进度映射，置信度四档：
+  `EXACT`（归一化标题唯一对应）→ `NUMBER`（章节号最近者对应，含「012」前导零花招与中文数字）
+  → `INDEX`（按序号对齐，提示用户核对）→ `RESET`（从头再读）；
+  标题归一化标题在两侧目录重复出现时（卷名/公告类）不走 EXACT，避免把进度带歪章。
+
+## 书源调试管线
+
+`source/debug/SourceDebugger`：搜索 / 详情 / 目录 / 正文四个阶段各有一个独立 `check*` 检查方法，
+`buildReport` 串成一条链——前一阶段失败后，后续阶段不再执行并标记「上一步失败，未继续」；
+`staticCheck` 只做配置字段体检，不发请求，用于书源列表批量自检。
+
 ## 本地解析代理
 
 `LocalParseProxy` 仅监听 `127.0.0.1` 随机端口，每次播放会话签发随机 token：
@@ -92,7 +128,7 @@ app/src/main/java/com/lanyue/reader/
   不同仓库存在大量同名 key（如 `csp_xxx`），单键会把两个仓的站点互相覆盖。
   重复导入是幂等的：定义未变计入 `unchanged`，不产生无意义写入；
   定义变更才更新，且**保留用户手动设置的启用状态与快搜偏好**，
-  避免升级仓配置把用户关掉的站点又打开。
+  避免升级仓配置把用户主动关掉的站点又打开。
   本次导入内部的重复按后者生效并计数；`type` 越界时按 api 后缀
   （`.js` / `.py` / `.jar` → 3，其余 → 1）回推，jar 站点标记「暂不支持」并自动关闭搜索。
 - `DanmakuTimelineScheduler`：把弹幕事件排进屏幕轨道，纯计算、可脱机验证。
@@ -117,13 +153,29 @@ bash tools/ci.sh
 
 | 套件 | 覆盖 |
 |------|------|
-| `tests/RuleEngineDispatchTest.kt` | 规则拆解与执行派发 |
-| `tests/JsonXpathTest.kt` | JSONPath / XPathLite 求值 |
+| `tests/RuleEngineDispatchTest.kt` | 规则拆解与执行派发（33 项） |
+| `tests/JsonXpathTest.kt` | JSONPath / XPathLite 求值（64 项） |
 | `tests/SourceLayerTest.kt` | 源健康度隔离 + 三类源配置校验（85 项） |
 | `tests/ReadingLayerTest.kt` | 阅读设置往返 + 翻页状态机 + 分页链路（126 项） |
 | `tests/BackupLayerTest.kt` | 备份编解码容错 + 合并策略（89 项） |
-| `tests/SourceImportLayerTest.kt` | 源导入清洗 / 仓库冲突语义 / 调试管线（161 项） |
+| `tests/SourceImportLayerTest.kt` | 书源导入解析与同步策略（161 项） |
 | `tests/VideoDanmakuLayerTest.kt` | 影视站点安装幂等 + 弹幕轨道调度（126 项） |
+| `tests/ShelfAggregateLayerTest.kt` | 聚合搜索 + 书架操作 + 换源映射（101 项） |
+| `tests/DanmakuFilterTest.kt` | 弹幕渲染参数 + 过滤屏蔽/合并去重/同屏截断（55 项） |
+| `tests/SecurityGuardTest.kt` | 安全闸门（URL/SSRF/重定向/限流/HTML 判定） + 权限分级（114 项） |
+| `tests/EngineRuleSyntaxTest.kt` | 规则语法层（RuleSyntax 顶层切分/正则替换/put/get/模板/索引/规则类型 + UrlTemplate + SortUrlParser 静态/动态降级/截断）（69 项） |
+| `tests/EngineCoreTest.kt` | 核心引擎层（ChannelSticky 2 次命中/7 天 TTL/源清理 + 限流桶/并发闸 + DomParser 降级链/2MB 阈值 + Sniffer 媒体命中 + JsExtensions）（84 项） |
+| `tests/RuleEngineDispatchRound2Test.kt` | 派发第二批（CSS 尾接 `@js:` 转换、`<js>` 整段、XPath /@attr 指令透传、尾部索引越界/负索引/col-* 类名边界、absolutize scheme 缺失补全、@put/@get/{{变量}} 联动）（21 项） |
+| `tests/NetworkDispatcherE2ETest.kt` | 网络派发层执行期权限闸与通道缝（默认通道直达、源限速第 3 次拒绝、WAF 指纹两击绑定、Cronet 抛错回落 OkHttp、空 HTML 判指纹拦截、Cookie 注入标记与 Set-Cookie 回写、通道粘滞绑定、SSRF 子资源转发校验/剥 Cookie/方法限流/异常吞并、执行期方法授权拒绝）（46 项） |
+| `tests/RuleChainTest.kt` | 规则编排层 RuleChain（`||`/`&&` 顶层切分、花括号内不切、`@put` 先于 `##` 解析、无替换段删除匹配、坏正则不抛、shouldAccept/finish/merge 语义、allPuts/allGets 去重、空规则规划）（52 项） |
+| `tests/JsRuntimePoolTest.kt` | JS 运行时池与 RunnerInstance（CAS 状态机生命周期、同层耗尽不互借、低档共享高档池、POISONED 销毁不回池、Reaper 2× 超时剔除与代数自增、缩容/低内存回收）（50 项） |
+| `tests/SourceRouterTest.kt` | 源调度层与健康隔离（SourceRouter 四类源调度、单源失败不影响其它源、3 连败隔离与恢复、超时计入失败、正文三形态分流与错误映射、弹幕首命中/无命中错误码、订阅源不写隔离、并发闸门峰值）（51 项） |
+| `tests/SourceValidatorTest.kt` | 源配置校验与能力判定（书源/订阅/影视三族 validate 分级、URL/JSON 体检、JS 括号重心校验、Report 汇总文案）（69 项） |
+| `tests/CapabilityResolverTest.kt` | 源配置文件级能力判定（能力位 miss/降级/订阅兜底/影视双开启映射，entity 数据形状直连接口契约）（19 项） |
+| `tests/TvBoxParserTest.kt` | TVBox 配置解析（接口配置展开多站点、type3 drpy/jar 区分与裁剪标记、parses 解析链、lives 持久化字段、hotSearch 裁剪、非法配置 Invalid、可选字段 null 不炸）（63 项） |
+| `tests/SortUrlParserTest.kt` | 1.4.4 sortUrl 动态生成与静态分类解析（名::url 换行/&& 双分隔、trim/空行过滤、@js: 与 <js> IIFE 包装且 traceId/NORMAL 池透传、JS 失败与异常降级、100 分类截断与边界恰好等值）（32 项） |
+
+完整运行方式见 `tools/test_jvm.sh`。
 
 ## 构建
 

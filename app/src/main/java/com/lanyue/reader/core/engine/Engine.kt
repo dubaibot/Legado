@@ -32,6 +32,8 @@ enum class EngineErrorCode {
     RENDER_GONE,
     POOL_EXHAUSTED,
     RATE_LIMITED,
+    /** 5.5：源权限声明在执行期被拒（非取消类错误，需面向用户提示）。 */
+    PERMISSION_DENIED,
     SANDBOX_SUBMIT_TIMEOUT,
     CANCELLED
 }

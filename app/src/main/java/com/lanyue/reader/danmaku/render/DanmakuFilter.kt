@@ -30,7 +30,10 @@ class DanmakuFilter(private val params: DanmakuRenderParams) {
         }
     }
 
-    fun apply(events: List<DanmakuEvent>): List<DanmakuEvent> =
-        dedupe(events.filter { accept(it) })
-            .sortedBy { it.timeMs }
+    fun apply(events: List<DanmakuEvent>): List<DanmakuEvent> {
+        val processed = dedupe(events.filter { accept(it) }).sortedBy { it.timeMs }
+        // 同屏密度上限：保留最早进入屏幕的 maxOnScreen 条，丢弃最新超出部分（保帧）
+        if (params.maxOnScreen <= 0) return processed
+        return processed.take(params.maxOnScreen)
+    }
 }

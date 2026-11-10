@@ -307,10 +307,12 @@ class RuleEngine(
         val scheme = if (schemeEnd > 0) base.substring(0, schemeEnd) else "https"
         if (v.startsWith("//")) return scheme + ":" + v
         val originEnd = base.indexOf('/', schemeEnd + 3)
-        val origin = if (originEnd > 0) base.substring(0, originEnd) else base
+        val rawOrigin = if (originEnd > 0) base.substring(0, originEnd) else base
+        val origin = if (rawOrigin.startsWith("http")) rawOrigin else "$scheme://$rawOrigin"
         if (v.startsWith("/")) return origin + v
         val dir = if (originEnd > 0) base.substring(0, base.lastIndexOf('/') + 1) else base + "/"
-        return dir + v
+        val normalizedDir = if (dir.startsWith("http")) dir else "$scheme://$dir"
+        return normalizedDir + v
     }
 
     /**
