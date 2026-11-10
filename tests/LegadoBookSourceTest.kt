@@ -22,6 +22,7 @@ import com.lanyue.reader.source.model.SourceCapability
 import com.lanyue.reader.source.model.SourceType
 import com.lanyue.reader.source.model.TocItem
 import com.lanyue.reader.source.rule.RuleEngine
+import com.lanyue.reader.source.rule.SortUrlParser
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -115,7 +116,7 @@ private fun entity(
     ruleExplore = ruleExplore
 )
 
-private fun makeSrc(e: BookSourceEntity, http: FakeHttpChannel): LegadoBookSource {
+private fun makeSrc(e: BookSourceEntity, http: FakeHttpChannel = FakeHttpChannel()): LegadoBookSource {
     return LegadoBookSource(
         entity = e,
         net = newNet(http),
@@ -288,6 +289,41 @@ fun main() {
     check("音频 header JSON 形态", c16 is ContentResult.Audio, "got $c16")
     eq("音频直链剥离", (c16 as ContentResult.Audio).url, "http://cdn/b.mp3")
     eq("防盗链 header 注入", (c16 as ContentResult.Audio).headers["Referer"], "http://c.com")
+
+    // ---------------- 发现分类 getSorts ----------------
+    // 静态 JSON 分类
+    val srcCat = makeSrc(
+        entity(ruleExplore = """{"BookList":"class.list@li@a","分类":{"玄幻":"/cat/xuanhuan","都市":{"分类名称":"都市","URL":"/cat/dushi"}}}""")
+    )
+    val catSorts = runBlocking { srcCat.getSorts() }
+    eq("静态分类条数", catSorts.size, 2)
+    eq("静态分类名", catSorts[0].name, "玄幻")
+    eq("静态分类相对URL", catSorts[0].url, "/cat/xuanhuan")
+    eq("静态分类对象URL", catSorts[1].url, "/cat/dushi")
+
+    // 无 sortParser 时动态分类跳过，不把 @js 脚本当 URL 返回
+    val srcDyn = runBlocking { makeSrc(entity(ruleExplore = """{"分类":{"玄幻":"@js:sorts"}}""")).getSorts() }
+    eq("无parser动态分类跳过", srcDyn.size, 0)
+
+    // 静态 name::url 行解析
+    val srcLines = runBlocking {
+        makeSrc(entity(ruleExplore = "玄幻::/x&&都市::/d")).getSorts()
+    }
+    eq("静态行分类条数", srcLines.size, 2)
+    eq("静态行分类2", srcLines[1].name, "都市")
+
+    // explore 相对 URL 拼接为绝对地址
+    val httpE = FakeHttpChannel()
+    httpE.pushOk(SEARCH_HTML)
+    val srcE = makeSrc(
+        entity(
+            ruleExplore = """{"BookList":"class.list@li@a","分类":{"玄幻":"/cat/xuanhuan"}}""",
+            exploreUrl = "http://src.lanyue.test/cat"
+        ),
+        httpE
+    )
+    runBlocking { srcE.explore(catSorts[0], 1) }
+    eq("相对分类URL拼接", httpE.lastReq?.url, "http://src.lanyue.test/cat/xuanhuan")
 
     println()
     println("PASS = $pass   FAIL = $fail")

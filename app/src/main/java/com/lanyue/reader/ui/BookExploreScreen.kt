@@ -74,7 +74,9 @@ internal fun BookExploreScreen(
         val entity = SourceEntityConverter.toBookEntity(source.raw)
             ?: throw IllegalStateException("该源缺少可运行的地址，无法浏览")
         val g = RuntimeGraph.get(context)
-        return LegadoBookSource(entity, g.net, g.rules, g.metrics) to entity
+        return LegadoBookSource(
+            entity, g.net, g.rules, g.metrics, sortParser = g.sortParser
+        ) to entity
     }
 
     fun loadPage(p: Int) {

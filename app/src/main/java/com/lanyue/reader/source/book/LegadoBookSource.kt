@@ -16,6 +16,7 @@ import com.lanyue.reader.source.model.SourceCapability
 import com.lanyue.reader.source.model.SourceType
 import com.lanyue.reader.source.model.TocItem
 import com.lanyue.reader.source.rule.RuleEngine
+import com.lanyue.reader.source.rule.SortUrlParser
 import com.lanyue.reader.source.rule.UrlTemplate
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -30,7 +31,8 @@ class LegadoBookSource(
     private val entity: BookSourceEntity,
     private val net: NetworkDispatcher,
     private val rules: RuleEngine,
-    private val metrics: LocalMetrics
+    private val metrics: LocalMetrics,
+    private val sortParser: SortUrlParser? = null
 ) : IBookSource {
 
     override val sourceId: String = entity.bookSourceUrl
@@ -72,15 +74,30 @@ class LegadoBookSource(
 
     override suspend fun explore(sort: SortRule, page: Int): List<SearchBookItem> {
         val url = UrlTemplate.fillPage(sort.url, page)
-        val html = fetchHtml(url, "explore")
-        val ctx = ruleContext(url, "explore")
+        val abs = resolveAbsolute(url)
+        val html = fetchHtml(abs, "explore")
+        val ctx = ruleContext(abs, "explore")
         return parseBookItems(html, exploreListRule(), ctx)
+    }
+
+    /** 分类值可能是相对路径（/category/x），相对 exploreUrl/源地址拼接。 */
+    private fun resolveAbsolute(url: String): String {
+        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file://")) return url
+        val base = entity.exploreUrl ?: entity.bookSourceUrl ?: return url
+        val origin = try {
+            val u = java.net.URI(base)
+            u.scheme + "://" + (u.host ?: base)
+        } catch (e: Exception) {
+            base.substringBefore("/")
+        }
+        return if (url.startsWith("/")) origin + url else "$origin/$url"
     }
 
     /**
      * 1.4.4 书源发现分类：优先解析 ruleExplore 内嵌 JSON 的「分类」字段，
      * 结构：{"BookList":"...","分类":{"玄幻":"/category/xuanhuan/","都市":{"分类名称":"都市","URL":"..."}}}；
-     * 分类值可为字符串 URL 或对象 {分类名称,URL}。
+     * 分类值可为字符串 URL 或对象 {分类名称,URL}；也可能以 @js:/<js> 动态脚本形式存在。
+     * 动态脚本需 sortParser 执行（无 parser 时降级跳过，不返回脚本串当 URL）；
      * 无「分类」时退化为「分类名::url」多行静态解析。无分类时返回空，UI 只展示列表态。
      */
     suspend fun getSorts(): List<SortRule> {
@@ -93,6 +110,18 @@ class LegadoBookSource(
         return parseStaticLines(raw)
     }
 
+    /** 单个分类值：动态脚本走 sortParser，静态值直接采用（无 parser 时跳过动态组）。 */
+    private suspend fun resolveCategory(name: String, urlRaw: String): List<SortRule> {
+        if (containsDynamic(urlRaw)) {
+            val parser = sortParser ?: return emptyList()
+            return parser.parse(urlRaw, sourceId, "$sourceId:sorts").sorts
+        }
+        return listOf(SortRule(name, urlRaw))
+    }
+
+    private fun containsDynamic(urlRaw: String): Boolean =
+        urlRaw.contains("@js:") || urlRaw.contains("<js>")
+
     private fun parseStaticLines(raw: String): List<SortRule> {
         val lines = raw.split("\n", "&&").map { it.trim() }.filter { it.isNotEmpty() }
         return lines.mapNotNull { line ->
@@ -100,25 +129,23 @@ class LegadoBookSource(
             if (idx <= 0) return@mapNotNull null
             val name = line.substring(0, idx).trim()
             val url = line.substring(idx + 2).trim()
-            if (name.isEmpty() || url.isEmpty()) return@mapNotNull null
+            if (name.isEmpty() || url.isEmpty() || containsDynamic(url)) return@mapNotNull null
             SortRule(name, url)
         }
     }
 
-    private fun categoryRules(cat: com.google.gson.JsonElement?): List<SortRule>? =
+    private suspend fun categoryRules(cat: com.google.gson.JsonElement?): List<SortRule>? =
         when (cat) {
-            is com.google.gson.JsonObject -> {
-                cat.entrySet().mapNotNull { (name, v) ->
-                    val url = URLFrom(v)
-                    if (name.isNotBlank() && !url.isNullOrBlank()) SortRule(name, url) else null
-                }
+            is com.google.gson.JsonObject -> cat.entrySet().flatMap { (name, v) ->
+                val url = URLFrom(v) ?: return@flatMap emptyList()
+                resolveCategory(name, url)
             }
-            is com.google.gson.JsonArray -> cat.mapNotNull { element ->
+            is com.google.gson.JsonArray -> cat.flatMap { element ->
                 if (element is com.google.gson.JsonObject) {
-                    val name = element.get("分类名称")?.asString ?: element.get("name")?.asString ?: return@mapNotNull null
-                    URLFrom(element).takeIf { !it.isNullOrBlank() }
-                        ?.let { SortRule(name, it) }
-                } else null
+                    val name = element.get("分类名称")?.asString ?: element.get("name")?.asString ?: return@flatMap emptyList()
+                    val url = URLFrom(element) ?: return@flatMap emptyList()
+                    resolveCategory(name, url)
+                } else emptyList()
             }
             null -> null
             else -> null
