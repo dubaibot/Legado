@@ -73,7 +73,8 @@ for cls in \
   SortUrlParserTestKt \
   TextPurifierTestKt \
   PurifyRuleCodecTestKt \
-  PurifyPipelineTestKt; do
+  PurifyPipelineTestKt \
+  TtsReadTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
