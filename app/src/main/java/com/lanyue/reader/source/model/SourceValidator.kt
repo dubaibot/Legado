@@ -293,7 +293,7 @@ object SourceValidator {
 
     /** 判断括号与引号是否配平。 */
     fun balanced(s: String): Boolean {
-        val stack = ArrayList<Char>()
+        var depth = 0
         var inS = false
         var inD = false
         var escaped = false
@@ -305,21 +305,14 @@ object SourceValidator {
                 inD -> if (c == '"') inD = false
                 c == '\'' -> inS = true
                 c == '"' -> inD = true
-                c == '(' || c == '{' || c == '[' -> stack.add(c)
+                c == '(' || c == '{' || c == '[' -> depth++
                 c == ')' || c == '}' || c == ']' -> {
-                    val open = if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) else null
-                    if (open == null || !matchesBracket(open, c)) return false
+                    depth--
+                    if (depth < 0) return false
                 }
             }
         }
-        return stack.isEmpty() && !inS && !inD
-    }
-
-    private fun matchesBracket(open: Char, close: Char): Boolean = when {
-        open == '(' && close == ')' -> true
-        open == '{' && close == '}' -> true
-        open == '[' && close == ']' -> true
-        else -> false
+        return depth == 0 && !inS && !inD
     }
 
     private fun checkJs(field: String, rule: String?, issues: MutableList<Issue>) {

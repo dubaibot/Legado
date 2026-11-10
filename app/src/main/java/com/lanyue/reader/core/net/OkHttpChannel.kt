@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 class OkHttpChannel(
     private val uaProvider: (String) -> String? = { null },
     private val cookieProvider: (String) -> String? = { null }
-) : HttpChannel {
+) {
     private val client: OkHttpClient by lazy {
         runCatching { Security.insertProviderAt(Conscrypt.newProvider(), 1) }
         OkHttpClient.Builder()
@@ -26,7 +26,7 @@ class OkHttpChannel(
             .build()
     }
 
-    override suspend fun execute(req: HttpRequest): HttpResponse = try {
+    suspend fun execute(req: HttpRequest): HttpResponse = try {
         val builder = Request.Builder().url(req.url)
         req.headers.forEach { (k, v) -> builder.header(k, v) }
 

@@ -1,6 +1,5 @@
 package com.lanyue.reader.source.video
 
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.lanyue.reader.data.db.entity.LiveSourceEntity
@@ -46,8 +45,8 @@ class TvBoxParser {
         val root = runCatching { JsonParser.parseString(json).asJsonObject }.getOrNull()
             ?: return Result.Invalid("config is not a JSON object")
 
-        // 7.3 sites 必须存在且为数组，否则这条配置无意义
-        val sitesArray = root.get("sites") as? JsonArray ?: return Result.Invalid("missing sites")
+        // 7.3 sites 必须存在，否则这条配置无意义
+        val sitesArray = root.getAsJsonArray("sites") ?: return Result.Invalid("missing sites")
 
         val spider = root.get("spider")?.takeIf { !it.isJsonNull }?.asString
         val api = VideoApiEntity(
@@ -89,7 +88,7 @@ class TvBoxParser {
         }
 
         // 7.3 parses 解析链
-        val parses = (root.get("parses") as? JsonArray)?.mapNotNull { el ->
+        val parses = root.getAsJsonArray("parses")?.mapNotNull { el ->
             val obj = runCatching { el.asJsonObject }.getOrNull() ?: return@mapNotNull null
             val url = obj.str("url") ?: return@mapNotNull null
             ParseRule(
@@ -100,10 +99,10 @@ class TvBoxParser {
             )
         }.orEmpty()
 
-        val flags = (root.get("flags") as? JsonArray)?.mapNotNull { it.asString }.orEmpty()
+        val flags = root.getAsJsonArray("flags")?.mapNotNull { it.asString }.orEmpty()
 
         // 4.12 live_sources：一期解析并持久化，UI 不暴露
-        val lives = (root.get("lives") as? JsonArray)?.mapIndexedNotNull { index, el ->
+        val lives = root.getAsJsonArray("lives")?.mapIndexedNotNull { index, el ->
             val obj = runCatching { el.asJsonObject }.getOrNull() ?: return@mapIndexedNotNull null
             val url = obj.str("url") ?: return@mapIndexedNotNull null
             LiveSourceEntity(

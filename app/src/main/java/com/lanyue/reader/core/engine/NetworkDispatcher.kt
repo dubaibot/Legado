@@ -1,9 +1,9 @@
 package com.lanyue.reader.core.engine
 
 import com.lanyue.reader.core.net.FingerprintObservation
-import com.lanyue.reader.core.net.HttpChannel
 import com.lanyue.reader.core.net.HttpRequest
 import com.lanyue.reader.core.net.HttpResponse
+import com.lanyue.reader.core.net.OkHttpChannel
 import com.lanyue.reader.core.observability.LocalMetrics
 import com.lanyue.reader.core.security.HtmlRequestClassifier
 
@@ -20,20 +20,6 @@ interface WebViewChannel {
 }
 
 /**
- * 5.5 执行期权限闸：调度层对源声明 HTTP 方法执行拒绝的唯一入口。
- *
- * 上层（源调度/UI 装配）按 SourcePermissionLevel → Allowed grants
- * 映射为方法允许集合后注入；默认放行保持未装配闸时既有行为。
- * 建议实现：无规则声明时仅允许 GET/HEAD，POST 等方法由 grant.allowPost 另行放行。
- */
-fun interface SourcePermissionGate {
-    fun methodPermitted(sourceId: String, method: String): Boolean
-    companion object {
-        val ALLOW_ALL: SourcePermissionGate = SourcePermissionGate { _, _ -> true }
-    }
-}
-
-/**
  * 4.6 NetworkDispatcher：三通道统一收口。
  *
  * 路由顺序：
@@ -44,14 +30,13 @@ fun interface SourcePermissionGate {
  * 同时负责：源级限速、登录态串行化、Cookie 注入回写、UA 收口。
  */
 class NetworkDispatcher(
-    private val okHttp: HttpChannel,
+    private val okHttp: OkHttpChannel,
     private val cronet: CronetChannel?,
     private val webView: WebViewChannel?,
     private val sticky: ChannelStickyStore,
     private val rateLimiter: SourceRateLimiter,
     private val metrics: LocalMetrics,
-    private val cookieBridge: CookieBridge,
-    private val permission: SourcePermissionGate = SourcePermissionGate.ALLOW_ALL
+    private val cookieBridge: CookieBridge
 ) {
 
     companion object {
@@ -85,14 +70,6 @@ class NetworkDispatcher(
     }
 
     suspend fun execute(req: HttpRequest, limit: RateLimit? = null, traceId: String): HttpResponse {
-        // 5.5：执行期权限闸在消耗限速配额之前拒绝，避免被拒请求挤占配额
-        if (!permission.methodPermitted(req.sourceId, req.method)) {
-            throw EngineException(
-                EngineErrorCode.PERMISSION_DENIED,
-                "method not permitted: ${req.method} for source ${req.sourceId}"
-            )
-        }
-
         // 4.6 限速 + 登录态串行化
         if (!rateLimiter.acquire(req.sourceId, limit)) {
             throw EngineException(EngineErrorCode.RATE_LIMITED, "rate limited: ${req.sourceId}")
