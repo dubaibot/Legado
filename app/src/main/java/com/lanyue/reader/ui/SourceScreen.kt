@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.lanyue.reader.R
+import com.lanyue.reader.bookshelf.ShelfOps.ShelfBook
 import com.lanyue.reader.source.debug.SourceDebugger
 import com.lanyue.reader.source.debug.SourceDebugger.PipelineReport
 import com.lanyue.reader.source.debug.SourceDebugger.Status
@@ -139,16 +140,40 @@ internal data class VideoSiteRow(
 }
 
 @Composable
-fun SourceApp() {
-    val sources = remember { mutableStateListOf<ImportedBookSource>() }
+internal fun SourceApp(
+    sources: MutableList<ImportedBookSource> = mutableStateListOf(),
+    videoSites: MutableList<VideoSiteRow> = mutableStateListOf(),
+    shelfHint: ShelfBook? = null,
+    onGoShelf: () -> Unit = {}
+) {
     var lastImport by remember { mutableStateOf<ImportResult?>(null) }
     var readStatus by remember { mutableStateOf<String?>(null) }
     var route by remember { mutableStateOf<Route>(Route.Home) }
-    val videoSites = remember { mutableStateListOf<VideoSiteRow>() }
     var tvUrl by remember { mutableStateOf("") }
     var tvErr by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    /**
+     * §3.1 加入书架：从详情页把书目回填进 RuntimeGraph 的 ShelfOps；
+     * 书架页（RootShell）共享同一实例，即时可见。
+     */
+    fun addToShelf(s: ImportedBookSource, item: SearchBookItem) {
+        val report = RuntimeGraph.get(context).shelfOps.add(
+            ShelfBook(
+                bookUrl = item.bookUrl,
+                name = item.name,
+                author = item.author,
+                cover = item.cover,
+                intro = item.intro,
+                origin = s.name,
+                originName = item.originName ?: s.name,
+                sourceType = if (s.type == 1) 1 else 0,
+                latestChapter = item.latestChapter
+            )
+        )
+        readStatus = report.message
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -243,7 +268,24 @@ fun SourceApp() {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+        shelfHint?.let { hint ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5))
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "从书架打开《${hint.name}》（来源：${hint.originName ?: hint.origin}）",
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onGoShelf) { Text("回书架") }
+                }
+            }
+        }
         when (val r = route) {
             Route.Home -> HomeScreen(
                 sources = sources,
@@ -274,7 +316,8 @@ fun SourceApp() {
                 onBack = { route = Route.BookSearch(r.source) },
                 onOpenChapter = { chapter, toc, ref ->
                     route = Route.Reader(r.source, r.item, ref, chapter, toc)
-                }
+                },
+                onAddToShelf = { addToShelf(r.source, r.item) }
             )
             is Route.Reader -> ReaderScreen(
                 source = r.source,
@@ -595,7 +638,7 @@ private fun typeLabel(type: Int): String =
     TYPE_LABELS.getOrNull(type.coerceIn(0, 3)) ?: "文本"
 
 /** 从书源原始 JSON 里按别名表抽字段，缺失时回落到导入解析的兜底值。 */
-private fun ImportedBookSource.fields(): BookFields {
+internal fun ImportedBookSource.fields(): BookFields {
     val obj = try {
         JsonParser.parseString(raw).takeIf { it.isJsonObject }?.asJsonObject
     } catch (e: Throwable) {
@@ -653,7 +696,7 @@ private fun ruleText(obj: JsonObject?, keys: List<String>): String? {
     return null
 }
 
-private data class BookFields(
+internal data class BookFields(
     val url: String?,
     val name: String?,
     val group: String?,

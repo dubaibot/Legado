@@ -19,7 +19,7 @@ import com.lanyue.reader.core.engine.SnifferSession
  *
  * 观察链路（主线程）：
  *   WebViewClient.shouldInterceptRequest  —— 请求侧观察，对所有请求 URL 嗅探
- *   JS hook                              —— 见 TODO 扩展
+ *   JS hook                              —— 见 TODO-DEV-5 扩展
  *
  * 约束（§4.8）：
  * - open() 必须在主线程调用；WebView 只接受主线程操作

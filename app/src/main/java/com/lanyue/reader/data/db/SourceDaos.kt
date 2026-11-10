@@ -104,11 +104,19 @@ interface VideoDao {
     @Query("SELECT * FROM video_sites WHERE enabled = 1 ORDER BY name")
     suspend fun enabledSites(): List<VideoSiteEntity>
 
+    /** §3.10 源管理中心：全部影视站点（含停用），按名称排序。 */
+    @Query("SELECT * FROM video_sites ORDER BY name")
+    suspend fun allSites(): List<VideoSiteEntity>
+
     @Query("SELECT * FROM video_sites WHERE configUrl = :configUrl ORDER BY name")
     suspend fun sitesOf(configUrl: String): List<VideoSiteEntity>
 
     @Query("SELECT * FROM video_sites WHERE configUrl = :configUrl AND siteKey = :siteKey")
     suspend fun site(configUrl: String, siteKey: String): VideoSiteEntity?
+
+    /** §3.10：删除单个站点（仅清站点行，接口配置保留）。 */
+    @Query("DELETE FROM video_sites WHERE configUrl = :configUrl AND siteKey = :siteKey")
+    suspend fun deleteSite(configUrl: String, siteKey: String)
 
     /** 仅 searchable 站点参与搜索聚合（3.4 / 3.8）。 */
     @Query("SELECT * FROM video_sites WHERE enabled = 1 AND searchable = 1 AND unsupported = 0")

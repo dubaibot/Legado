@@ -168,7 +168,8 @@ internal fun BookDetailScreen(
     item: SearchBookItem,
     referrerUrl: String,
     onBack: () -> Unit,
-    onOpenChapter: (TocItem, List<TocItem>, String) -> Unit
+    onOpenChapter: (TocItem, List<TocItem>, String) -> Unit,
+    onAddToShelf: () -> Unit
 ) {
     val context = LocalContext.current
     var detail by remember { mutableStateOf<BookDetail?>(null) }
@@ -197,12 +198,13 @@ internal fun BookDetailScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = onBack) { Text("← 返回") }
-            Spacer(Modifier.width(12.dp))
-            Text(item.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        }
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onBack) { Text("← 返回") }
+                Spacer(Modifier.width(12.dp))
+                Text(item.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = onAddToShelf) { Text("加入书架") }
+            }
         if (busy) Text("加载详情与目录…", style = TEXT_STYLE_DIM)
         error?.let { Text(it, style = TEXT_STYLE_BAD) }
         detail?.let { d ->

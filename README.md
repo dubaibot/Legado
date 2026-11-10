@@ -223,6 +223,24 @@ gradle assembleDebug
    - §4.12 复用既有 `PlayRecordEntity` / `ProgressDao`：`upsertPlay` 用
      `@Insert(OnConflictStrategy.REPLACE)` 等价 upsert，按 videoKey 主键落到 play_records。
 
+## 首屏五栏导航（第九轮）
+
+`RootShell` 提供底部五栏导航的顶栏 + `MainTab` 体系：
+
+- 书架（§3.1 `ShelfScreen`）：收藏网格/列表双视图，搜索、分组筛选，多选移出/批量删除；
+- 订阅（§3.3 `SubsScreen`）：订阅源分类 → 文章列表 → 正文（无 `ruleContent` 走 WebView 原样打开）；
+- 影视（§3.4 `VideoTabScreen`）：站点选择 → 分类 FilterChip 海报网格 → 详情（线路+选集）→ 播放页
+  （DIRECT / 本地代理 / 嗅探三态装载，弹幕叠层 + 字幕 + 断点续播见上节）；
+- 我的（§3.9 `MineScreen`）：备份面板（导出 CreateDocument / 导入 GetContent 并回填书架）、
+  源管理中心入口、阅读记录等。
+
+源管理中心（§3.10 `SourceCenterScreen`）：书源/订阅/影视三段切换 + 搜索、导入/导出、
+删除、启用/禁用单条与多选批量操作（多选按钮切换，不依赖长按）、离线体检（静态检查）
+与结果统计；条目直接读写 Room（`RuntimeGraph.db` 暴露的 DAO 门面）。
+
+底栏（§2.5.1 `RootShell`）：五 Tab（书架 / 书源 / 订阅 / 影视 / 我的）纯图标 + 文字双显，
+按住底栏向下拖可「降透」滑出屏幕隐藏、向上拖回恢复，透明度与位移联动。
+
 ## 音频书源 §6.1
 
 - 音频书源（`bookSourceType=1`）正文解析：`LegadoBookSource.getContent` 返回

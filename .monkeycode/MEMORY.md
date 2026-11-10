@@ -98,4 +98,24 @@ Entries discovered by the Agent during task execution should follow this format:
 
 ## 说明
 
+[Project Knowledge: Compose 1.6.8 combinedClickable 长按重载排查]
+- Date: 2026-11-09
+- Context: 源管理中心 SourceCenterScreen 给行加长按多选，写 `combinedClickable(..., onLongPress=...)` 报 "None of the following candidates is applicable"，javap 清点 foundation-android 1.6.8 bytecode 后确认签名
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - foundation AAR 本地路径：`/root/.gradle/caches/modules-2/files-2.1/androidx.compose.foundation/foundation-android/1.6.8/e89eb7*/foundation-release.aar`，`unzip classes.jar` 后 `javap androidx.compose.foundation.ClickableKt` 可查到所有 clickable 重载的真实签名
+  - Compose 1.6.8 combinedClickable 字节码：`(Modifier, MutableInteractionSource, Interaction?, Boolean enabled, String onClickLabel, Role?, String?, () -> Unit, () -> Unit, () -> Unit)`——`Interaction?` 可传 null，但 3 个 lambda 的具体命名需逐版核对，盲目传 `onLongPress` 命名参数会编译不过
+  - 稳妥做法：只用 `combinedClickable(interactionSource = ..., indication = null, onClick = ...)` 单 lambda 重载（编译通过），多选等交互用界面上的显式按钮切换，不依赖长按
+  - `combinedClickable` 属于 `androidx.compose.foundation`，标注 `@ExperimentalFoundationApi`，调用处需 `@OptIn`
+
+[Project Knowledge: Compose 1.6.8 手势与动画 API 实测签名]
+- Date: 2026-11-09
+- Context: RootShell §2.5.1 底栏「下滑降透 / 沉浸隐藏」实现中核对 foundation 1.6.8 真实 API
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 1.6.8 没有 `detectDragGesturesWithInitial`；只用 `androidx.compose.foundation.gestures.detectVerticalDragGestures(onDragStart, onVerticalDrag, onDragEnd, onDragCancel)`——拖动位移参数名是 `onVerticalDrag`，`drag` 是累计 Y（Float），不是逐帧 delta，必须用 `onDragStart` 里记的 `barOffsetPx` 基准做加法
+  - `AnimateKt`/`TransitionKt` 里 `animateFloat` 只有 `@Composable` 成员形态（InfiniteTransition/Transition 容器版本）；独立的 suspend `animateFloat` 不存在，动画只能走 `AnimationState.animateTo` 扩展
+  - 1.6.8 `AnimationState.value` 的 setter 是 internal（`setValue$animation_core_release`），Compose 外无法直接驱动状态数值；需要跟手更新的指针拖拽场景改用 `remember { mutableStateOf(0f) }` + `by` 委托最省事
+  - 底部导航栏隐藏动画做法（RootShell.kt）：NavigationBar 外层 `.offset { IntOffset(0, barOffsetPx.roundToInt()) }` + `.alpha(1f - 位移/栏高)`，`detectVerticalDragGestures` 挂 NavigationBar 自身（避免与内层 LazyColumn 抢手势），过半吸附目标 64.dp
+
 

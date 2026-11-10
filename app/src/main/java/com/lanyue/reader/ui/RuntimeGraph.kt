@@ -8,6 +8,7 @@ import com.lanyue.reader.core.engine.Sniffer
 import com.lanyue.reader.core.engine.SourceRateLimiter
 import com.lanyue.reader.core.engine.SystemCookieBridge
 import com.lanyue.reader.core.engine.WebViewJsRuntime
+import com.lanyue.reader.bookshelf.ShelfOps
 import com.lanyue.reader.core.engine.ChannelStickyStore
 import com.lanyue.reader.core.net.OkHttpChannel
 import com.lanyue.reader.core.observability.LocalMetrics
@@ -51,7 +52,11 @@ object RuntimeGraph {
         /** 4.8 嗅探渲染池 + Snipper 门面：SNIFF 类型解析执行器。 */
         val sniffer: Sniffer,
         /** 播放/阅读进度 DAO（§4.12 play_records；影视断点续播走这里）。 */
-        val progressDao: ProgressDao
+        val progressDao: ProgressDao,
+        /** 全库 DAO 门面（§3.10 源管理中心为第二批 UI 消费方）。 */
+        val db: LanyueDatabase,
+        /** §3.1 书架操作语义（§3.1 书架页 UI 的进程内演示态数据源）。 */
+        val shelfOps: ShelfOps
     )
 
     @Volatile
@@ -94,7 +99,9 @@ object RuntimeGraph {
                 danmakuDao = db.danmakuDao(),
                 danmakuEngine = danmakuEngine,
                 sniffer = sniffer,
-                progressDao = db.progressDao()
+                progressDao = db.progressDao(),
+                db = db,
+                shelfOps = ShelfOps()
             )
             graph = g
             return g
