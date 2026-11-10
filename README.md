@@ -2,6 +2,23 @@
 
 自托管、本地优先的 Android 阅读器骨架。纯本地运行，无埋点、无遥测、无第三方统计 SDK。
 
+## 文档
+
+开发路线、任务清单与接手须知在 [`docs/`](docs/)：
+
+| 文档 | 用途 |
+|---|---|
+| [`docs/APK-DEVELOPMENT-PLAN.md`](docs/APK-DEVELOPMENT-PLAN.md) | APK 开发大纲：现状盘点、里程碑路线（M1–M6）、工作量估算、技术决策备忘 |
+| [`docs/TASK-BACKLOG.md`](docs/TASK-BACKLOG.md) | 可勾选任务清单：每条含现状、要做、验收标准；附依赖关系图 |
+| [`docs/AI-HANDOFF.md`](docs/AI-HANDOFF.md) | AI 接手须知：环境重建（工具链+编译桩）、测试跑法、已知坑、代码纪律 |
+
+**接手请先读 `docs/AI-HANDOFF.md`**——里面写了如何从零重建 JVM 测试环境，
+以及 `jsoup` 版本故意不一致、测试类需手动注册等会重复踩的坑。
+
+**当前阶段**：逻辑层完备（75 个 Kotlin 源文件 / 12,762 行），UI 层尚未开始。
+`./gradlew assembleDebug` 现在会失败——缺 `LanyueApp`、缺 Gradle Wrapper、
+缺 Activity。这不是损坏，是路线上的下一站，见 TASK-BACKLOG 的 M1。
+
 ## 目录
 
 ```
