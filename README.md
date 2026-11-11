@@ -15,9 +15,10 @@
 **接手请先读 `docs/AI-HANDOFF.md`**——里面写了如何从零重建 JVM 测试环境，
 以及 `jsoup` 版本故意不一致、测试类需手动注册等会重复踩的坑。
 
-**当前阶段**：逻辑层完备（75 个 Kotlin 源文件 / 12,762 行），UI 层尚未开始。
-`./gradlew assembleDebug` 现在会失败——缺 `LanyueApp`、缺 Gradle Wrapper、
-缺 Activity。这不是损坏，是路线上的下一站，见 TASK-BACKLOG 的 M1。
+**当前阶段**：逻辑层完备（79 个 Kotlin 源文件 / 13,036 行），应用外壳已补齐（第二十四轮），
+UI 层尚未开始。`./gradlew assembleDebug` 仍会失败——缺 Gradle Wrapper（T02）、
+缺 `MainActivity`（T03）。`LanyueApp` 这一处硬编译阻塞已在 T01 消除。
+这不是损坏，是路线上的下一站，见 TASK-BACKLOG 的 M1。
 
 ## 目录
 
@@ -30,6 +31,7 @@ app/src/main/java/com/lanyue/reader/
 │   ├── render/        排版引擎（TypographySpec / Paginator / ReadingProgress /
 │   │                  ReadingSettings / PageTurnController / Theme）
 │   ├── security/      权限与桥接安全
+│   ├── diagnostics/   应用外壳支撑（日志下限 / 惰性图 / 崩溃兜底）
 │   └── observability/ 本地指标（仅落盘，不外发）
 ├── source/
 │   ├── model/         源字段/类型契约（SearchBookItem / TocItem / SourceResult）
@@ -306,6 +308,57 @@ null / `"title"` / `"content"` 的字符串约定，拼错不报错、整条规�
 用户连按两次上移会得到完全相反的结果。不允许关闭最后一个启用源：全部关闭等价于
 「弹幕功能消失」，而用户按的只是某个源后面的开关，想彻底停用应当走弹幕总开关。
 
+### 应用外壳（第二十四轮）
+
+`LanyueApp` + `core/diagnostics/`（`LogPolicy` / `AppGraph` / `CrashGuard`）。
+本轮的产出不是功能，是**「清单指向的类真实存在」**这个事实，以及三件被拆成纯函数、
+可以脱机断言的外壳职责。
+
+**为什么拆成三层而不是全部塞进 `Application`。** `Application` 继承 `android.app.Application`，
+在 `tools/test_jvm.sh` 里根本编不过（该脚本只挂 Android 打桩，没有 `Application` 基类），
+如果日志判断、崩溃落盘逻辑都写在 `onCreate` 内部，它们就永远只能靠真机验证。
+所以 `LanyueApp` 只留接线：判断「是否可调试」→ 组装三件套 → 打一行日志。
+凡是能判断对错的部分都下沉到 `core/diagnostics/`，进 JVM 单测。
+`test_jvm.sh` 的 `EXCLUDES` 因此新增 `LanyueApp.kt` 一条，与既有的 `data/db/LanyueDatabase.kt`
+同一类处理：**依赖 Android 基类、但依赖面很窄**的接线文件不进纯 JVM 编译。
+
+**日志下限不能读 `BuildConfig.DEBUG`。** 它是 AGP 生成的，而纯 JVM 测试链不跑 AGP，
+诊断层一旦引用它就无法离线编译，判断写反了也要等真机才发现。改成从
+`ApplicationInfo.FLAG_DEBUGGABLE` 推导成 `BuildType` 后，`isEnabled(level, type)`
+退化成纯函数。release 只放行 `WARN` 及以上：省下的不是「输出干净」，而是
+翻页这类高频路径上被过滤掉却**已经求值过**的参数拼接——真正的开关必须发生在调用点。
+
+**「不在 `onCreate` 里做重活」这条约束必须有可断言的信号。** 否则它只是一句
+写在文档里的自觉。`AppGraph<T>` 把惰性持有做成可观测对象：`isCreated` 能在建库前后
+被断言，`LanyueApp.isDatabaseCreated()` 就是这条约束的探针。这也解释了为什么
+没用 `by lazy`——`by lazy` 行为没错，但外部看不见它到底建没建。
+
+**构造失败不缓存。** `AppGraph` 的工厂抛出后 `cached` 仍为 null，下次取用会重试。
+反过来（把异常态也缓存）看似「稳定」，实际是把一次磁盘瞬时不可用钉成整个进程的
+坏状态，用户只能靠杀进程恢复。
+
+**崩溃兜底：落文件、不上报、交还原处理器。** 三条都是刻意的：
+
+- 文件写在 `filesDir/crash`，卸载即清除，不进外部存储——调用栈里可能带用户书籍
+  路径与源地址，多一份明文拷贝没有收益；
+- 时间戳与文件名统一 UTC。按本地时区写会让跨设备日志无法按文件名排序，
+  「哪次崩得早」变成猜测；
+- 处理完**仍然**把异常转交 `Thread.getDefaultUncaughtExceptionHandler()`。
+  吞掉它会让进程半死不活，用户看到「点不动」而不是「崩了」，比崩溃更难定位。
+
+文件名里要嵌线程名，而协程默认线程名形如 `DefaultDispatcher-worker/1`，带 `/` 与空格，
+不净化会触发「文件名非法」的**二次**异常——在崩溃处理里再崩一次是最难查的形态。
+所以 `sanitizeThreadTag` 只留字母数字与 `-_`，并按 24 字符截断。这两条规则的
+叠加顺序也固定下来了（先替换、后截断），单测里锁死，避免日后调上限时静默改变行为。
+
+报告保留份数默认 5 份。连环崩溃（每帧都崩）会持续追加，无限写入会把磁盘吃满，
+反而让用户连「卸载前导出」都做不到；按文件名里的时间戳升序删旧，
+不依赖文件系统 mtime——后者在批量写入或时钟校准后会乱序。
+
+**本轮没有顺带做的事**：`Gradle Wrapper`（T02）、`MainActivity`（T03）仍未补，
+所以 `./gradlew assembleDebug` 依旧失败。按 AI-HANDOFF 的判断，
+M1 阶段一次只消除一个阻塞，构建配置错与 UI 代码错混在一起时无法归因。
+
 ## 合规门禁
 
 ```bash
@@ -346,6 +399,7 @@ bash tools/ci.sh
 | `tests/PurifyPipelineTest.kt` | 净化管线：全局+源级合成与覆盖、按源缓存与精确失效、坏 replaceRule 透传、正文/标题分流、端到端 JSON→管线→净化、调试判定在净化后进行（46 项） |
 | `tests/TtsReadTest.kt` | 朗读：规范化等长性、逐句切分与偏移回对原文、引号内句号不切、右引号并入前段、超长优先软断点、段合并、调度状态机（停止后迟到回调忽略、暂停续读、读完重听）、跳段边界、按偏移起读、语速音调夹取（108 项） |
 | `tests/DanmakuSourceLayerTest.kt` | 弹幕源配置层：apiBase 规范化（补协议/去尾斜杠/端口/localhost/IP 与全部拒绝路径）、探活失败可强制保存、未启用不探活、顺序规范化与并列稳定、新增/删除/启停/移动、端到端校验→入库→启用顺序联动（86 项） |
+| `tests/AppShellTest.kt` | 应用外壳：日志下限随构建类型切换（debug 放行 VERBOSE / release 仅 WARN 及以上、等值边界放行）、惰性图表（首访不构造 / 只构造一次 / 失败不缓存可重试）、崩溃兜底（UTC 时间戳与文件名拼接、线程名净化与 24 字符截断、cause 链编号与环状截断、无 message 不写 null、保留份数按时间戳删旧、目录缺失自动创建、异常转交原处理器且无前驱时不二次崩溃）（63 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 

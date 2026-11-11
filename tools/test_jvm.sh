@@ -13,6 +13,7 @@ mkdir -p "$OUT"
 
 # Android 硬依赖的文件排除（纯 JVM 层之外的），OkHttp/Gson/Log 桩保留
 EXCLUDES=(
+  "LanyueApp.kt"
   "data/db/CatalogDaos.kt"
   "data/db/Converters.kt"
   "data/db/LanyueDatabase.kt"
@@ -75,7 +76,8 @@ for cls in \
   PurifyRuleCodecTestKt \
   PurifyPipelineTestKt \
   TtsReadTestKt \
-  DanmakuSourceLayerTestKt; do
+  DanmakuSourceLayerTestKt \
+  AppShellTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
