@@ -75,6 +75,7 @@ for cls in \
   VideoDanmakuLayerTestKt \
   SchemaExportTestKt \
   ShellNavTestKt \
+  SourceManageTestKt \
   SecurityGuardTestKt \
   EngineRuleSyntaxTestKt \
   EngineCoreTestKt \
