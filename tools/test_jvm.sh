@@ -70,6 +70,7 @@ for cls in \
   ShelfAggregateLayerTestKt \
   DanmakuFilterTestKt \
   VideoDanmakuLayerTestKt \
+  SchemaExportTestKt \
   SecurityGuardTestKt \
   EngineRuleSyntaxTestKt \
   EngineCoreTestKt \
