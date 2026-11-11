@@ -513,6 +513,75 @@ Kotlin 2.0 起 Compose Compiler 从编译器内部拆成独立 Gradle 插件
 本轮按实际输出改正，并补上「合计 30 套 / 2097 项」的总述——
 表格逐行数字现在与脚本输出一一对应，可以在一条命令里复核。
 
+### Room schema 导出（第二十九轮）
+
+给数据库补上迁移基线。这一轮的核心不是"多写一个配置"，而是让一个
+**不会报错、只会静默失效**的东西变得可被检查。
+
+**问题在于三处必须同时成立。**
+
+Room 的 schema 导出不像普通功能那样"配了就生效"，它要求三件事同时为真：
+
+1. `@Database(exportSchema = true)` —— 数据库类同意导出；
+2. `ksp { arg("room.schemaLocation", ...) }` —— 告诉处理器往哪写；
+3. `app/schemas/<version>.json` —— 产物真的生成、并提交进版本库。
+
+仓库此前只有第 1 条。缺第 2 条时，Room 的行为是**构建照常成功**，
+只在日志里留一行 warning 说 schema 无处可写。这类失败没有任何信号：
+CI 是绿的，APK 打得出来，直到某天有人给实体加字段，才发现根本没有基线——
+写不出 `MigrationTestHelper` 需要的迁移测试，只能退回
+`fallbackToDestructiveMigration()`。代价是用户一升级，本地数据全丢。
+
+本轮补上第 2 条：
+
+```kotlin
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+```
+
+路径必须用 `$projectDir`，不能写绝对路径：绝对路径会把本机目录写死，
+换一台机器或换一个 CI runner 就失效，而失效方式同样是静默的。
+
+**关于第 3 条，需要如实说明：本轮没有生成 schema JSON。**
+
+`schema/1.json` 由 Gradle + KSP 在构建期算出，其中 `identityHash` 是
+Room 对表结构的内部哈希结果——它不是可以手推的值。我尝试过两条离线通路：
+
+- `kapt`：`room-compiler` 确实带 `RoomProcessor` 的 javac APT 入口，
+  但 Kotlin 2.2 已弃用 kapt，且沙箱内 `kotlin-annotation-processing` 制品
+  下载不完整（472 KB，zip 校验失败），运行到插件注册阶段即
+  `AbstractMethodError`；
+- KSP cmdline 插件：`symbol-processing-cmdline` 可离线驱动，插件 ID 与
+  参数名（`apclasspath`、`apoption`、`projectBaseDir` 等）都核对无误，
+  但无论是全量工程还是只含"一个实体 + 一个数据库类"的两文件最小工程，
+  进程都以 0 退出、输出目录全空、且没有 `[ksp]` 日志——处理器没有被加载，
+  而现象与"成功但无线索"完全一样。
+
+这两条都卡在同一个前提上：真实通路需要 AGP 提供的 Android 变体模型，
+而这个沙箱里没有 Android SDK 与 Gradle。**我不会手写一份 JSON 冒充 KSP 产物**：
+那样 `identityHash` 必然与真实结构不符，`check_schema.py` 会变绿，
+但这份"基线"在真正做迁移时会立刻失效——比没有基线更危险。
+
+所以本轮交付的是可离线验证的部分，缺的部分写清楚：
+
+| 交付物 | 说明 |
+|--------|------|
+| `ksp { arg("room.schemaLocation", ...) }` | 补上缺的第 2 条，注释写明三处缺一即静默失效 |
+| `core/build/SchemaExportSpec.kt` | 纯文本解析 + 校验，不启动 Gradle、不联网 |
+| `tests/SchemaExportTest.kt` | 33 项断言，覆盖注解解析、参数解析、配置组合、JSON 骨架 |
+| `tools/check_schema.py` | 接入 `tools/ci.sh`，缺配置即让门禁失败 |
+
+**门禁的取舍。** `check_schema.py` 对前两项（注解与 ksp 参数）**判错**，
+对第三项（schema JSON 是否存在）只**报告不判错**。理由是产物生成依赖
+构建环境，在没有 Android SDK 的机器上判错只会逼人伪造文件。它会在输出里
+明确写"需在有 Android SDK 的环境执行一次 `./gradlew :app:kspDebugKotlin`"，
+而不是假装通过。
+
+**待办**：在有 Android SDK 的环境跑一次 `:app:kspDebugKotlin`，
+把生成的 `app/schemas/1.json` 提交。此后 `check_schema.py` 会自动开始
+校验它的 `version` 与 `@Database.version` 是否一致。
+
 ## 合规门禁
 
 ```bash
@@ -555,10 +624,11 @@ bash tools/ci.sh
 | `tests/DanmakuSourceLayerTest.kt` | 弹幕源配置层：apiBase 规范化（补协议/去尾斜杠/端口/localhost/IP 与全部拒绝路径）、探活失败可强制保存、未启用不探活、顺序规范化与并列稳定、新增/删除/启停/移动、端到端校验→入库→启用顺序联动（86 项） |
 | `tests/AppShellTest.kt` | 应用外壳：日志下限随构建类型切换（debug 放行 VERBOSE / release 仅 WARN 及以上、等值边界放行）、惰性图表（首访不构造 / 只构造一次 / 失败不缓存可重试）、崩溃兜底（UTC 时间戳与文件名拼接、线程名净化与 24 字符截断、cause 链编号与环状截断、无 message 不写 null、保留份数按时间戳删旧、目录缺失自动创建、异常转交原处理器且无前驱时不二次崩溃）（63 项） |
 | `tests/WrapperConfigTest.kt` | 构建入口：properties 解析（反斜杠转义还原、`#`/`!` 注释、空格裁剪、缺项默认值）、版本解析（精确三段式、rc/SNAPSHOT/latest 均判未锁定、先剥 `-bin`/`-all` 再取版本）、校验规则（http 拒绝、大版本不匹配、次版本低于下限、sha256 缺失/过短/非十六进制、大写允许、关闭 validate 拒绝、8.7 恰好等于下限放行）、仓库真实文件一致性（版本 8.9、sha 与官方一致、无问题清单、`gradlew` 可执行位、jar 为 zip 头）、与 AGP 8.5.2 主版本对齐（54 项） |
+| `tests/SchemaExportTest.kt` | Room schema 导出配置：`@Database` 注解解析（exportSchema 显式 true / 缺省 false / 显式 false、version 与实体数、跨行与尾随逗号）、`ksp { arg("room.schemaLocation") }` 解析（参数名大小写敏感、`$projectDir` 与 `${projectDir}` 两种写法、绝对路径判否）、目录名判定（`schemas` vs `schema`/`roomSchemas`、尾随斜杠）、配置组合校验（缺 exportSchema / 缺 ksp 参数 / 产物未提交 / version 与文件名错配 / 实体数为 0）、schema JSON 骨架（format 必须为 1、version 与注解一致、表数量、identityHash 小写 32 位、重复表名）（33 项） |
 | `tests/MainShellTest.kt` | 启动壳：标题恢复校验（null/空串/纯空白/含换行制表符/超长一律拒绝，恰好 32 字符放行）、版本标签（`v` 前缀不重复、空值与字面 null 回落 `v?`）、占位模型组装（说明空白归一空串、应用名缺失兜底、合法恢复值优先于资源值、非法恢复值回退）、占位壳判据、清单与实现一致性（包路径 ui、继承 ComponentActivity、setContent、无业务界面符号、委托 ShellSpec、两个 service 仍仅声明）（49 项） |
 | `tests/BuildScriptTest.kt` | 构建配置对齐：plugins 块解析（版本/apply false/容忍空格/不识别别名写法）、Compose 插件一致性（开启 compose 必应用插件、应用必在根脚本声明版本、版本须与 Kotlin 精确一致含补丁号、未开启时不强制）、AndroidX 开关（依赖存在必为 true、显式 false 亦报错、无依赖不强制）、BuildConfig 开关（引用必须开启）、仓库真实配置校验（模块已应用 Compose 插件、根脚本有版本、buildConfig 已开、namespace 正确）、清单四组件与实现一一对应（49 项） |
 
-合计 30 套 / 2097 项断言，全部通过（FAIL = 0）。上表逐行数字与
+合计 31 套 / 2130 项断言，全部通过（FAIL = 0）。上表逐行数字与
 `tools/test_jvm.sh` 的实际输出一一对应，可用一条命令复现。
 
 完整运行方式见 `tools/test_jvm.sh`。
