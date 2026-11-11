@@ -15,10 +15,11 @@
 **接手请先读 `docs/AI-HANDOFF.md`**——里面写了如何从零重建 JVM 测试环境，
 以及 `jsoup` 版本故意不一致、测试类需手动注册等会重复踩的坑。
 
-**当前阶段**：逻辑层完备（80 个 Kotlin 源文件 / 13,180 行），应用外壳（第二十四轮）与
-构建入口（第二十五轮）已补齐，UI 层尚未开始。`./gradlew` 已可用（Gradle 8.9 已锁定），
-`./gradlew assembleDebug` 仍会失败——缺 `MainActivity`（T03），且需 Android SDK 与签名配置。
-这不是损坏，是路线上的下一站，见 TASK-BACKLOG 的 M1。
+**当前阶段**：逻辑层完备（82 个 Kotlin 源文件 / 13,369 行），应用外壳（第二十四轮）、
+构建入口（第二十五轮）与启动壳（第二十六轮）已补齐。`./gradlew` 已可用（Gradle 8.9 已锁定），
+清单声明的 `LanyueApp` 与 `.ui.MainActivity` 现均有实现，占位页可渲染。
+`./gradlew assembleDebug` 在装有 Android SDK 的机器上已无「缺类」阻塞，但本沙箱无 SDK，
+故未在此验证；编译期还需签名与 SDK 配置，见 TASK-BACKLOG 的 M1。
 
 ## 目录
 
@@ -32,6 +33,7 @@ app/src/main/java/com/lanyue/reader/
 │   │                  ReadingSettings / PageTurnController / Theme）
 │   ├── security/      权限与桥接安全
 │   ├── build/         构建入口约束（Wrapper 配置解析与校验）
+│   ├── shell/         启动页纯逻辑（标题恢复校验 / 版本标签 / 占位模型）
 │   ├── diagnostics/   应用外壳支撑（日志下限 / 惰性图 / 崩溃兜底）
 │   └── observability/ 本地指标（仅落盘，不外发）
 ├── source/
@@ -394,6 +396,45 @@ latest / 三段式版本 / 恰好等于下限的 8.7 逐一钉死。
 T02 的验收是 `./gradlew --version` 成功，这一条已用 JDK 17 实测（Gradle 8.9 /
 Launcher JVM 17.0.2 / exit 0）。把没验证的事说成验证过，比没做更糟。
 
+### 启动壳（第二十六轮）
+
+`ui/MainActivity` + `core/shell/ShellSpec`。补齐清单声明的 `.ui.MainActivity`，
+使「缺类」这一硬编译阻塞在 T03 范围内消除。
+
+**为什么不直接把三段 `Text` 写进 Activity。** `MainActivity` 继承 `ComponentActivity`，
+`tools/test_jvm.sh` 编不过它（纯 JVM 链没有 Compose 与 Android 基类）。
+一旦把「标题显示什么」「恢复的状态是否可信」写成 Composable 内部的分支，
+这些判断就只能靠真机点一遍才知道对错——而「切后台回来标题变空」恰恰藏在这种
+分支里。因此判断逻辑全部下沉到 `ShellSpec`（纯函数、可离线断言），
+Activity 只保留接线与布局。
+
+**恢复路径必须容忍脏数据。** `rememberSaveable` 拿回来的值来自上一个进程或更早
+版本，可能是空串、纯空白、含换行制表符，或超长。直接展示的结果是空标题或标题
+撑破布局。`sanitizeRestoredTitle` 对这几类一律判为不可用并回落到资源值：
+
+- 空/空白 → 回落。否则界面出现一行空白标题，看起来像渲染失败；
+- 含控制字符（换行、制表）→ 整条拒绝，而不是静默清洗。静默清洗会让
+  「标题为什么少了两个字」无从追溯；
+- 超过 32 字符 → 整条拒绝。截断看似更「友好」，但同样会把真实原因藏起来，
+  且截断点会随字体变化产生不同的断字效果。
+
+合法的恢复值则**优先于**资源值，这是旋转后标题不回退的前提。
+
+**版本标签不允许出现 `v` 或 `vnull`。** `BuildConfig.VERSION_NAME` 在某些构建
+变体下可能为空；直接拼 `"v$name"` 就会渲染出 `vnull`。`versionLabel` 对空值、
+纯空白、字面 `null` 统一回落为 `v?`——用问号明确表示「未知」，而不是编一个版本号。
+
+**占位壳不得引入业务 UI。** T03 的要求是空壳，`isPlaceholderOnly` 把这条要求写成
+机器可读的判据；单测同时扫描 `MainActivity.kt` 源码，禁止出现 `ShelfScreen`、
+`DiscoverScreen` 等业务界面符号。这样后续轮次误把书架页塞进启动壳时，测试会先失败，
+而不是等到发版前才发现。清单里的两个 service（`MediaDownloadService`、
+`AudioPlaybackService`）也不在本轮被伪造实现，单测反向确认它们仍只是声明。
+
+**关于 `assembleDebug`。** 清单声明的两个类现已都有实现，就「缺类」而言阻塞已消除。
+但本沙箱没有 Android SDK，无法在此执行真实构建，因此本轮不宣称 `assembleDebug` 通过。
+T03 的可验证部分是：`MainActivity` 存在、包路径与清单一致、继承与 `setContent` 正确、
+判断逻辑有单测覆盖。
+
 ## 合规门禁
 
 ```bash
@@ -436,6 +477,7 @@ bash tools/ci.sh
 | `tests/DanmakuSourceLayerTest.kt` | 弹幕源配置层：apiBase 规范化（补协议/去尾斜杠/端口/localhost/IP 与全部拒绝路径）、探活失败可强制保存、未启用不探活、顺序规范化与并列稳定、新增/删除/启停/移动、端到端校验→入库→启用顺序联动（86 项） |
 | `tests/AppShellTest.kt` | 应用外壳：日志下限随构建类型切换（debug 放行 VERBOSE / release 仅 WARN 及以上、等值边界放行）、惰性图表（首访不构造 / 只构造一次 / 失败不缓存可重试）、崩溃兜底（UTC 时间戳与文件名拼接、线程名净化与 24 字符截断、cause 链编号与环状截断、无 message 不写 null、保留份数按时间戳删旧、目录缺失自动创建、异常转交原处理器且无前驱时不二次崩溃）（63 项） |
 | `tests/WrapperConfigTest.kt` | 构建入口：properties 解析（反斜杠转义还原、`#`/`!` 注释、空格裁剪、缺项默认值）、版本解析（精确三段式、rc/SNAPSHOT/latest 均判未锁定、先剥 `-bin`/`-all` 再取版本）、校验规则（http 拒绝、大版本不匹配、次版本低于下限、sha256 缺失/过短/非十六进制、大写允许、关闭 validate 拒绝、8.7 恰好等于下限放行）、仓库真实文件一致性（版本 8.9、sha 与官方一致、无问题清单、`gradlew` 可执行位、jar 为 zip 头）、与 AGP 8.5.2 主版本对齐（53 项） |
+| `tests/MainShellTest.kt` | 启动壳：标题恢复校验（null/空串/纯空白/含换行制表符/超长一律拒绝，恰好 32 字符放行）、版本标签（`v` 前缀不重复、空值与字面 null 回落 `v?`）、占位模型组装（说明空白归一空串、应用名缺失兜底、合法恢复值优先于资源值、非法恢复值回退）、占位壳判据、清单与实现一致性（包路径 ui、继承 ComponentActivity、setContent、无业务界面符号、委托 ShellSpec、两个 service 仍仅声明）（49 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 
