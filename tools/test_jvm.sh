@@ -6,7 +6,9 @@ cd "$(dirname "$0")/.."
 
 KC=${KC:-/tmp/opencode/kotlinc/kotlinc/bin/kotlinc}
 CP_DIR=${CP_DIR:-/tmp/opencode}
-JARS="$CP_DIR/kotlin-stdlib22.jar:$CP_DIR/coroutines-core.jar:$CP_DIR/jsoup.jar:$CP_DIR/gson.jar:$CP_DIR/okhttp.jar:$CP_DIR/okio.jar:$CP_DIR/conscrypt.jar"
+# annotations.jar：编译器代码生成阶段需要 org.jetbrains.annotations.NotNull，
+# 缺失时会在 IR 降低阶段抛出误导性的 ERROR_EXPR 'Default Stub'。
+JARS="$CP_DIR/kotlin-stdlib22.jar:$CP_DIR/coroutines-core.jar:$CP_DIR/jsoup.jar:$CP_DIR/gson.jar:$CP_DIR/okhttp.jar:$CP_DIR/okio.jar:$CP_DIR/conscrypt.jar:$CP_DIR/annotations.jar"
 OUT=${OUT:-/tmp/opencode/out}
 
 mkdir -p "$OUT"
@@ -42,9 +44,15 @@ while IFS= read -r f; do
   [ "$skip" -eq 0 ] && SRCS+=("$f")
 done < <(find app/src/main/java -name "*.kt" | sort)
 
+# 注意：tests/NetDispatcherE2ETest.kt 是第十三轮的历史占位，正文仅有注释，
+# 编译后不产生任何类，因此不能也不必加入下面的执行清单；
+# 其实质用例已集中到 tests/NetworkDispatcherE2ETest.kt。
 TESTS=$(find tests -name "*.kt" | sort)
 
+# jsoup 1.17.2 的包级 @NullMarked 会让 Kotlin 把 Elements.first() 之类判为可空，
+# 与既有断言不兼容；源码本身不以 JSpecify 为契约，故显式忽略该注解。
 "$KC" -jvm-target 17 \
+  -Xjspecify-annotations=ignore \
   -classpath "$JARS" \
   -d "$OUT/tests.jar" \
   "${SRCS[@]}" $CP_DIR/stub/android/util/Log.kt $CP_DIR/stub/androidx/room/Entity.kt $CP_DIR/stub/androidx/room/PrimaryKey.kt $CP_DIR/stub/androidx/room/Index.kt $TESTS 2>&1
@@ -61,6 +69,7 @@ for cls in \
   SourceImportLayerTestKt \
   ShelfAggregateLayerTestKt \
   DanmakuFilterTestKt \
+  VideoDanmakuLayerTestKt \
   SecurityGuardTestKt \
   EngineRuleSyntaxTestKt \
   EngineCoreTestKt \
