@@ -15,11 +15,11 @@
 **接手请先读 `docs/AI-HANDOFF.md`**——里面写了如何从零重建 JVM 测试环境，
 以及 `jsoup` 版本故意不一致、测试类需手动注册等会重复踩的坑。
 
-**当前阶段**：逻辑层完备（82 个 Kotlin 源文件 / 13,369 行），应用外壳（第二十四轮）、
-构建入口（第二十五轮）与启动壳（第二十六轮）已补齐。`./gradlew` 已可用（Gradle 8.9 已锁定），
-清单声明的 `LanyueApp` 与 `.ui.MainActivity` 现均有实现，占位页可渲染。
-`./gradlew assembleDebug` 在装有 Android SDK 的机器上已无「缺类」阻塞，但本沙箱无 SDK，
-故未在此验证；编译期还需签名与 SDK 配置，见 TASK-BACKLOG 的 M1。
+**当前阶段**：逻辑层完备（83 个 Kotlin 源文件 / 13,484 行），应用外壳（第二十四轮）、
+构建入口（第二十五轮）、启动壳（第二十六轮）与构建配置对齐（第二十七轮）已补齐。
+`./gradlew` 已可用（Gradle 8.9 已锁定），Compose Compiler 插件已按 Kotlin 2.0.20 对齐，
+清单声明的四个组件均有实现。`./gradlew assembleDebug` 在装有 Android SDK 的机器上
+已无「缺类」与「缺插件」两类阻塞，但本沙箱无 SDK，故未在此验证，见 TASK-BACKLOG 的 M1。
 
 ## 目录
 
@@ -435,6 +435,46 @@ Activity 只保留接线与布局。
 T03 的可验证部分是：`MainActivity` 存在、包路径与清单一致、继承与 `setContent` 正确、
 判断逻辑有单测覆盖。
 
+### 构建配置对齐（第二十七轮）
+
+补齐 Compose Compiler 插件声明，并把「配置错」这一类失败写成可离线断言的规则。
+
+**本轮修掉的第一个硬阻塞：`compose = true` 却没应用 Compose 插件。**
+Kotlin 2.0 起 Compose Compiler 从编译器内部拆成独立 Gradle 插件
+（`org.jetbrains.kotlin.plugin.compose`），模块开启了 `buildFeatures { compose = true }`
+却不应用它，会在**配置阶段**直接失败，而报错信息指向某个 task，离根因很远。
+本轮在根脚本以 `apply false` 声明版本、在模块 `plugins {}` 中应用，两处缺一不可。
+
+**版本必须与 Kotlin 完全一致，包括补丁号。** 该插件由 Kotlin 官方发布，
+`2.0.20` 与 `2.0.21` 会拿到不匹配的编译器桥接，报错出现在编译期且措辞晦涩。
+`BuildScriptAudit.composeProblems` 对三者做精确比对，不做前缀或模糊匹配——
+「差一位也算不一致」这条用单测钉住了。
+
+**为什么把配置检查写成纯函数。** `assembleDebug` 的失败分两类：「代码错」与「配置错」。
+代码错有编译器指路，配置错往往在配置阶段就终止，日志离根因很远。
+`core/build/BuildScriptAudit` 把四条规则下沉为纯逻辑，可在离线链里跑：
+
+- `composeProblems`：开启 compose 必应用插件；应用插件必在根脚本声明版本；
+  插件版本必须等于 Kotlin 版本。三个条件任一不满足都报错，且各报一条不互相淹没。
+- `requireAndroidXEnabled`：存在 `androidx.*` 依赖时必须 `android.useAndroidX=true`，
+  写成 `false` 同样报错——「写了」不等于「开对了」。
+- `buildConfigProblems`：源码引用 `BuildConfig.` 时必须开启
+  `buildFeatures.buildConfig`，AGP 8 起该开关默认关闭，不显式打开会编译失败。
+- `parsePlugins`：只认 `id("...")` 全名写法。刻意不支持 `kotlin("android")` 别名，
+  否则同一件事会有两种写法，审查面反而扩大。
+
+**一处需要更正的事实。** 上一轮汇报称清单里的两个 service「仍未实现」，这是错的。
+`player/MediaDownloadService.kt`、`player/AudioPlaybackService.kt` 与 `PlayerManager.kt`
+在 T03 之前就已存在。本轮单测改为正向核对：清单声明的四个组件
+（`LanyueApp`、`.ui.MainActivity`、两个 service）逐一确认「有声明且有实现」，
+把这条对齐关系固定下来，而不是靠人工记忆。序列化依赖同理：`kotlinx-serialization-json`
+已引入但代码中零处 `@Serializable` 引用，因此不构成缺插件的阻塞，本轮不为它加插件。
+
+**关于 `assembleDebug`。** 本沙箱仍无 Android SDK（且磁盘可用约 1GB、
+`dl.google.com` 实测速度过低），无法执行真实构建，因此本轮**不宣称**它通过。
+本轮可验证的部分是：插件声明正确、四项配置规则全部满足、清单四个组件与实现一一对应，
+这些都有离线断言覆盖。
+
 ## 合规门禁
 
 ```bash
@@ -478,6 +518,7 @@ bash tools/ci.sh
 | `tests/AppShellTest.kt` | 应用外壳：日志下限随构建类型切换（debug 放行 VERBOSE / release 仅 WARN 及以上、等值边界放行）、惰性图表（首访不构造 / 只构造一次 / 失败不缓存可重试）、崩溃兜底（UTC 时间戳与文件名拼接、线程名净化与 24 字符截断、cause 链编号与环状截断、无 message 不写 null、保留份数按时间戳删旧、目录缺失自动创建、异常转交原处理器且无前驱时不二次崩溃）（63 项） |
 | `tests/WrapperConfigTest.kt` | 构建入口：properties 解析（反斜杠转义还原、`#`/`!` 注释、空格裁剪、缺项默认值）、版本解析（精确三段式、rc/SNAPSHOT/latest 均判未锁定、先剥 `-bin`/`-all` 再取版本）、校验规则（http 拒绝、大版本不匹配、次版本低于下限、sha256 缺失/过短/非十六进制、大写允许、关闭 validate 拒绝、8.7 恰好等于下限放行）、仓库真实文件一致性（版本 8.9、sha 与官方一致、无问题清单、`gradlew` 可执行位、jar 为 zip 头）、与 AGP 8.5.2 主版本对齐（53 项） |
 | `tests/MainShellTest.kt` | 启动壳：标题恢复校验（null/空串/纯空白/含换行制表符/超长一律拒绝，恰好 32 字符放行）、版本标签（`v` 前缀不重复、空值与字面 null 回落 `v?`）、占位模型组装（说明空白归一空串、应用名缺失兜底、合法恢复值优先于资源值、非法恢复值回退）、占位壳判据、清单与实现一致性（包路径 ui、继承 ComponentActivity、setContent、无业务界面符号、委托 ShellSpec、两个 service 仍仅声明）（49 项） |
+| `tests/BuildScriptTest.kt` | 构建配置对齐：plugins 块解析（版本/apply false/容忍空格/不识别别名写法）、Compose 插件一致性（开启 compose 必应用插件、应用必在根脚本声明版本、版本须与 Kotlin 精确一致含补丁号、未开启时不强制）、AndroidX 开关（依赖存在必为 true、显式 false 亦报错、无依赖不强制）、BuildConfig 开关（引用必须开启）、仓库真实配置校验（模块已应用 Compose 插件、根脚本有版本、buildConfig 已开、namespace 正确）、清单四组件与实现一一对应（49 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 

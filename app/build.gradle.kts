@@ -1,6 +1,10 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // Kotlin 2.0 起 Compose Compiler 从编译器内部拆成独立 Gradle 插件，
+    // 开启 buildFeatures.compose 却不应用它会在配置阶段直接失败。
+    // 版本由根脚本的 apply false 统一管理，此处不写版本号。
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
 
