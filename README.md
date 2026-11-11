@@ -16,7 +16,8 @@
 以及 `jsoup` 版本故意不一致、测试类需手动注册等会重复踩的坑。
 
 **当前阶段**：逻辑层完备（83 个 Kotlin 源文件 / 13,484 行），应用外壳（第二十四轮）、
-构建入口（第二十五轮）、启动壳（第二十六轮）与构建配置对齐（第二十七轮）已补齐。
+构建入口（第二十五轮）、启动壳（第二十六轮）、构建配置对齐（第二十七轮）与
+单测清单对齐（第二十八轮）已补齐。
 `./gradlew` 已可用（Gradle 8.9 已锁定），Compose Compiler 插件已按 Kotlin 2.0.20 对齐，
 清单声明的四个组件均有实现。`./gradlew assembleDebug` 在装有 Android SDK 的机器上
 已无「缺类」与「缺插件」两类阻塞，但本沙箱无 SDK，故未在此验证，见 TASK-BACKLOG 的 M1。
@@ -475,6 +476,43 @@ Kotlin 2.0 起 Compose Compiler 从编译器内部拆成独立 Gradle 插件
 本轮可验证的部分是：插件声明正确、四项配置规则全部满足、清单四个组件与实现一一对应，
 这些都有离线断言覆盖。
 
+### 单测清单对齐（第二十八轮）
+
+把「文档里写了」和「脚本里跑了」这两件事对齐，并修掉两处会阻断脱机验证的工具链缺口。
+
+**第一个缺口：`tests/VideoDanmakuLayerTest.kt` 写进 README 却没被脚本执行。**
+该文件有 415 行、126 项断言，覆盖影视站点安装幂等与弹幕轨道调度，
+是 R8 阶段最核心的一组用例。README 的表格早已列出它，但 `tools/test_jvm.sh`
+的执行清单里没有 `VideoDanmakuLayerTestKt`——于是它从未在回归里跑过，
+「全部通过」这句话对它并不成立。本轮把它加入执行清单。
+
+**第二个缺口是一处需要澄清的历史遗留。** `tests/NetDispatcherE2ETest.kt` 只有两行注释：
+
+```kotlin
+// 本文件为第十三轮遗留占位。
+// 内容已合并到 NetworkDispatcherE2ETest.kt，不再单独执行。
+```
+
+它编译后不产生任何类，`main` 自然也不存在，强行注册只会得到一个
+`ClassNotFoundException` 式的假失败。因此本轮**不**把它加进清单，
+而是在脚本里就地写清原因，避免下一轮再有人把它当成「漏注册的测试」重犯一遍。
+真正的用例集中在 `tests/NetworkDispatcherE2ETest.kt`（46 项），一直在跑。
+
+**两处工具链缺口。** 这两处不写在仓库里的业务代码上，但只要缺了，脱机回归就跑不起来：
+
+- `org.jetbrains.annotations` 必须出现在编译期 classpath。缺它时错误出现在
+  后端 IR 降低阶段，报成 `ERROR_EXPR 'Default Stub'`，看上去像是源码里有个
+  悬挂的默认参数表达式，实际与被测代码毫无关系——这类假错误极易把人引向
+  改源码的错误方向。现在它被显式写进 `JARS`，并注明了原因。
+- `jsoup` 1.17.2 的包级 `@NullMarked` 会让 Kotlin 把 `Elements.first()`
+  这类返回值判定为可空，从而在既有断言上产生「类型不匹配」。
+  源码本身不以 JSpecify 为注解契约，因此显式传 `-Xjspecify-annotations=ignore`，
+  保持既有断言语义不变，而不是去给调用点加一串无意义的 `!!`。
+
+**一处数字更正。** 上一轮 README 里 `WrapperConfigTest` 记作 53 项，实测为 54 项。
+本轮按实际输出改正，并补上「合计 30 套 / 2097 项」的总述——
+表格逐行数字现在与脚本输出一一对应，可以在一条命令里复核。
+
 ## 合规门禁
 
 ```bash
@@ -516,9 +554,12 @@ bash tools/ci.sh
 | `tests/TtsReadTest.kt` | 朗读：规范化等长性、逐句切分与偏移回对原文、引号内句号不切、右引号并入前段、超长优先软断点、段合并、调度状态机（停止后迟到回调忽略、暂停续读、读完重听）、跳段边界、按偏移起读、语速音调夹取（108 项） |
 | `tests/DanmakuSourceLayerTest.kt` | 弹幕源配置层：apiBase 规范化（补协议/去尾斜杠/端口/localhost/IP 与全部拒绝路径）、探活失败可强制保存、未启用不探活、顺序规范化与并列稳定、新增/删除/启停/移动、端到端校验→入库→启用顺序联动（86 项） |
 | `tests/AppShellTest.kt` | 应用外壳：日志下限随构建类型切换（debug 放行 VERBOSE / release 仅 WARN 及以上、等值边界放行）、惰性图表（首访不构造 / 只构造一次 / 失败不缓存可重试）、崩溃兜底（UTC 时间戳与文件名拼接、线程名净化与 24 字符截断、cause 链编号与环状截断、无 message 不写 null、保留份数按时间戳删旧、目录缺失自动创建、异常转交原处理器且无前驱时不二次崩溃）（63 项） |
-| `tests/WrapperConfigTest.kt` | 构建入口：properties 解析（反斜杠转义还原、`#`/`!` 注释、空格裁剪、缺项默认值）、版本解析（精确三段式、rc/SNAPSHOT/latest 均判未锁定、先剥 `-bin`/`-all` 再取版本）、校验规则（http 拒绝、大版本不匹配、次版本低于下限、sha256 缺失/过短/非十六进制、大写允许、关闭 validate 拒绝、8.7 恰好等于下限放行）、仓库真实文件一致性（版本 8.9、sha 与官方一致、无问题清单、`gradlew` 可执行位、jar 为 zip 头）、与 AGP 8.5.2 主版本对齐（53 项） |
+| `tests/WrapperConfigTest.kt` | 构建入口：properties 解析（反斜杠转义还原、`#`/`!` 注释、空格裁剪、缺项默认值）、版本解析（精确三段式、rc/SNAPSHOT/latest 均判未锁定、先剥 `-bin`/`-all` 再取版本）、校验规则（http 拒绝、大版本不匹配、次版本低于下限、sha256 缺失/过短/非十六进制、大写允许、关闭 validate 拒绝、8.7 恰好等于下限放行）、仓库真实文件一致性（版本 8.9、sha 与官方一致、无问题清单、`gradlew` 可执行位、jar 为 zip 头）、与 AGP 8.5.2 主版本对齐（54 项） |
 | `tests/MainShellTest.kt` | 启动壳：标题恢复校验（null/空串/纯空白/含换行制表符/超长一律拒绝，恰好 32 字符放行）、版本标签（`v` 前缀不重复、空值与字面 null 回落 `v?`）、占位模型组装（说明空白归一空串、应用名缺失兜底、合法恢复值优先于资源值、非法恢复值回退）、占位壳判据、清单与实现一致性（包路径 ui、继承 ComponentActivity、setContent、无业务界面符号、委托 ShellSpec、两个 service 仍仅声明）（49 项） |
 | `tests/BuildScriptTest.kt` | 构建配置对齐：plugins 块解析（版本/apply false/容忍空格/不识别别名写法）、Compose 插件一致性（开启 compose 必应用插件、应用必在根脚本声明版本、版本须与 Kotlin 精确一致含补丁号、未开启时不强制）、AndroidX 开关（依赖存在必为 true、显式 false 亦报错、无依赖不强制）、BuildConfig 开关（引用必须开启）、仓库真实配置校验（模块已应用 Compose 插件、根脚本有版本、buildConfig 已开、namespace 正确）、清单四组件与实现一一对应（49 项） |
+
+合计 30 套 / 2097 项断言，全部通过（FAIL = 0）。上表逐行数字与
+`tools/test_jvm.sh` 的实际输出一一对应，可用一条命令复现。
 
 完整运行方式见 `tools/test_jvm.sh`。
 
