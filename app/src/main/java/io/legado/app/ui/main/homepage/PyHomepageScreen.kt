@@ -236,7 +236,7 @@ fun PyHomepageScreen(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("自定义弹幕API") },
+                            text = { Text("LogVar 弹幕服务器") },
                             onClick = {
                                 showSettingsMenu = false
                                 danmakuApiInput = viewModel.danmakuApiUrl
@@ -395,15 +395,15 @@ fun PyHomepageScreen(
         )
     }
 
-    // ---- 自定义弹幕 API 输入弹窗 ----
+    // ---- LogVar 弹幕服务器配置弹窗 ----
     if (viewModel.showDanmakuApiDialog) {
         AlertDialog(
             onDismissRequest = { viewModel.showDanmakuApiDialog = false },
-            title = { Text("自定义弹幕 API") },
+            title = { Text("LogVar 弹幕服务器") },
             text = {
                 Column {
                     Text(
-                        text = "输入弹幕 API 地址（支持 XML/JSON，{id} 为视频 ID 占位符）",
+                        text = "输入 LogVar 弹幕服务器地址（兼容弹弹play API，自动按片名/集名检索弹幕），留空关闭弹幕检索",
                         style = MaterialTheme.typography.bodySmall,
                         color = pageSecondaryTextColor(),
                     )
@@ -411,7 +411,7 @@ fun PyHomepageScreen(
                     OutlinedTextField(
                         value = danmakuApiInput,
                         onValueChange = { danmakuApiInput = it },
-                        label = { Text("https://example.com/api/danmaku?id={id}") },
+                        label = { Text("https://danmu.mimiruku.cn") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

@@ -48,6 +48,7 @@ import io.legado.app.help.gsyVideo.ExoVideoManager.Companion.FULLSCREEN_ID
 import io.legado.app.help.gsyVideo.FloatingPlayer
 import io.legado.app.help.gsyVideo.VideoPlayer
 import io.legado.app.help.video.VideoFavoriteResolver
+import io.legado.app.help.video.LogVarDanmaku
 import io.legado.app.help.video.VideoPlaybackPipeline
 import io.legado.app.help.video.VideoPlaylistHolder
 import io.legado.app.help.video.VideoUrlExtractor
@@ -570,6 +571,8 @@ object VideoPlay : CoroutineScope by MainScope(){
         get() = originalPlayUrl ?: videoUrl
     var singleUrl = false
     var videoTitle: String? = null
+    /** py/订阅源片名（intent 传入的影片名；选集时 videoTitle 被覆写为集名，LogVar 弹幕检索需用片名） */
+    var showTitle: String? = null
     /** P0: 当前播放使用的 Headers（供备份恢复/重试复用） */
     var currentPlayHeaders: Map<String, String>? = null
     /**
@@ -824,6 +827,55 @@ object VideoPlay : CoroutineScope by MainScope(){
     var danmakuFile: File? = null
     var danmakuStr: String? = null
     var danmakuShow = true
+    /** LogVar 弹幕异步加载请求键（show|episode；防同会话重复请求 + 防过期集数迟到写回） */
+    private var danmakuLoadKey: String? = null
+
+    /** LogVar 弹幕检索上下文：书源用 book.name，py/订阅源用 showTitle，兜底 videoTitle */
+    private fun danmakuShowTitle(): String? =
+        book?.name?.takeIf { it.isNotBlank() }
+            ?: showTitle?.takeIf { it.isNotBlank() }
+            ?: videoTitle?.takeIf { it.isNotBlank() }
+
+    /** 当前集名：书源=章节名，订阅/py=当前集名，单 URL 播放无集名 */
+    private fun danmakuEpisodeTitle(): String? =
+        chapter?.title?.takeIf { it.isNotBlank() }
+            ?: rssEpisodes?.getOrNull(rssEpisodeIndex)?.title?.takeIf { it.isNotBlank() }
+
+    /** 清 LogVar 弹幕请求键（换集防串：上一集未决请求结果作废，新集允许重新检索） */
+    fun resetDanmakuLoadKey() {
+        danmakuLoadKey = null
+    }
+
+    /**
+     * LogVar 弹幕服务器异步加载（兼容弹弹play API，协议见 [LogVarDanmaku]）。
+     *
+     * 触发点：VideoPlayer.initDanmaku 无本地弹幕数据时（GSY setUp 统一入口，覆盖
+     * 书源章节/py/jar/json/订阅源全部播放路径）。成功后转 B站 XML 写 danmakuStr，
+     * 主线程回调 onReady（播放器补建弹幕视图并发 VIDEO_DANMAKU_READY 刷新开关入口）。
+     * 未配置服务器、无检索上下文、已有本地数据、同会话已请求过 → 静默跳过。
+     */
+    fun loadDanmakuFromServer(onReady: () -> Unit) {
+        val server = LogVarDanmaku.serverUrl() ?: return
+        if (danmakuFile != null || !danmakuStr.isNullOrBlank()) return
+        val show = danmakuShowTitle()?.trim() ?: return
+        val episode = danmakuEpisodeTitle()?.trim()
+        val key = "$show|$episode"
+        if (danmakuLoadKey == key) return
+        danmakuLoadKey = key
+        AppLog.put("DanmakuLogVar: start, show=$show, ep=$episode")
+        Coroutine.async(loadScope, IO) {
+            val xml = LogVarDanmaku.fetchForXml(server, show, episode)
+            if (danmakuLoadKey != key) return@async
+            if (xml.isNullOrBlank()) {
+                AppLog.put("DanmakuLogVar: no result, show=$show, ep=$episode")
+                return@async
+            }
+            danmakuStr = xml
+            withContext(Main) { onReady() }
+        }.onError {
+            AppLog.put("DanmakuLogVar: fetch failed, show=$show", it)
+        }
+    }
 
     // ==================== W2 / REQ-13：播放错误自愈（AD-04 三态裁决）====================
 
@@ -879,6 +931,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
         danmakuStr = null
         danmakuFile = null
+        resetDanmakuLoadKey()
         val player = player.getCurrentPlayer()
         if (singleUrl) {
             val mUrl = videoUrl ?: return
@@ -1352,6 +1405,8 @@ object VideoPlay : CoroutineScope by MainScope(){
             rssRecord = null
             danmakuStr = null
             danmakuFile = null
+            showTitle = null
+            resetDanmakuLoadKey()
             lockCurScreen = false
             isPortraitVideo = false
             rssEpisodes = null
@@ -1405,6 +1460,8 @@ object VideoPlay : CoroutineScope by MainScope(){
         rssRecord = null
         danmakuStr = null
         danmakuFile = null
+        showTitle = null
+        resetDanmakuLoadKey()
         lockCurScreen = false
         isPortraitVideo = false
         rssEpisodes = null

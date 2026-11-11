@@ -26,10 +26,12 @@ import com.shuyu.gsyvideoplayer.video.base.GSYVideoPlayer
 import androidx.core.graphics.ColorUtils
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.video.ImageEnhanceController
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.model.VideoPlay
+import io.legado.app.utils.postEvent
 import master.flame.danmaku.controller.DrawHandler
 import master.flame.danmaku.danmaku.loader.IllegalDataException
 import master.flame.danmaku.danmaku.loader.android.DanmakuLoaderFactory
@@ -570,8 +572,31 @@ class VideoPlayer: StandardGSYVideoPlayer {
         val danmakuStr = VideoPlay.danmakuStr
         if (danmakuFile == null && danmakuStr.isNullOrBlank()) {
             mToggleDanmaku?.visibility = GONE
+            // LogVar 弹幕服务器异步加载（书源/py/jar/订阅源统一入口，见 VideoPlay.loadDanmakuFromServer）；
+            // 未配置服务器/无检索上下文时静默跳过；就绪回调在主线程
+            VideoPlay.loadDanmakuFromServer { prepareDanmakuFromServer() }
             return
         }
+        setupDanmaku(danmakuFile, danmakuStr)
+    }
+
+    /**
+     * LogVar 弹幕异步就绪（主线程回调）：
+     * 记录当前播放位置（弹幕 prepare 后经既有 prepared 回调 seek 对齐），补建弹幕视图并立即 prepare，
+     * 最后广播 VIDEO_DANMAKU_READY 让沉浸式悬浮层同步弹幕开关入口可见性。
+     * 视图已存在时（数据先行到达的竞态）维持现状，仅广播刷新入口。
+     */
+    private fun prepareDanmakuFromServer() {
+        if (mDanmakuView == null) {
+            mDanmakuStartSeekPosition = if (mHadPlay) getCurrentPositionWhenPlaying() else -1L
+            setupDanmaku(null, VideoPlay.danmakuStr)
+            onPrepareDanmaku(this)
+        }
+        postEvent(EventBus.VIDEO_DANMAKU_READY, "")
+    }
+
+    /** 弹幕视图/开关/上下文/解析器初始化（initDanmaku 数据分支与 LogVar 异步就绪共用） */
+    private fun setupDanmaku(danmakuFile: File?, danmakuStr: String?) {
         mDanmakuView = findViewById<DanmakuView>(R.id.danmaku_view)?.also {
             it.visibility = VISIBLE
         }

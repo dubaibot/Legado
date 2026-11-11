@@ -1444,8 +1444,10 @@ class VideoFragment : Fragment() {
      *
      * 同时隐藏 GSY 原始控制条中的 `toggle_danmaku`：沉浸式以自定义悬浮层为唯一弹幕入口，
      * 否则点击视频调出 GSY 控制条时会出现两个弹幕开关（重复入口）。
+     *
+     * public：VideoPlayerActivity 在 VIDEO_DANMAKU_READY（LogVar 弹幕异步就绪）时调用刷新。
      */
-    private fun updateDanmakuButtonState() {
+    fun updateDanmakuButtonState() {
         val pv = _playerView
         pv?.findViewById<TextView>(R.id.toggle_danmaku)?.gone()
         if (pv == null || !pv.isDanmakuAvailable) {

@@ -180,7 +180,7 @@ class PyHomepageViewModel : ViewModel() {
     var showManageDialog by mutableStateOf(false)
         private set
 
-    /** 自定义弹幕 API URL */
+    /** LogVar 弹幕服务器地址 */
     var danmakuApiUrl by mutableStateOf("")
         private set
 
@@ -200,7 +200,15 @@ class PyHomepageViewModel : ViewModel() {
         refreshSources()
         searchHistory = loadHistory()
         favorites = loadFavorites()
-        danmakuApiUrl = appCtx.getPrefString(io.legado.app.constant.PreferKey.pyDanmakuApiUrl, "") ?: ""
+        danmakuApiUrl = appCtx.getPrefString(io.legado.app.constant.PreferKey.danmakuServerUrl, "") ?: ""
+        // 旧协议迁移：pyDanmakuApiUrl 为 {id} 模板弹幕 API；LogVar 服务器地址无 {id} 占位符时自动迁移
+        if (danmakuApiUrl.isBlank()) {
+            val legacy = appCtx.getPrefString(io.legado.app.constant.PreferKey.pyDanmakuApiUrl, "")?.trim().orEmpty()
+            if (legacy.isNotBlank() && !legacy.contains("{id}")) {
+                appCtx.putPrefString(io.legado.app.constant.PreferKey.danmakuServerUrl, legacy)
+                danmakuApiUrl = legacy
+            }
+        }
         // 首启自动安装内置源为异步完成，延迟后再刷一次兜底
         viewModelScope.launch(Dispatchers.IO) {
             delay(8000)
@@ -785,11 +793,11 @@ class PyHomepageViewModel : ViewModel() {
 
     // ---- 自定义弹幕 API ----
 
-    /** 保存自定义弹幕 API URL */
+    /** 保存 LogVar 弹幕服务器地址（兼容弹弹play API，见 LogVarDanmaku） */
     fun saveDanmakuApiUrl(url: String) {
         val trimmed = url.trim()
         danmakuApiUrl = trimmed
-        appCtx.putPrefString(io.legado.app.constant.PreferKey.pyDanmakuApiUrl, trimmed)
+        appCtx.putPrefString(io.legado.app.constant.PreferKey.danmakuServerUrl, trimmed)
     }
 
     // ---- 管理 ----

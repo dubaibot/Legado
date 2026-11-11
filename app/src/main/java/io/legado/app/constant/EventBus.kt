@@ -45,6 +45,7 @@ object EventBus {
     const val AUTO_TASK_SERVICE = "autoTaskService"
     const val TOP_BAR_CHANGED = "topBarChanged"
     const val VIDEO_PLAY_ERROR = "videoPlayError"
+    const val VIDEO_DANMAKU_READY = "videoDanmakuReady"  // LogVar 弹幕异步加载完成，刷新弹幕开关入口
     const val VIDEO_BOOK_UNIT_SWITCHED = "videoBookUnitSwitched"
     const val ARTICLES_LOADED = "articlesLoaded"
     const val COVER_HTML_TEMPLATE_CHANGED = "coverHtmlTemplateChanged"  // HTML封面模板变更

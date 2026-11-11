@@ -405,6 +405,8 @@ object PreferKey {
     const val pySearchHistory = "pySearchHistory"
     const val pyFavorites = "pyFavorites"
     const val pyDanmakuApiUrl = "pyDanmakuApiUrl"
+    /** LogVar 弹幕服务器地址（兼容弹弹play API：/api/v2/search/episodes + /api/v2/comment/{id}） */
+    const val danmakuServerUrl = "danmakuServerUrl"
     const val pyTvboxSubscriptions = "pyTvboxSubscriptions"
     const val loadCoverHighQuality = "loadCoverHighQuality"
     const val mainLayoutPreset = "mainLayoutPreset"

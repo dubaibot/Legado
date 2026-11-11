@@ -3,7 +3,6 @@ package io.legado.app.help.video
 import com.shuyu.gsyvideoplayer.video.base.GSYBaseVideoPlayer
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -21,12 +20,10 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.externalCache
-import io.legado.app.utils.getPrefString
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
-import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
@@ -166,32 +163,12 @@ object VideoPlaybackPipeline {
                         is String -> VideoPlay.danmakuStr = danmaku
                         is File -> VideoPlay.danmakuFile = danmaku
                         null -> {
-                            val apiUrl =
-                                appCtx.getPrefString(PreferKey.pyDanmakuApiUrl, "")
-                            if (!apiUrl.isNullOrBlank()) {
-                                val realUrl = apiUrl.replace("{id}", chapter.url)
-                                ctx.scope.async(IO) {
-                                    try {
-                                        val resp =
-                                            io.legado.app.help.http.okHttpClient
-                                                .newCall(
-                                                    okhttp3.Request.Builder()
-                                                        .url(realUrl)
-                                                        .build()
-                                                )
-                                                .execute()
-                                        if (resp.isSuccessful) {
-                                            val body = resp.body?.string()
-                                            if (!body.isNullOrBlank()) {
-                                                VideoPlay.danmakuStr = body
-                                            }
-                                        }
-                                        resp.close()
-                                    } catch (e: Exception) {
-                                        AppLog.put("弹幕API加载失败: ${e.message}", e, true)
-                                    }
-                                }
-                            }
+                            // LogVar 弹幕：GSY setUp → initDanmaku 无数据时统一走
+                            // VideoPlay.loadDanmakuFromServer（书源/py/jar/订阅源共用单入口）；
+                            // 此处仅清残留（防上一集弹幕串场）并作废旧请求键
+                            VideoPlay.danmakuStr = null
+                            VideoPlay.danmakuFile = null
+                            VideoPlay.resetDanmakuLoadKey()
                         }
                     }
                     setUpAndPlay(ctx, analyzeUrl.url, merged, resolvePageUrl = true)

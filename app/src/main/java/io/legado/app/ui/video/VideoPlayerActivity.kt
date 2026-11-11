@@ -486,6 +486,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
             intent.getStringExtra("videoTitle")?.let {
                 VideoPlay.videoTitle = it
+                // LogVar 弹幕检索用片名：选集后 videoTitle 会被覆写为集名，此处留存原片名
+                VideoPlay.showTitle = it
             }
             // py 源集数列表：解析 episodesJson 设置 rssEpisodes + pyEpisodesPluginId
             // 注意：VideoPlay.initSource() 会重置 rssEpisodes/rssEpisodeIndex（多线路状态重建），
@@ -2317,6 +2319,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         // 主动刷新播放器 View 侧主题高亮（进度条/缓冲/缩略图取 accentColor）
         observeEvent<String>(EventBus.RECREATE) {
             applyVideoThemeColors()
+        }
+
+        observeEvent<String>(EventBus.VIDEO_DANMAKU_READY) {
+            // LogVar 弹幕异步就绪：刷新沉浸式悬浮层弹幕开关入口（本集有弹幕才展示）
+            currentFragment?.updateDanmakuButtonState()
         }
 
         observeEventSticky<String>(EventBus.VIDEO_SUB_TITLE) {
