@@ -49,8 +49,11 @@ done < <(find app/src/main/java -name "*.kt" | sort)
 # 其实质用例已集中到 tests/NetworkDispatcherE2ETest.kt。
 TESTS=$(find tests -name "*.kt" | sort)
 
-# jsoup 1.17.2 的包级 @NullMarked 会让 Kotlin 把 Elements.first() 之类判为可空，
-# 与既有断言不兼容；源码本身不以 JSpecify 为契约，故显式忽略该注解。
+# 注意本脚本用的是 jsoup 1.13.1，与 app/build.gradle.kts 的 1.17.2 故意不同
+# （见 docs/AI-HANDOFF.md §3.2）：1.17.2 的包级 @NullMarked 会让 Kotlin 把
+# Elements.first() 之类判为可空，与测试里大量非空假设冲突。不要统一两个版本。
+# 下面这个开关是防御性的：万一有人把测试链的 jsoup 升到带 JSpecify 注解的版本，
+# 它保证既有断言仍按原语义编译，而不是去调用点加一串 '!!'。
 "$KC" -jvm-target 17 \
   -Xjspecify-annotations=ignore \
   -classpath "$JARS" \
