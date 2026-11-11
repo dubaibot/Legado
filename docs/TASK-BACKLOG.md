@@ -83,13 +83,35 @@
 
 ## 里程碑 M2 — 阅读主链路（MVP）
 
-### T10 `[ ]` 应用骨架与导航
+### T10 `[~]` 应用骨架与导航
 - **要做**：
   1. 底部导航三页：书架 / 书城 / 我的；
   2. 主题系统接 `core/render/Theme`，支持跟随系统深浅色；
   3. 全局状态容器：`ViewModel` + `Repository`。**UI 层不许直接碰 DAO**，
      否则后续换缓存策略要改遍所有页面。
 - **验收**：三个页面可切换，深浅色切换生效，返回栈行为正确。
+
+> **状态说明（2026-11-11）**：`[~]`。规则层已落地并全部可脱机验证，
+> 但 Compose 界面本身尚未接入——三个页面仍是 `ui/PlaceholderShell.kt`
+> 的占位壳。
+>
+> 已完成：
+> - `core/shell/AppDestination.kt`：三目的地枚举（书架/书城/我的）与顺序、索引；
+> - `core/shell/BottomNavPolicy.kt`：底部导航是**平级切换**而非叠栈——重复点击
+>   同一页不产生新栈帧，切换后返回栈恒为一层；返回键在非首个目的地回书架、
+>   在书架拦截以交还系统退出；支持深链直达任意目的地且栈规范化；
+> - `core/shell/ThemeMode.kt`：跟随系统/强制浅色/强制深色三态，系统值未知时
+>   回落跟随系统，强制模式下屏蔽系统深浅色变化；
+> - `core/shell/ScreenState.kt`：空/加载/成功/失败四态容器，失败可重试；
+> - `tests/ShellNavTest.kt`：42 项断言覆盖上述规则；
+> - `tools/check_ui_layering.py`：新增第七道门禁，扫 `ui/` 下是否出现
+>   `@Dao` / `RoomDatabase` / `androidx.room.` / `*Dao(`，把「UI 不碰 DAO」
+>   从口头约定变成 CI 可拦的错误。
+>
+> 缺口：`app/` 的 Compose 界面（NavHost 接线、`collectAsState` 订阅、
+> 真实三页内容）尚未写；沙箱无 Android SDK，无法验证渲染与真机返回栈。
+> 也就是说本轮交付的是**导航/主题/状态的纯逻辑内核 + 分层护栏**，
+> 界面接线留待有 SDK 的环境或在 T11 一并接入。
 
 ### T11 `[ ]` 书源管理页
 - **要用**：`source/import/`（Legado JSON 解析）、`source/repo/`（仓库）、

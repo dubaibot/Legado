@@ -588,7 +588,16 @@ Room 对表结构的内部哈希结果——它不是可以手推的值。我尝
 bash tools/ci.sh
 ```
 
-五道门禁：权限白名单、免责声明、无遥测出口、架构契约、Gradle Wrapper 配置。
+七道门禁：权限白名单、免责声明、无遥测出口、架构契约、Gradle Wrapper 配置、
+Room schema 导出配置、UI 分层（`ui/` 下不得直连 DAO / Room）。
+
+其中新增的 `tools/check_ui_layering.py` 是为了守住 T10 的一条硬约束：
+**UI 层不许直接碰 DAO**。它扫描 `app/src/main/java/com/lanyue/reader/ui/`
+下所有 Kotlin 文件，出现 `@Dao`、`RoomDatabase`、`androidx.room.` 或
+`*Dao(` 调用即判错。当前 `ui/` 下 1 个文件（`PlaceholderShell.kt`），
+只依赖 `main/` 的壳模型，不碰数据库，因此通过。这条门禁的意义不在当下
+——而在后续 T11 书源管理页真的开始写数据访问时，一旦有人图快在
+Composable 里直接注入 DAO，CI 会立刻拦住。
 
 ## 单测
 
@@ -627,8 +636,9 @@ bash tools/ci.sh
 | `tests/SchemaExportTest.kt` | Room schema 导出配置：`@Database` 注解解析（exportSchema 显式 true / 缺省 false / 显式 false、version 与实体数、跨行与尾随逗号）、`ksp { arg("room.schemaLocation") }` 解析（参数名大小写敏感、`$projectDir` 与 `${projectDir}` 两种写法、绝对路径判否）、目录名判定（`schemas` vs `schema`/`roomSchemas`、尾随斜杠）、配置组合校验（缺 exportSchema / 缺 ksp 参数 / 产物未提交 / version 与文件名错配 / 实体数为 0）、schema JSON 骨架（format 必须为 1、version 与注解一致、表数量、identityHash 小写 32 位、重复表名）（33 项） |
 | `tests/MainShellTest.kt` | 启动壳：标题恢复校验（null/空串/纯空白/含换行制表符/超长一律拒绝，恰好 32 字符放行）、版本标签（`v` 前缀不重复、空值与字面 null 回落 `v?`）、占位模型组装（说明空白归一空串、应用名缺失兜底、合法恢复值优先于资源值、非法恢复值回退）、占位壳判据、清单与实现一致性（包路径 ui、继承 ComponentActivity、setContent、无业务界面符号、委托 ShellSpec、两个 service 仍仅声明）（49 项） |
 | `tests/BuildScriptTest.kt` | 构建配置对齐：plugins 块解析（版本/apply false/容忍空格/不识别别名写法）、Compose 插件一致性（开启 compose 必应用插件、应用必在根脚本声明版本、版本须与 Kotlin 精确一致含补丁号、未开启时不强制）、AndroidX 开关（依赖存在必为 true、显式 false 亦报错、无依赖不强制）、BuildConfig 开关（引用必须开启）、仓库真实配置校验（模块已应用 Compose 插件、根脚本有版本、buildConfig 已开、namespace 正确）、清单四组件与实现一一对应（49 项） |
+| `tests/ShellNavTest.kt` | 应用骨架与导航：三目的地（书架/书城/我的）顺序与索引、平级切换不叠栈（同页重复点击不变、切换后返回栈恒定为一层）、返回键行为（首个目的地拦截退出、非首个回书架）、深链落地（任意目的地直达且栈规范化）、主题三态（跟随系统/强制浅色/强制深色）与系统深浅色解析（未知值回落跟随系统、强制模式屏蔽系统变化）、状态容器四态（空/加载/成功/失败）与失败重试、非法输入判否（42 项） |
 
-合计 31 套 / 2130 项断言，全部通过（FAIL = 0）。上表逐行数字与
+合计 32 套 / 2172 项断言，全部通过（FAIL = 0）。上表逐行数字与
 `tools/test_jvm.sh` 的实际输出一一对应，可用一条命令复现。
 
 完整运行方式见 `tools/test_jvm.sh`。
