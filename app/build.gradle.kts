@@ -50,6 +50,19 @@ android {
     }
 }
 
+// Room schema 导出（T05）。
+//
+// `@Database(exportSchema = true)` 只是"同意导出"，真正决定 JSON 落到哪里的是这个
+// KSP 参数。两者缺一：Room 会在每次构建时打一条警告说 schema 无处可写，而
+// schema 一旦没被真正写出来，后续就永远没有基线可以 diff——加了字段只能靠
+// `fallbackToDestructiveMigration()` 掩盖，代价是用户升级即丢数据。
+//
+// 路径用 `$projectDir/schemas`（即 app/schemas/），必须提交进版本库：
+// 它是迁移测试（MigrationTestHelper）唯一可信的输入。
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     // 4.9 播放器
     implementation("androidx.media3:media3-exoplayer:1.4.1")
