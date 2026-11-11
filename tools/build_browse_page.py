@@ -48,12 +48,33 @@ def collect():
     return sorted(files)
 
 
+def read_text(path):
+    """按字节读入再严格 UTF-8 解码；解不开返回 None，说明是二进制。
+
+    不能直接用 `open(..., encoding="utf-8").read()`：仓库里现在有
+    `gradle-wrapper.jar`，那样会在生成阶段直接抛 UnicodeDecodeError，
+    整个页面重建失败。二进制文件对源码浏览器没有展示价值（base64 进 JSON
+    还会膨胀约 4/3），但仍应留在 zip 里，方便下载完整仓库快照。
+    """
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 def build():
     paths = collect()
     entries = []
+    binaries = []  # (rel, bytes) 只进 zip
     for rel in paths:
-        with open(os.path.join(REPO, rel), "r", encoding="utf-8") as fh:
-            text = fh.read()
+        full = os.path.join(REPO, rel)
+        text = read_text(full)
+        if text is None:
+            with open(full, "rb") as fh:
+                binaries.append((rel, fh.read()))
+            continue
         # 行数与页面展示口径一致：末尾换行不额外算一行
         lines = text.count("\n") + (0 if text.endswith("\n") else 1)
         entries.append({"path": rel, "lang": lang_of(rel), "lines": lines, "content": text})
@@ -70,12 +91,16 @@ def build():
     stamp = (now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for e in entries:
-            info = zipfile.ZipInfo(PREFIX + e["path"], date_time=stamp)
+        # 按路径排序写入，保证两次生成的包条目顺序一致（便于比对差异）
+        for rel, data in sorted(
+            [(e["path"], e["content"].encode("utf-8")) for e in entries] + binaries,
+            key=lambda x: x[0],
+        ):
+            info = zipfile.ZipInfo(PREFIX + rel, date_time=stamp)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.create_system = 3
             info.external_attr = 0o600 << 16
-            z.writestr(info, e["content"].encode("utf-8"))
+            z.writestr(info, data)
     zip_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
     return entries, payload, zip_b64

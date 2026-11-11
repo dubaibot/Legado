@@ -15,9 +15,9 @@
 **接手请先读 `docs/AI-HANDOFF.md`**——里面写了如何从零重建 JVM 测试环境，
 以及 `jsoup` 版本故意不一致、测试类需手动注册等会重复踩的坑。
 
-**当前阶段**：逻辑层完备（79 个 Kotlin 源文件 / 13,036 行），应用外壳已补齐（第二十四轮），
-UI 层尚未开始。`./gradlew assembleDebug` 仍会失败——缺 Gradle Wrapper（T02）、
-缺 `MainActivity`（T03）。`LanyueApp` 这一处硬编译阻塞已在 T01 消除。
+**当前阶段**：逻辑层完备（80 个 Kotlin 源文件 / 13,180 行），应用外壳（第二十四轮）与
+构建入口（第二十五轮）已补齐，UI 层尚未开始。`./gradlew` 已可用（Gradle 8.9 已锁定），
+`./gradlew assembleDebug` 仍会失败——缺 `MainActivity`（T03），且需 Android SDK 与签名配置。
 这不是损坏，是路线上的下一站，见 TASK-BACKLOG 的 M1。
 
 ## 目录
@@ -31,6 +31,7 @@ app/src/main/java/com/lanyue/reader/
 │   ├── render/        排版引擎（TypographySpec / Paginator / ReadingProgress /
 │   │                  ReadingSettings / PageTurnController / Theme）
 │   ├── security/      权限与桥接安全
+│   ├── build/         构建入口约束（Wrapper 配置解析与校验）
 │   ├── diagnostics/   应用外壳支撑（日志下限 / 惰性图 / 崩溃兜底）
 │   └── observability/ 本地指标（仅落盘，不外发）
 ├── source/
@@ -359,13 +360,47 @@ null / `"title"` / `"content"` 的字符串约定，拼错不报错、整条规�
 所以 `./gradlew assembleDebug` 依旧失败。按 AI-HANDOFF 的判断，
 M1 阶段一次只消除一个阻塞，构建配置错与 UI 代码错混在一起时无法归因。
 
+### 构建入口（第二十五轮）
+
+Gradle Wrapper 三件套 + `core/build/WrapperSpec` + `tools/check_wrapper.py`。
+T02 的产出同样不是功能，而是「`./gradlew` 能起来」这个事实。
+
+**为什么必须锁版本，而不是让 wrapper 自己选。** `distributionUrl` 决定所有机器
+实际跑哪个 Gradle；写成 `-latest` 或 `-rc`，本地与 CI 会在不同版本上构建，
+而「本地能过、CI 挂」的排查成本远高于固定一个版本。因此这里锁 `8.9`：
+AGP 8.5.2 要求 Gradle ≥ 8.7，8.9 是同代稳定组合。
+
+**锁了版本还不够，必须锁分发包完整性。** Wrapper 首次运行会下载 zip 并执行其中
+代码，`distributionSha256Sum` 是唯一能挡住「下载到被替换的包」的手段。
+本轮把官方值 `d725d707...cecab` 写进 properties，并**实测下载后 `sha256sum -c` 通过**——
+只抄一个数字而不验证，等于把校验变成装饰。同时 `validateDistributionUrl=true`。
+
+**为什么把配置检查写成代码而不是提交前肉眼过一遍。** properties 里
+`distributionUrl` 的版本语义有一处很容易错：若按「第一个 `-` 之前」截取版本，
+`gradle-8.9-rc-2-bin` 会被读成 `8.9`，于是 **rc 版被判定为已锁定而放行**。
+这个缺陷是写完测试后被测出来的——它正是「门禁本身有 bug，比没有门禁更危险」的例子。
+正确做法是先剥掉尾部 `-bin`/`-all`，再整体取版本串，让预发布标识保留下来供校验拒绝。
+`WrapperSpec.version` 与 `isPinnedVersion` 就是这条规则的落点，单测把 rc / SNAPSHOT /
+latest / 三段式版本 / 恰好等于下限的 8.7 逐一钉死。
+
+**门禁只管静态层面，不做联网。** `tools/check_wrapper.py` 检查四件齐全、
+`gradlew` 可执行位、版本锁定与 AGP 大版本对齐、sha256 格式合法。它不联网：
+每次提交都去拉分发包既慢又会在离线环境误报。校验和与真实包是否一致属于
+一次性核对，本轮已人工跑过并记录。
+
+**关于 `assembleDebug`。** 它**仍然失败**，但原因已经从「没有 wrapper」变成
+「缺 `MainActivity`（T03）且构建机需要 Android SDK」。本沙箱无 SDK，
+无法在此跑真实构建，因此本轮不宣称 `assembleDebug` 通过——
+T02 的验收是 `./gradlew --version` 成功，这一条已用 JDK 17 实测（Gradle 8.9 /
+Launcher JVM 17.0.2 / exit 0）。把没验证的事说成验证过，比没做更糟。
+
 ## 合规门禁
 
 ```bash
 bash tools/ci.sh
 ```
 
-四道门禁：权限白名单、免责声明、无遥测出口、架构契约。
+五道门禁：权限白名单、免责声明、无遥测出口、架构契约、Gradle Wrapper 配置。
 
 ## 单测
 
@@ -400,6 +435,7 @@ bash tools/ci.sh
 | `tests/TtsReadTest.kt` | 朗读：规范化等长性、逐句切分与偏移回对原文、引号内句号不切、右引号并入前段、超长优先软断点、段合并、调度状态机（停止后迟到回调忽略、暂停续读、读完重听）、跳段边界、按偏移起读、语速音调夹取（108 项） |
 | `tests/DanmakuSourceLayerTest.kt` | 弹幕源配置层：apiBase 规范化（补协议/去尾斜杠/端口/localhost/IP 与全部拒绝路径）、探活失败可强制保存、未启用不探活、顺序规范化与并列稳定、新增/删除/启停/移动、端到端校验→入库→启用顺序联动（86 项） |
 | `tests/AppShellTest.kt` | 应用外壳：日志下限随构建类型切换（debug 放行 VERBOSE / release 仅 WARN 及以上、等值边界放行）、惰性图表（首访不构造 / 只构造一次 / 失败不缓存可重试）、崩溃兜底（UTC 时间戳与文件名拼接、线程名净化与 24 字符截断、cause 链编号与环状截断、无 message 不写 null、保留份数按时间戳删旧、目录缺失自动创建、异常转交原处理器且无前驱时不二次崩溃）（63 项） |
+| `tests/WrapperConfigTest.kt` | 构建入口：properties 解析（反斜杠转义还原、`#`/`!` 注释、空格裁剪、缺项默认值）、版本解析（精确三段式、rc/SNAPSHOT/latest 均判未锁定、先剥 `-bin`/`-all` 再取版本）、校验规则（http 拒绝、大版本不匹配、次版本低于下限、sha256 缺失/过短/非十六进制、大写允许、关闭 validate 拒绝、8.7 恰好等于下限放行）、仓库真实文件一致性（版本 8.9、sha 与官方一致、无问题清单、`gradlew` 可执行位、jar 为 zip 头）、与 AGP 8.5.2 主版本对齐（53 项） |
 
 完整运行方式见 `tools/test_jvm.sh`。
 
