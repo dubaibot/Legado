@@ -96,7 +96,8 @@ for cls in \
   AppShellTestKt \
   WrapperConfigTestKt \
   MainShellTestKt \
-  BuildScriptTestKt; do
+  BuildScriptTestKt \
+  SearchSessionTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""
