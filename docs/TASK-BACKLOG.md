@@ -10,7 +10,7 @@
 
 ## 里程碑 M1 — 构建打通（阻塞一切，最高优先）
 
-### T01 `[!]` 补 `LanyueApp` 应用类
+### T01 `[x]` 补 `LanyueApp` 应用类
 - **现状**：`app/src/main/AndroidManifest.xml:18` 声明 `android:name=".LanyueApp"`，
   源码中**不存在**该类。这是当前唯一的硬编译阻塞。
 - **要做**：创建 `app/src/main/java/com/lanyue/reader/LanyueApp.kt`，
@@ -23,7 +23,7 @@
 - **验收**：`LanyueApp` 编译通过；清单 `android:name` 指向的类真实存在；
   启动 APK 后 `adb logcat` 无 `ClassNotFoundException`。
 
-### T02 `[ ]` 补 Gradle Wrapper
+### T02 `[x]` 补 Gradle Wrapper
 - **现状**：有 `build.gradle.kts` / `settings.gradle.kts` / `app/build.gradle.kts`，
   缺 `gradlew` 与 `gradle/wrapper/gradle-wrapper.properties`。
 - **要做**：生成 wrapper 并**锁定版本号**（与 AGP 匹配，AGP 8.x 对应 Gradle 8.x）。
@@ -31,13 +31,13 @@
   不要用 `latest`。
 - **验收**：干净目录下 `./gradlew --version` 成功；`gradlew` 有可执行位。
 
-### T03 `[ ]` 补最小 `MainActivity`
+### T03 `[x]` 补最小 `MainActivity`
 - **现状**：清单第 26 行声明了 activity，无对应实现。
 - **要做**：Compose 空壳 `MainActivity`，只做 `setContent { }` 渲染一个
   「蓝阅」占位页，先把启动链路打通。**不要在这一步写业务 UI**。
 - **验收**：APK 安装启动后能看到占位页，切后台再回来不重建崩溃。
 
-### T04 `[ ]` 首次真实构建并修全部编译错
+### T04 `[~]` 首次真实构建并修全部编译错
 - **要做**：`./gradlew assembleDebug`，逐条修错。预期问题集中在：
   - Room KSP：实体注解、DAO 返回类型、`@Transaction` 用法；
   - Compose 编译器插件：Kotlin 版本与 compose compiler 版本必须对齐；
@@ -49,7 +49,13 @@
 - **验收**：`assembleDebug` 成功；`tools/ci.sh` 全绿；`tools/test_jvm.sh`
   仍是 21 套 / 1,434 项 / FAIL=0。
 
-### T05 `[ ]` 开启 Room schema 导出
+> **状态说明（2026-11-11）**：`[~]` 而非 `[x]`。配置侧已完成并经静态核验——
+> compose 编译器插件 `2.0.20` 已在根脚本 `apply false`、在 `app` 模块应用，
+> 与 Kotlin 版本对齐；`@Serializable` 全仓 0 处引用，故无需序列化插件。
+> 但 **`assembleDebug` 本身从未真正跑通**：执行环境没有 Android SDK，
+> 构建无从启动。这条验收线仍是空的，等有 SDK 的环境回填。
+
+### T05 `[~]` 开启 Room schema 导出
 - **要做**：给 `@Database` 加 `exportSchema = true`，
   配置 `ksp { arg("room.schemaLocation", "$projectDir/schemas") }`，
   提交生成的 schema JSON。
@@ -57,6 +63,21 @@
   迁移测试无从写起，只能靠 `fallbackToDestructiveMigration()` 掩盖
   ——那意味着用户升级会丢数据。
 - **验收**：`app/schemas/` 下有 JSON 并已提交；构建无 Room 警告。
+
+> **状态说明（2026-11-11）**：`[~]`。前两项已完成——`@Database(exportSchema = true)`
+> 原本就有，本轮补上 `ksp { arg("room.schemaLocation", "$projectDir/schemas") }`，
+> 并新增 `tools/check_schema.py` 接入 `tools/ci.sh`，让"三处缺一即静默失效"
+> 变成门禁可拦的错误。
+>
+> **但 `app/schemas/1.json` 尚未生成**。它的 `identityHash` 是 Room 对表结构的
+> 内部哈希，无法手推，只能由 Gradle+KSP 在构建期算出；kapt 与 KSP cmdline
+> 两条离线通路都试过，均无法加载处理器（详见 README 第二十九轮）。
+> **没有手写 JSON 冒充产物**——那样 `identityHash` 必然与真实结构不符，
+> 门禁会变绿，但真正做迁移时立刻失效，比没有基线更危险。
+>
+> 回填方式：在有 Android SDK 的环境执行
+> `./gradlew :app:kspDebugKotlin`，提交生成的 `app/schemas/1.json`。
+> 此后 `check_schema.py` 会自动开始校验它与 `@Database.version` 是否一致。
 
 ---
 
