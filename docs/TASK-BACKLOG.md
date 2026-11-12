@@ -284,12 +284,33 @@
   越界由它夹取，UI 不必重复校验。
 - **验收**：控制条各按钮行为正确；语速调整立即生效。
 
-### T22 `[ ]` 跟随高亮与章节续读
+### T22 `[~]` 跟随高亮与章节续读
 - **要用**：`TtsProgress.charOffset`（分段偏移已保留，可直接回对正文）。
 - **要做**：朗读时正文高亮当前段；点正文任意位置从该处起读
   （`controller.load(..., startCharOffset)`）；章节读完自动续读
   做成设置项（默认行为要明确，不要两头都做一半）。
 - **验收**：高亮与语音同步无明显漂移；点正文中段能从那句开始读。
+
+> **状态说明（2026-11-13）**：`[~]`。不依赖 Android 的章节续读协调层已完成并通过
+> 38 套 / 2744 项回归（新增 `tests/TtsChapterCoordinatorTest.kt`，97 项断言）。
+>
+> 已完成（`core/tts/TtsChapterCoordinator.kt`）：
+> - **章节续读做成设置项**：`AutoContinue.ENABLED`（默认）读完一章自动加载下一章继续朗读，
+>   `DISABLED` 读完停在 FINISHED 等用户手动翻章。默认开启是因为朗读场景下用户通常希望
+>   连续听完整本书（听有声书体验），手动翻章会打断通勤/做家务时的连续收听；
+> - **`onSegmentFinished` 返回 `AdvanceOutcome`**：`NEXT_SEGMENT`/`CONTINUED`/`STOPPED`/
+>   `BOOK_DONE`/`IGNORED`，让上层知道该做什么 UI 反馈（刷新高亮/刷新正文/显示提示/什么也不做）；
+> - **迟到回调安全**：只在 controller 处于 SPEAKING 时才推进，停止/暂停后的迟到 onDone
+>   返回 `IGNORED` 不触发续读——与 `TtsReadController` 自身的守卫一致，不因多一层包装而削弱；
+> - **空章自动跳过**：`startChapter` 从目标章往后逐章找内容，空/空白章不算朗读过；
+>   跳章时 charOffset 归零，偏移只对首个目标章有效；
+> - **点正文起读**：`startFromPosition(chapterIndex, charOffset)` 桥接阅读页点击位置到 TTS 定位；
+> - **高亮区间数据**：`highlightRange()` 返回当前段 `[charStart, charEnd)` 区间，供 Compose
+>   绘制高亮背景；续读跳到新章后自动重映射到新章段偏移；
+> - **`hasNextChapter()`**：跳过尾部空章判断后面是否还有可读内容。
+>
+> 缺口（沙箱无 Android SDK，均未做）：Compose 高亮渲染（把区间映射到像素范围）；
+> `TextToSpeech` 引擎适配层（T20）；朗读控制条 UI（T21）；真机语音包与续读计时验证。
 
 ---
 
