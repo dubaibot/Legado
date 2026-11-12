@@ -414,9 +414,25 @@
 > 缺口（沙箱无 Android SDK，均未做）：导出 UI（文件选择器/分享面板）、导入 UI
 > （文件选择/合并策略选择/进度展示/结果页）、真实数据库事务接线、真机跨设备恢复验证。
 
-### T42 `[ ]` WebDAV 同步（可选，视需求优先级）
+### T42 `[~]` WebDAV 同步（可选，视需求优先级）
 - **要做**：接自托管场景，支持配置服务器与自动同步。
 - **验收**：手动触发同步成功；冲突时按既定策略处理。
+
+> **状态说明（2026-11-13）**：`[~]`。不依赖 Android 的同步协调层已完成并通过
+> 42 套 / 3114 项回归（新增 `tests/WebDavSyncTest.kt`，89 项断言）。
+>
+> 已完成（`data/sync/WebDavSyncCoordinator.kt`）：
+> - **三方对比同步计划**：对比本地快照、远端快照、上次同步基准，判断每个条目是
+>   本地改了（上传）、远端改了（下载）、双侧都改了（冲突）、一侧删了（删对侧）；
+> - **冲突解决策略**：KEEP_LOCAL / KEEP_REMOTE / NEWER_WINS（时间戳新者赢，相等留本地）/
+>   SKIP（不自动裁决，留待用户处理）；SKIP 产生 `UnresolvedConflict` 供 UI 展示；
+> - **同步方向**：BIDIRECTIONAL（默认）/ UPLOAD_ONLY / DOWNLOAD_ONLY；
+> - **同步状态机**：IDLE → PLANNING → SYNCING → SUCCESS/CONFLICT/ERROR；
+>   SyncSession 追踪进度、错误详情、冲突解决后继续；
+> - **summary 文案**：一句话摘要供同步界面展示。
+>
+> 缺口（沙箱无 Android SDK，均未做）：WebDAV HTTP 请求接线（PROPFIND/COPY/PUT）、
+> 服务器配置 UI、自动同步调度、真机跨设备验证。
 
 ---
 
@@ -469,19 +485,42 @@
 > 缺口：在有 Android SDK 的环境执行 `assembleRelease` 验证 release 包
 > 各功能与 debug 一致。
 
-### T52 `[ ]` 兼容性与体积
+### T52 `[~]` 兼容性与体积
 - **要做**：Android 8～15 关键路径回归；重点查前台服务类型
   （`FOREGROUND_SERVICE_MEDIA_PLAYBACK` 在 Android 14+ 有额外声明要求，
   漏了会直接崩溃）；Compose 与 media3 体积裁剪。
 - **验收**：目标区间内的系统版本均能启动并完成一次完整阅读。
 
-### T53 `[ ]` 全量验收
+> **状态说明（2026-11-13）**：`[~]`。静态审计侧已完成——新增 `tools/check_compatibility.py`
+> 作为 ci.sh 第八道门禁，检查：
+> - 每个 `<service>` 的 `foregroundServiceType` 必须有匹配的 `<uses-permission>` 声明
+>   （Android 14+ 强制，漏了直接崩溃）；
+> - SDK 版本范围：`minSdk <= targetSdk <= compileSdk`，`minSdk >= 26`（Android 8）；
+> - 已知服务（MediaDownloadService=dataSync、AudioPlaybackService=mediaPlayback）
+>   类型与 `check_permissions.py` 交叉校验。
+>
+> 当前结果：2 个前台服务、3 个前台服务权限、SDK min=26/target=34/compile=34，全绿。
+>
+> 缺口（需 Android SDK + 真机）：Android 8～15 各版本关键路径回归测试、
+> Compose 与 media3 体积裁剪（`assembleRelease` 后分析 APK size）。
+
+### T53 `[~]` 全量验收
 - **要做**：
-  1. `tools/ci.sh` 全绿（含四道合规门禁）；
+  1. `tools/ci.sh` 全绿（含八道合规门禁）；
   2. `tools/test_jvm.sh` 全绿，断言数不低于 1,434；
   3. 逐条对照本清单勾选，未完成项写明原因与缺口；
   4. 更新 README 的模块清单与单测表格。
 - **验收**：上述四项全部有据可查，不接受「应该没问题」。
+
+> **状态说明（2026-11-13）**：`[~]`。沙箱可验证部分已全部完成：
+> 1. `tools/ci.sh` 八道门禁全绿（权限白名单、免责声明、无遥测、架构契约、
+>    Wrapper、schema、UI 分层、兼容性审计）；
+> 2. `tools/test_jvm.sh` 全绿，42 套 / 3113 项 / FAIL=0（远超 1,434 基线）；
+> 3. AI-HANDOFF.md 基线已从过时的「21 套 / 1,434 项」刷新为当前数字；
+> 4. README 模块清单与单测表格已持续更新至第三十八轮。
+>
+> 缺口（需 Android SDK + 真机）：`assembleDebug`/`assembleRelease` 从未跑通，
+> 无法验证 APK 安装、真机功能回归、release 包体积。
 
 ---
 

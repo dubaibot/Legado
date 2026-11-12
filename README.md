@@ -736,14 +736,74 @@ T50（签名与构建变体）+ T51（R8/ProGuard 规则）的配置侧——不
 弹幕实体与配置、排版与阅读核心、kotlinx.serialization、Gson 字段保留、OkHttp/Okio、
 Media3/ExoPlayer、Composable 函数签名、枚举 values/valueOf、Kotlin Metadata。
 
+### WebDAV 同步协调器（第三十六轮）
+
+`data/sync/WebDavSyncCoordinator`：把"本地变更"与"远端变更"变成一份同步计划，
+补上 T42「冲突时按既定策略处理」的纯逻辑层。
+
+**三方对比是核心。** 同步不是"本地 vs 远端"二选一——而是"本地 vs 远端 vs 上次同步基准"
+三方对比。基准记录的是"上次同步完时双方的状态"，用它才能区分"谁改了"：
+基准与本地相同但远端不同 → 远端改了（下载）；基准与远端相同但本地不同 → 本地改了（上传）；
+两侧都与基准不同 → 冲突。没有基准就只能二选一，无法识别冲突。
+
+**冲突解决做成策略枚举。** `KEEP_LOCAL` / `KEEP_REMOTE` / `NEWER_WINS`（时间戳新者赢，
+相等留本地）/ `SKIP`（不自动裁决）。SKIP 产生 `UnresolvedConflict` 供 UI 展示，
+用户手动决定后再 `resolveConflicts` 继续。这避免了"自动覆盖用户不知道丢了什么"。
+
+**同步方向可限制。** `BIDIRECTIONAL`（默认双向）/ `UPLOAD_ONLY`（我知道本地是最新的）/
+`DOWNLOAD_ONLY`（以远端为准）。上传模式不拉远端变更，下载模式不推本地变更——
+单向同步在"刚换设备"或"以一台为准"时很有用。
+
+**同步状态机守护执行安全。** `SyncSession` 追踪 IDLE → SYNCING → SUCCESS/CONFLICT/ERROR
+全流程。有未解决冲突时停在 CONFLICT 态，不自动执行；出错后停在 ERROR 态，
+`errorDetails()` 供 UI 展示失败原因。`markDone` 在非 SYNCING 态无效，防止
+迟到回调误推进。
+
+**本轮没有顺带做的事**：WebDAV HTTP 请求接线（PROPFIND/COPY/PUT）、服务器配置 UI、
+自动同步调度——均依赖 Android SDK。
+
+### 兼容性审计工具（第三十七轮）
+
+`tools/check_compatibility.py`：T52「Android 8～15 兼容性」的静态审计侧，
+作为 ci.sh 第八道门禁。
+
+**前台服务类型与权限必须匹配。** Android 14（API 34）起，声明了 `foregroundServiceType`
+的服务必须有对应的 `<uses-permission>`，否则启动时直接崩溃。审计工具扫描 Manifest
+中所有 `<service>` 的 `foregroundServiceType`，与 14 种已知类型的权限映射表交叉校验。
+当前两个服务（`MediaDownloadService=dataSync`、`AudioPlaybackService=mediaPlayback`）
+均与 `check_permissions.py` 的断言一致——两道门禁互为交叉校验，改一方不改另一方可被拦。
+
+**SDK 版本范围基本约束。** `minSdk <= targetSdk <= compileSdk`，`minSdk >= 26`
+（Android 8，项目声明的最低支持版本）。当前 min=26/target=34/compile=34，全绿。
+
+**本轮没有顺带做的事**：Android 8～15 各版本真机回归、Compose 与 media3 体积裁剪
+（需 `assembleRelease` 后分析 APK size）——均依赖 Android SDK。
+
+### 全量验收与基线刷新（第三十八轮）
+
+T53「全量验收」的沙箱可验证部分 + AI-HANDOFF.md 基线刷新。
+
+**ci.sh 八道门禁全绿。** 权限白名单、免责声明、无遥测、架构契约、Gradle Wrapper、
+Room schema、UI 分层、兼容性审计——从七道扩展到八道。
+
+**AI-HANDOFF.md 基线已刷新。** 原文档第 141 行写的是「21 套 / 1,434 项 / FAIL=0」，
+这是项目早期的数字。后续 R24–R38 共十五轮新增了 21 个测试套件、约 1680 项断言，
+基线早已过时但不无人更新，导致每轮接手者都要重新踩"基线对不上"的坑。现已刷新为
+「42 套 / 3,114 项 / FAIL=0」，并补充了三种输出格式的统计方法和 `/mnt/work`
+目录创建提示。
+
+**本轮没有顺带做的事**：`assembleDebug`/`assembleRelease` 从未跑通，
+无法验证 APK 安装与真机功能回归——均依赖 Android SDK。
+
 ## 合规门禁
 
 ```bash
 bash tools/ci.sh
 ```
 
-七道门禁：权限白名单、免责声明、无遥测出口、架构契约、Gradle Wrapper 配置、
-Room schema 导出配置、UI 分层（`ui/` 下不得直连 DAO / Room）。
+八道门禁：权限白名单、免责声明、无遥测出口、架构契约、Gradle Wrapper 配置、
+Room schema 导出配置、UI 分层（`ui/` 下不得直连 DAO / Room）、兼容性审计
+（前台服务类型与权限匹配 + SDK 版本范围）。
 
 其中新增的 `tools/check_ui_layering.py` 是为了守住 T10 的一条硬约束：
 **UI 层不许直接碰 DAO**。它扫描 `app/src/main/java/com/lanyue/reader/ui/`
@@ -800,8 +860,9 @@ Composable 里直接注入 DAO，CI 会立刻拦住。
 | `tests/DownloadQueueTest.kt` | 下载队列协调器：批量入队（跳过已下载 preloadCompleted、跳过重复）、startNext（标记 DOWNLOADING、并发上限 maxConcurrent、退避到期才返回、多候选取 nextRetryAt 最早、空队列返回 null）、finishSuccess（标记完成 + 加入 completedIds）、finishFailure（安排重试 + **指数退避计算** 2^n、退避上限 maxBackoff 夹取、重试耗尽标记 FAILED）、cancel/cancelAll、retry（手动重试失败项、非失败项拒绝）、isAllDone（含失败项也算完成）、snapshot summary 文案（空队列/进行中/全完成/部分失败）、clearHistory（清除已完成+已取消、保留失败项）、边界（越界 ID 不崩、maxRetries=0 首次失败即 FAILED）、config 参数校验、**端到端批量下载全流程**（5 章 × 混合成功/失败/重试、循环有界不死锁、完成数/失败数/总字节校验）（104 项） |
 | `tests/BackupImportCoordinatorTest.kt` | 备份导入事务协调器：版本迁移（v1→v2 有说明、当前版本不迁移）、计划生成批次顺序（8 批按依赖排序：书源→订阅源→影视站点→书架→阅读进度→播放进度→订阅收藏→影视收藏）、计划内容正确性（条目数/非空批次/预览文案）、空备份计划、合并集成（KEEP_NEWER 跳过旧/OVERWRITE 覆盖/受保护书源）、**v1 备份端到端导入**、全量成功导入（自动 COMMITTED）、中途失败与回滚（3 批成功后第 4 批失败→回滚 3 批）、首批失败（无回滚目标）、失败后忽略后续提交、空备份会话、部分段有数据、端到端解码→迁移→计划→导入、回滚逆序验证、合并跳过反映在批次中、批次项内容正确性、WRITE_ORDER 完整性与依赖关系校验（107 项） |
 | `tests/DanmakuSourceFormTest.kt` | 弹幕源配置表单模型：新建校验通过、名称为空自动兜底主机名、**探活失败强制保存为未验证**（verified=false+告警原因）、不强制保存时拒绝（含强制保存提示）、空 apiBase 拒绝、格式无效拒绝、**重复检测**（相同地址/大小写与斜杠差异）、编辑自己不算重复、编辑改名改地址、编辑保留 sortOrder、**ID 生成**（主机名基础/重复加后缀/多次重复）、表单校验状态（empty/ok/invalid）、editForm 构造、**toRegistryOp 桥接**（新建 add/编辑 replace/拒绝不操作/超上限拒绝）、端到端（新建 3 源→编辑改名→重复检测拦截）、未验证源 shouldRetryProbe 为 true（70 项） |
+| `tests/WebDavSyncTest.kt` | WebDAV 同步协调器：空同步、首次同步（本地有→上传/远端有→下载）、无变更全跳过、仅本地改→上传、仅远端改→下载、**冲突 NEWER_WINS**（本地新/远端新/时间戳相等留本地）、冲突 KEEP_LOCAL/KEEP_REMOTE、**冲突 SKIP 产生未解决冲突**（hasConflicts/冲突详情）、本地删除→删远端、双侧删除→跳过、远端删除→删本地、远端删除+本地改→冲突、**仅上传模式**（不管远端/删除同步/无下载）、**仅下载模式**（不管本地/删除同步/无上传）、混合场景（多种操作并存）、summary 文案、**SyncSession 状态机**（正常流程/冲突→CONFLICT/冲突解决后继续/出错→ERROR/非 SYNCING 态 markDone 无效/重复 start 无效/空计划进度 100%）、Download 携带 etag、**端到端完整同步流程**（书架+阅读进度混合场景、session 执行进度追踪）（89 项） |
 
-合计 41 套 / 3025 项断言，全部通过（FAIL = 0）。上表逐行数字与
+合计 42 套 / 3114 项断言，全部通过（FAIL = 0）。上表逐行数字与
 `tools/test_jvm.sh` 的实际输出一一对应，可用一条命令复现。
 
 完整运行方式见 `tools/test_jvm.sh`。

@@ -133,13 +133,22 @@ annotation class Index(vararg val value: String, val unique: Boolean = false, va
 ```bash
 cd <repo>
 bash tools/test_jvm.sh > /tmp/test.log 2>&1; echo "exit=$?"
-grep -cE "^PASS = " /tmp/test.log                      # 套数
-grep -oE "^PASS = [0-9]+" /tmp/test.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s}'  # 断言总数
-grep -E "^FAIL = [1-9]" /tmp/test.log || echo "无失败"
+# 测试输出有三种格式，需分别统计：
+grep -cE "^PASS = [0-9]+" /tmp/test.log                      # 格式1套数
+grep -oE "^PASS = [0-9]+" /tmp/test.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s}'  # 格式1断言
+grep -cE "^Pass: [0-9]+, Fail: 0" /tmp/test.log              # 格式2套数
+grep -oE "^Pass: [0-9]+" /tmp/test.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s}'   # 格式2断言
+grep -cE "^[0-9]+ 通过, 0 失败" /tmp/test.log                # 格式3套数
+grep -oE "^[0-9]+ 通过" /tmp/test.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s}'     # 格式3断言
+grep -E "FAIL = [1-9]|Fail: [1-9]|[1-9]+ 失败" /tmp/test.log | grep -vE "0 失败|FAIL = 0|Fail: 0" || echo "无失败"
 ```
 
-**基线：21 套 / 1,434 项 / FAIL=0。** 这是接手时唯一可信的起点。
+**基线：42 套 / 3,114 项 / FAIL=0。** 这是接手时唯一可信的起点。
 跑不到这个数，先查环境，不要改代码。
+
+> **注意**：部分测试把失败明细写到 `/mnt/work/lanyueNN/` 等硬编码绝对路径，
+> 目录不存在会抛 `FileNotFoundException` 中断全部测试。接手后先执行
+> `mkdir -p /mnt/work/out /mnt/work/lanyue{21..34} /tmp/metrics` 再跑测试。
 
 ---
 

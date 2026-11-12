@@ -7,7 +7,7 @@ fail=0
 for script in tools/check_permissions.py tools/check_disclaimer.py \
               tools/check_no_telemetry.py tools/check_contracts.py \
               tools/check_wrapper.py tools/check_schema.py \
-              tools/check_ui_layering.py; do
+              tools/check_ui_layering.py tools/check_compatibility.py; do
     echo "== $script"
     python3 "$script" || fail=1
 done
