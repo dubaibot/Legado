@@ -76,15 +76,6 @@ class PyHomepageViewModel : ViewModel() {
         val videos: List<VideoItem>,
     )
 
-    /** 详情弹窗状态 */
-    data class DetailState(
-        val pluginId: String,
-        val id: String,
-        val title: String,
-        val json: String,
-        val loading: Boolean = false,
-    )
-
     /** 首页源（py 插件 / HTML 页面 / JSON API / TXT 列表统一模型） */
     data class HomeSource(
         val id: String,
@@ -116,9 +107,6 @@ class PyHomepageViewModel : ViewModel() {
         private set
 
     var favorites by mutableStateOf<List<PyFavorite>>(emptyList())
-        private set
-
-    var detailState by mutableStateOf<DetailState?>(null)
         private set
 
     /** 当前选中 HTML 页面的内容（WebView 渲染用） */
@@ -363,19 +351,16 @@ class PyHomepageViewModel : ViewModel() {
         }
     }
 
-    /** 查看详情（搜索结果/收藏条目点击，统一走 VideoSource 接口） */
-    fun showDetail(pluginId: String, id: String, title: String) {
-        detailState = DetailState(pluginId, id, title, "", loading = true)
+    /** 壳源点击直进播放页：解析详情取播放地址，直接启动播放会话 */
+    fun playVideoDirectly(pluginId: String, id: String, title: String) {
         viewModelScope.launch {
-            val source = sourceFor(pluginId)
-            val detail = source?.detail(id)
-            val json = detail?.let { serializeDetail(it) } ?: "{}"
-            detailState = DetailState(pluginId, id, title, json, loading = false)
+            val source = sourceFor(pluginId) ?: return@launch
+            val detail = source.detail(id)
+            val playUrls = detail.playLines.map { it.name to it.url }
+            if (playUrls.isNotEmpty()) {
+                playVideo(pluginId, playUrls, title, 0)
+            }
         }
-    }
-
-    fun dismissDetail() {
-        detailState = null
     }
 
     /** 播放：统一走 VideoSource 接口解析播放地址，启动 VideoPlayerActivity，传完整集数列表 */
@@ -891,27 +876,6 @@ class PyHomepageViewModel : ViewModel() {
             )
         }
         return arr.toString()
-    }
-
-    /** VideoDetail → JSON 字符串（UI parsePlayUrls 兼容 play_urls 格式） */
-    private fun serializeDetail(detail: io.legado.app.data.video.VideoDetail): String {
-        return JSONObject().apply {
-            put("id", detail.id)
-            put("title", detail.title)
-            put("pic", detail.pic)
-            put("desc", detail.desc)
-            put(
-                "play_urls",
-                JSONArray().apply {
-                    detail.playLines.forEach {
-                        put(JSONObject().apply {
-                            put("name", it.name)
-                            put("url", it.url)
-                        })
-                    }
-                },
-            )
-        }.toString()
     }
 
     // ---- 持久化 ----

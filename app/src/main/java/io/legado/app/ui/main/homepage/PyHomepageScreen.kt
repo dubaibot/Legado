@@ -443,10 +443,6 @@ fun PyHomepageScreen(
     if (showGroupDialog) {
         GroupDialog(viewModel, sources, onDismiss = { showGroupDialog = false })
     }
-    if (viewModel.detailState != null) {
-        DetailDialog(viewModel, viewModel.detailState!!, onDismiss = { viewModel.dismissDetail() })
-    }
-
     // ---- 源管理页（全屏） ----
     if (viewModel.showManageDialog) {
         ManageScreen(viewModel, sources, onDismiss = { viewModel.dismissManageDialog() })
@@ -600,7 +596,7 @@ private fun SearchResultList(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { viewModel.showDetail(viewModel.selectedSourceId, item.id, item.title) }
+                    .clickable { viewModel.playVideoDirectly(viewModel.selectedSourceId, item.id, item.title) }
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -732,7 +728,7 @@ private fun HomeContent(
                             VideoCard(
                                 video = video,
                                 onClick = {
-                                    viewModel.showDetail(viewModel.selectedSourceId, video.id, video.title)
+                                    viewModel.playVideoDirectly(viewModel.selectedSourceId, video.id, video.title)
                                 },
                             )
                         }
@@ -923,7 +919,7 @@ private fun FavoritesDialog(
                                 .fillMaxWidth()
                                 .clickable {
                                     onDismiss()
-                                    viewModel.showDetail(fav.pluginId, fav.id, fav.title)
+                                    viewModel.playVideoDirectly(fav.pluginId, fav.id, fav.title)
                                 }
                                 .padding(vertical = 12.dp),
                         )
@@ -1147,133 +1143,6 @@ private fun ManageScreen(
                 }
             }
         }
-    }
-}
-
-/** 详情弹窗 */
-@Composable
-private fun DetailDialog(
-    viewModel: PyHomepageViewModel,
-    detail: PyHomepageViewModel.DetailState,
-    onDismiss: () -> Unit,
-) {
-    val playUrls = remember(detail.json) { parsePlayUrls(detail.json) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = detail.title.ifBlank { "详情" },
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        text = {
-            if (detail.loading) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                val detailObj = parseDetailInfo(detail.json)
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    if (detailObj != null) {
-                        detailObj.desc?.let { desc ->
-                            if (desc.isNotEmpty()) {
-                                Text(
-                                    text = desc,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 8,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(bottom = 8.dp),
-                                )
-                            }
-                        }
-                    } else if (detail.json.isNotBlank() && detail.json != "{}") {
-                        Text(
-                            text = detail.json,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 8,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (playUrls.isNotEmpty()) {
-                        Text(
-                            text = "播放",
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            playUrls.forEach { (name, url) ->
-                                TextButton(
-                                    onClick = {
-                                        val idx = playUrls.indexOfFirst { it.second == url }
-                                        viewModel.playVideo(detail.pluginId, playUrls, detail.title, idx.coerceAtLeast(0))
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                ) {
-                                    Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            if (!detail.loading && detail.json.isNotBlank() && detail.json != "{}") {
-                val fav = viewModel.isFavorite(detail.pluginId, detail.id)
-                TextButton(onClick = {
-                    viewModel.toggleFavorite(detail.pluginId, detail.id, detail.title, detail.json)
-                }) {
-                    Icon(
-                        imageVector = if (fav) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = null,
-                        tint = if (fav) MaterialTheme.colorScheme.primary else pageSecondaryTextColor(),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (fav) "已收藏" else "收藏")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
-        },
-    )
-}
-
-/** 解析详情 JSON 的 play_urls 数组 → [(名称, URL)] */
-private fun parsePlayUrls(json: String): List<Pair<String, String>> {
-    return try {
-        val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
-        val arr = obj.get("play_urls")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
-        arr.mapNotNull { e ->
-            val o = e.asJsonObject
-            val name = o.get("name")?.asString ?: ""
-            val url = o.get("url")?.asString ?: ""
-            if (name.isNotEmpty() && url.isNotEmpty()) name to url else null
-        }
-    } catch (e: Exception) {
-        emptyList()
-    }
-}
-
-data class DetailInfo(val desc: String?)
-
-/** 解析详情 JSON 的描述字段 */
-private fun parseDetailInfo(json: String): DetailInfo? {
-    return try {
-        val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
-        DetailInfo(obj.get("desc")?.asString ?: "")
-    } catch (e: Exception) {
-        null
     }
 }
 
