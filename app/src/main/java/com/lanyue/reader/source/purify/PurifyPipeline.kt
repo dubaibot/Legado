@@ -41,6 +41,16 @@ class PurifyPipeline(
     private fun globalHash(): Int = globalRules.hashCode()
 
     /**
+     * 暴露全局规则指纹，供上层「结果缓存」判断是否需要失效。
+     *
+     * 本类缓存的是编译好的净化器（按源），全局规则一变它会整体清掉；
+     * 但上层若还缓存了「跑完的净化结果」（按章），那些结果同样依赖全局规则，
+     * 必须能感知到这次变化。这是 T15 正文串联层结果缓存失效的依据，
+     * 只读不改任何既有行为。
+     */
+    fun globalRulesHash(): Int = globalHash()
+
+    /**
      * 为某个书源准备净化配置。
      *
      * @param sourceId 书源标识，仅用于缓存键区分
