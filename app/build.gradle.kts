@@ -22,12 +22,38 @@ android {
     }
 
     buildTypes {
+        debug {
+            // debug 用默认 debug keystore，无需额外配置
+            isMinifyEnabled = false
+        }
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 签名配置：从环境变量或 local.properties 读取密钥信息。
+            // T50 红线：任何密钥都不许提交进仓库。
+            // CI/本地构建时设置以下环境变量（或写入 local.properties）：
+            //   LANYUE_KEYSTORE_FILE  — keystore 文件路径
+            //   LANYUE_KEYSTORE_PASS  — keystore 密码
+            //   LANYUE_KEY_ALIAS      — key 别名
+            //   LANYUE_KEY_PASS       — key 密码
+            // 未设置时 release 构建不签名（输出未签名 APK），便于首次构建验证。
+            val keystoreFile = providers.environmentVariable("LANYUE_KEYSTORE_FILE")
+                .orNull ?: (gradle.rootProject.findProperty("lanyue.keystoreFile") as String?)
+            if (keystoreFile != null) {
+                signingConfig = signingConfigs.create("release") {
+                    storeFile = file(keystoreFile)
+                    storePassword = providers.environmentVariable("LANYUE_KEYSTORE_PASS")
+                        .orNull ?: (gradle.rootProject.findProperty("lanyue.keystorePass") as String?)
+                    keyAlias = providers.environmentVariable("LANYUE_KEY_ALIAS")
+                        .orNull ?: (gradle.rootProject.findProperty("lanyue.keyAlias") as String?)
+                    keyPassword = providers.environmentVariable("LANYUE_KEY_PASS")
+                        .orNull ?: (gradle.rootProject.findProperty("lanyue.keyPass") as String?)
+                }
+            }
         }
     }
 

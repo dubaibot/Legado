@@ -681,6 +681,61 @@ result = download(item); if (success) queue.finishSuccess(id, bytes) else queue.
 断点续传的 `.part` 文件管理（已有但未接入队列）、空间占用统计与清理入口的 UI、
 前台服务与通知栏接线——均依赖 Android SDK。
 
+### 备份导入事务协调器（第三十三轮）
+
+`data/backup/BackupImportCoordinator` + `BackupMigrator`：把备份合并结果变成
+**有序写入事务**，补上 T41「导入失败要能回滚而不是留下半套数据」的纯逻辑层。
+
+**为什么不能直接把合并结果一次性塞给 DAO。** `BackupMerger` 算出「该写什么」，
+但不关心「先写谁、后写谁、中途崩了怎么办」。如果一次性塞给 DAO，写了书源但写书架时
+OOM，本机就留下半套数据——源有了但书没有，阅读进度也找不到书。协调器把写入变成
+**八批有序事务**：书源/订阅源 → 影视站点 → 书架 → 阅读进度/播放进度 → 订阅收藏/影视收藏，
+每批写完才写下一批，失败时明确告诉调用方「这 N 批已写，需逐批回滚」。
+
+**版本迁移是显式的。** v1 备份先过 `BackupMigrator.migrate()` 迁移到 v2 再合并，
+当前 v1→v2 字段层面无破坏性变更（解码器已补默认值），但保留这一层让将来加字段时有
+明确扩展点。迁移说明出现在导入报告里，用户能看到「备份从 v1 迁移到 v2」。
+
+**回滚目标是已提交批次的正序列表。** `ImportSession` 追踪每批的提交状态，
+失败时 `rollbackTargets()` 返回已成功写入的批次名，调用方逆序删除（后写的先撤）。
+首批就失败时回滚列表为空，不需要回滚。
+
+### 弹幕源配置表单模型（第三十四轮）
+
+`danmaku/DanmakuSourceFormModel`：补上 T32「新增源表单只要求填 apiBase、校验失败
+允许强制保存为未验证」的纯逻辑层——桥接 `DanmakuSourceValidator`（校验）与
+`DanmakuSourceRegistry`（列表操作）之间的缺口。
+
+**为什么需要这一层。** Validator 做地址规范化与探活，Registry 做列表增删排序，
+但两者之间没有表单→实体→注册的桥接。直接在 UI 里写这层逻辑，每个调用方自己写一遍
+重复且容易漏掉重复检测或 ID 生成。表单模型把「输入→校验→重复检测→实体创建→注册」
+收成一处可脱机验证的纯函数。
+
+**探活失败默认强制保存为未验证。** T32 验收要求「校验失败时允许强制保存并显示未验证」。
+`submit()` 的 `forceSave` 参数默认 true——探活失败时仍创建实体但 `verified=false`，
+`shouldRetryProbe()` 在播放期自动重试。这比拒绝保存更合理：临时离线/限流/源站重启
+都会让一次探测失败，禁止保存会让用户改一条正确地址却被网络抖动卡住。
+
+**重复检测用规范化地址比对。** 用户输入 `https://dup.example.com/api` 而已有
+`https://Dup.Example.com/api/`，归一化后（小写+去尾斜杠）相同即判重复。编辑自己
+（editingId 匹配）不算重复，避免改自己时被拦。
+
+### 签名配置与 ProGuard 规则（第三十五轮）
+
+T50（签名与构建变体）+ T51（R8/ProGuard 规则）的配置侧——不产生新 Kotlin 逻辑，
+但为 release 构建做好了准备。
+
+**release 签名走环境变量。** `signingConfigs.create("release")` 从
+`LANYUE_KEYSTORE_FILE` / `LANYUE_KEYSTORE_PASS` / `LANYUE_KEY_ALIAS` / `LANYUE_KEY_PASS`
+四个环境变量读密钥信息（或从 `local.properties` 的对应属性）。未设置时 release 构建不签名，
+输出未签名 APK，便于首次构建验证。`.gitignore` 已覆盖 `*.keystore` / `*.jks` /
+`local.properties` / `keystore.properties`，确保密钥不会进仓库。
+
+**ProGuard 规则覆盖全部反射入口。** 从原来的 2 行扩展到 13 个分类：Room 实体/DAO、
+书源模型、备份 DTO、JS 引擎反射入口（`JsExtensions`/`JsRuntime`/`JsRunner` 等）、
+弹幕实体与配置、排版与阅读核心、kotlinx.serialization、Gson 字段保留、OkHttp/Okio、
+Media3/ExoPlayer、Composable 函数签名、枚举 values/valueOf、Kotlin Metadata。
+
 ## 合规门禁
 
 ```bash
@@ -743,8 +798,10 @@ Composable 里直接注入 DAO，CI 会立刻拦住。
 | `tests/ContentStageTest.kt` | 正文获取与净化串联：水印/站点后缀去除、正则去标签、全局+源级规则合成、段落拆分（空行滤除、全角空格归一、行尾空白去除）、**按章结果缓存**（二次打开 fromCache=true、同源不同章各自缓存、命中后段落/统计完全一致）、缓存失效（replaceRule 变更后重跑、全局规则变更后指纹不命中、invalidate/clear）、FIFO 淘汰、边界（空内容/null 规则/纯空白）、stats 透明性、**全链路 prepare→repaginate**（排版总字数==净化后字数、页偏移落在净化文本内）、**净化必须在排版前的证明**（原文排版含水印字数 160、净化排版不含水印 100）、缓存命中后分页一致、多段正文端到端（73 项） |
 | `tests/TtsChapterCoordinatorTest.kt` | 朗读章节续读协调器：基本装载与续读（auto-continue ENABLED 默认）、续读关闭（读完停 FINISHED）、全书读完（BOOK_DONE）、**空章自动跳过**（startChapter 跳过空/空白章）、续读时遇到空章自动跳到下一非空章、**点正文起读**（startFromPosition with charOffset 定位到正确段）、**高亮区间数据**（highlightRange 映射段偏移、回切原文验证、推进后高亮移动、续读后重映射新章）、**迟到回调安全**（停止后 IGNORED 不触发续读、暂停后 IGNORED）、多章连续续读（3 章逐章读完）、hasNextChapter（含跳过尾部空章）、空书/单章书/越界/负索引、续读从头开始（charOffset 不跨章）、续读时后面全空返回 BOOK_DONE、play/pause/stop/skip 透传、进度章号与协调器一致、长章多段续读后章号正确（97 项） |
 | `tests/DownloadQueueTest.kt` | 下载队列协调器：批量入队（跳过已下载 preloadCompleted、跳过重复）、startNext（标记 DOWNLOADING、并发上限 maxConcurrent、退避到期才返回、多候选取 nextRetryAt 最早、空队列返回 null）、finishSuccess（标记完成 + 加入 completedIds）、finishFailure（安排重试 + **指数退避计算** 2^n、退避上限 maxBackoff 夹取、重试耗尽标记 FAILED）、cancel/cancelAll、retry（手动重试失败项、非失败项拒绝）、isAllDone（含失败项也算完成）、snapshot summary 文案（空队列/进行中/全完成/部分失败）、clearHistory（清除已完成+已取消、保留失败项）、边界（越界 ID 不崩、maxRetries=0 首次失败即 FAILED）、config 参数校验、**端到端批量下载全流程**（5 章 × 混合成功/失败/重试、循环有界不死锁、完成数/失败数/总字节校验）（104 项） |
+| `tests/BackupImportCoordinatorTest.kt` | 备份导入事务协调器：版本迁移（v1→v2 有说明、当前版本不迁移）、计划生成批次顺序（8 批按依赖排序：书源→订阅源→影视站点→书架→阅读进度→播放进度→订阅收藏→影视收藏）、计划内容正确性（条目数/非空批次/预览文案）、空备份计划、合并集成（KEEP_NEWER 跳过旧/OVERWRITE 覆盖/受保护书源）、**v1 备份端到端导入**、全量成功导入（自动 COMMITTED）、中途失败与回滚（3 批成功后第 4 批失败→回滚 3 批）、首批失败（无回滚目标）、失败后忽略后续提交、空备份会话、部分段有数据、端到端解码→迁移→计划→导入、回滚逆序验证、合并跳过反映在批次中、批次项内容正确性、WRITE_ORDER 完整性与依赖关系校验（107 项） |
+| `tests/DanmakuSourceFormTest.kt` | 弹幕源配置表单模型：新建校验通过、名称为空自动兜底主机名、**探活失败强制保存为未验证**（verified=false+告警原因）、不强制保存时拒绝（含强制保存提示）、空 apiBase 拒绝、格式无效拒绝、**重复检测**（相同地址/大小写与斜杠差异）、编辑自己不算重复、编辑改名改地址、编辑保留 sortOrder、**ID 生成**（主机名基础/重复加后缀/多次重复）、表单校验状态（empty/ok/invalid）、editForm 构造、**toRegistryOp 桥接**（新建 add/编辑 replace/拒绝不操作/超上限拒绝）、端到端（新建 3 源→编辑改名→重复检测拦截）、未验证源 shouldRetryProbe 为 true（70 项） |
 
-合计 39 套 / 2848 项断言，全部通过（FAIL = 0）。上表逐行数字与
+合计 41 套 / 3025 项断言，全部通过（FAIL = 0）。上表逐行数字与
 `tools/test_jvm.sh` 的实际输出一一对应，可用一条命令复现。
 
 完整运行方式见 `tools/test_jvm.sh`。

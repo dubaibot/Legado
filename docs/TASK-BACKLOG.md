@@ -330,7 +330,7 @@
   屏蔽策略已由 `DanmakuFilter` 实现，UI 只负责传参。
 - **验收**：各项调整实时生效，不做成「改完要重进页面」。
 
-### T32 `[ ]` 弹幕源配置页
+### T32 `[~]` 弹幕源配置页
 - **要用**：`danmaku/DanmakuSourceValidator`（三态校验）+
   `danmaku/DanmakuSourceRegistry`（排序/启停/增删）。
 - **要做**：
@@ -341,6 +341,24 @@
   3. 显示「已验证 / 未验证」状态。
 - **验收**：能新增一个源并保存；地址写错时可强制保存但标未验证；
   排序调整后重启仍保持。
+
+> **状态说明（2026-11-13）**：`[~]`。不依赖 Android 的表单模型已完成并通过
+> 41 套 / 3025 项回归（新增 `tests/DanmakuSourceFormTest.kt`，70 项断言）。
+>
+> 已完成（`danmaku/DanmakuSourceFormModel.kt`）：
+> - **表单→校验→注册桥接**：`submit()` 接收 `Form`（apiBase/name/enabled/editingId），
+>   走 `DanmakuSourceValidator.validate()` 校验 + 规范化，再做重复检测（归一化地址比对，
+>   大小写与斜杠差异判重，编辑自己不算重复），最后生成 `DanmakuSourceEntity`；
+> - **强制保存为未验证**：`forceSave=true`（默认）时探活失败仍创建实体但 `verified=false`，
+>   `forceSave=false` 时拒绝并提示「可勾选强制保存再试」；
+> - **`toRegistryOp()`**：把 `SubmitResult` 转为 `DanmakuSourceRegistry.ReorderResult`，
+>   新建走 `add()`、编辑走替换+`normalize()`、拒绝不操作；
+> - **ID 生成**：基于 apiBase 主机名，重复时加 `-1`/`-2` 后缀直到不冲突；
+> - **`formValidationState()`**：实时校验状态（empty/ok/invalid）供 UI 反馈；
+> - **`editForm()`**：从现有实体构造编辑表单。
+>
+> 缺口（沙箱无 Android SDK，均未做）：Compose 表单页面（输入框/校验提示/保存按钮/
+> 强制保存开关）、列表页（上移下移/启停/已验证状态标签）、真实 DAO 持久化接线。
 
 ---
 
@@ -373,11 +391,28 @@
 > `MediaDownloadService`）、断点续传 `.part` 文件管理接入队列、空间占用统计与
 > 清理入口 UI、前台服务与通知栏接线、真机断网续传验证。
 
-### T41 `[ ]` 备份与恢复
+### T41 `[~]` 备份与恢复
 - **要用**：`data/backup/`（DTO、JSON 编解码、合并策略）。
 - **要做**：导出/导入、版本迁移、冲突处理（同名书保留哪份要有明确规则）、
   导入失败要能回滚而不是留下半套数据。
 - **验收**：导出后在另一台设备导入，书架与阅读进度完整恢复。
+
+> **状态说明（2026-11-13）**：`[~]`。不依赖 Android 的导入事务协调层已完成并通过
+> 41 套 / 3025 项回归（新增 `tests/BackupImportCoordinatorTest.kt`，107 项断言）。
+>
+> 已完成（`data/backup/BackupImportCoordinator.kt` + `BackupMigrator.kt`）：
+> - **有序写入事务**：合并结果按依赖顺序排成 8 批（书源→订阅源→影视站点→书架→
+>   阅读进度→播放进度→订阅收藏→影视收藏），每批写完才写下一批；
+> - **失败回滚**：`ImportSession` 追踪每批提交状态，某批失败时 `rollbackTargets()`
+>   返回已成功写入的批次名列表，调用方逆序删除（后写的先撤）；
+> - **版本迁移**：`BackupMigrator.migrate()` 显式处理 v1→v2 迁移，当前为字段补齐
+>   passthrough，但保留了扩展点；
+> - **导入计划与预览**：`ImportPlan` 提供批次列表、总条目数、`previewSummary()` 预览文案；
+> - **导入结果**：`ImportResult` 含状态机（PLANNED→IMPORTING→COMMITTED/FAILED）、
+>   每批 outcome、回滚目标列表、一句话结果文案。
+>
+> 缺口（沙箱无 Android SDK，均未做）：导出 UI（文件选择器/分享面板）、导入 UI
+> （文件选择/合并策略选择/进度展示/结果页）、真实数据库事务接线、真机跨设备恢复验证。
 
 ### T42 `[ ]` WebDAV 同步（可选，视需求优先级）
 - **要做**：接自托管场景，支持配置服务器与自动同步。
@@ -387,18 +422,52 @@
 
 ## 里程碑 M6 — 交付打磨
 
-### T50 `[ ]` 签名与构建变体
+### T50 `[~]` 签名与构建变体
 - **要做**：debug / release 变体分离；签名密钥走环境变量或
   `local.properties`，并确认被 `.gitignore` 覆盖。
 - **⚠️ 红线**：**任何密钥都不许提交进仓库**。历史轮次里出现过把 token
   直接写进提交的情形，务必避免。
 - **验收**：`assembleRelease` 产出签名包；`git ls-files` 中无密钥文件。
 
-### T51 `[ ]` R8 / ProGuard 规则
+> **状态说明（2026-11-13）**：`[~]`。配置侧已完成，但 `assembleRelease` 本身
+> 从未真正跑通（沙箱无 Android SDK）。
+>
+> 已完成：
+> - `build.gradle.kts` 新增 `signingConfigs.create("release")`，从环境变量
+>   `LANYUE_KEYSTORE_FILE` / `LANYUE_KEYSTORE_PASS` / `LANYUE_KEY_ALIAS` /
+>   `LANYUE_KEY_PASS` 读密钥（或从 `local.properties` 的对应属性）；
+>   未设置时不签名，输出未签名 APK；
+> - `debug` buildType 显式声明 `isMinifyEnabled = false`；
+> - `release` buildType 增加 `isShrinkResources = true`；
+> - 新建 `.gitignore`，覆盖 `*.keystore` / `*.jks` / `*.p12` /
+>   `local.properties` / `keystore.properties` / `build/` / `*.apk` / `*.aab`；
+> - `git ls-files` 中无密钥文件。
+>
+> 缺口：在有 Android SDK 的环境执行 `assembleRelease` 验证签名包产出。
+
+### T51 `[~]` R8 / ProGuard 规则
 - **要做**：保留 Room 实体、`kotlinx.serialization` 序列化类、
   JS 引擎反射入口（`core/engine/` 通过反射调用的类名必须 keep）。
 - **验收**：release 包各功能与 debug 一致；无 `ClassNotFoundException`、
   无字段被混淆导致的反序列化失败。
+
+> **状态说明（2026-11-13）**：`[~]`。ProGuard keep 规则已编写完成，
+> 但未在 release 构建中验证（沙箱无 Android SDK）。
+>
+> 已完成（`app/proguard-rules.pro` 从 2 行扩展到 13 个分类）：
+> - Room 实体/DAO/RoomDatabase 子类（`@Entity` / `@Dao` 注解类）；
+> - 书源模型（`source.model.**`，规则解析依赖字段名）；
+> - 备份 DTO（`data.backup.**`，备份格式是对外契约）；
+> - JS 引擎反射入口（`JsExtensions` / `JsRuntime` / `JsRuntimePool` / `JsRunner` /
+>   `RunnerInstance` / `Engine` / `DomParser` / `Sniffer` / `LanyueBrowserEngine`）；
+> - 弹幕实体与配置、排版与阅读核心；
+> - kotlinx.serialization（Serializer companion / `$$serializer`）；
+> - Gson（`@SerializedName` 字段保留、`Signature` / `EnclosingMethod` 属性）；
+> - OkHttp / Okio（`-dontwarn` + keep）、Media3 / ExoPlayer；
+> - Composable 函数签名、枚举 values/valueOf、Kotlin Metadata。
+>
+> 缺口：在有 Android SDK 的环境执行 `assembleRelease` 验证 release 包
+> 各功能与 debug 一致。
 
 ### T52 `[ ]` 兼容性与体积
 - **要做**：Android 8～15 关键路径回归；重点查前台服务类型

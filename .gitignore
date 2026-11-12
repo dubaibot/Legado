@@ -1,0 +1,28 @@
+# 签名密钥——任何情况下都不许提交进仓库
+*.keystore
+*.jks
+*.p12
+*.pfx
+keystore.properties
+
+# Gradle / Android Studio
+local.properties
+.gradle/
+build/
+/app/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Kotlin / KSP 临时产物（schemas 目录需提交，不忽略）
+*.kotlin_metadata
+
+# IDE
+.idea/
+*.iml
+*.swp
+.DS_Store
+
+# 操作系统
+Thumbs.db
