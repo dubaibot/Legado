@@ -11,8 +11,10 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.Menu
 import android.view.WindowManager
 import android.view.textclassifier.TextClassifier
+import android.widget.PopupMenu
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import android.webkit.WebResourceRequest
@@ -23,34 +25,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AlertDialog
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Login
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.OpenInBrowser
-import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
-import androidx.compose.material.icons.filled.SwapVert
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
@@ -78,6 +52,9 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssEpisode
 import io.legado.app.data.entities.RssRoute
 import io.legado.app.data.entities.RssSource
+import io.legado.app.data.video.VideoItem
+import io.legado.app.data.video.VideoSource
+import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.databinding.ActivityVideoPlayerBinding
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.TextViewTagHandler
@@ -125,7 +102,6 @@ import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.ui.theme.LegadoTheme
 import io.legado.app.ui.widget.components.AppDropdownMenu
 import io.legado.app.ui.widget.components.GlassTopAppBar
-import io.legado.app.ui.widget.components.MenuAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.text.ScrollTextView
 import io.legado.app.utils.StartActivityContract
@@ -163,16 +139,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     companion object {
         const val EXTRA_PREPARE_BOOK_INFO = "prepareBookInfo"
-
-        /**
-         * F182：布局切换提示的保持时长。
-         *
-         * 切换本身的同步段（释放旧容器 + 挂新容器）只有几百 ms，但**新容器起播是异步的**：
-         * `restorePlayHistory` 内含 2s 延迟 seek，且真实源多为网络流（prepare 时长随源波动）。
-         * 取 4s 覆盖「无画面 + 旧画面已释放」的整个窗口（过短用户来不及看清，等于没提示）；
-         * 代价是新画面已回来后提示还会滞留 1~2s——顶栏第二行属非侵入位，可接受。
-         */
-        private const val LAYOUT_SWITCH_NOTICE_MS = 4000L
     }
 
     override val binding by viewBinding(ActivityVideoPlayerBinding::inflate)
@@ -185,17 +151,19 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     // ViewPager2 模式下使用 currentFragment?.playerView，此字段仅供 Legacy 代码路径引用
     private val playerView: VideoPlayer by lazy { binding.playerView }
 
-    // Compose 顶栏（L-D9 S5 改造）状态
-    private var composeTitle by mutableStateOf("")
-    private var menuExpanded by mutableStateOf(false)
-    private var starChecked by mutableStateOf(false)
-    private var starVisible by mutableStateOf(false)
-    private var showCustomBtn by mutableStateOf(false)
-    // F182（2026-09-21）：布局切换过渡反馈状态（顶栏第二行「正在切换布局…」）
-    private var layoutSwitching by mutableStateOf(false)
-    private var showRefresh by mutableStateOf(false)
-    private var showLogin by mutableStateOf(false)
-    private var showChangeSource by mutableStateOf(false)
+    // video-player-redesign：播放器覆盖按钮/更多菜单状态
+    private var composeTitle = ""
+    private var starChecked = false
+    private var starVisible = false
+    private var showCustomBtn = false
+    private var showRefresh = false
+    private var showLogin = false
+    private var showChangeSource = false
+
+    // video-player-redesign：合并播放页 Tab 状态
+    private var currentTab = 0  // 0=简介 1=推荐 2=换源
+    private var recommendLoaded = false
+    private var sourceSwitchLoaded = false
 
     // R3 沉浸竖滑风格：ViewPager2 相关
     // video-player-dual-layout D1：初值由持久化 layoutMode 决定（0=沉浸式 ViewPager，1=传统 legacy）
@@ -261,6 +229,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     /** initView 幂等守卫：onNewIntent 重初始化时避免重复注册 ViewModel 观察者 */
     private var isViewInitialized = false
+
+    /** video-player-redesign：入口绑定期间禁止选集自动滚动（进入播放页不自动滚到底部） */
+    private var isEntryBinding = false
 
     /**
      * T2.8: initSource 协程 Job 引用（onPause 时取消，解决 Bug-25：onPause 后 initSource 仍运行导致资源泄漏）
@@ -396,7 +367,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     @OptIn(UnstableApi::class)
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initFromIntent(intent)
-        initComposeTopBar()
+        initPlayerOverlay()
         onBackPressedDispatcher.addCallback(this) {
             if (isFullScreen) {
                 toggleFullScreen()
@@ -455,7 +426,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         // 旧会话若处于全屏态，复位为常规态（新视频从常态开始播放）
         if (isFullScreen) {
             isFullScreen = false
-            binding.composeTopBar.visible()
+            binding.tabBar.visible()
+            binding.contentFrame.visible()
             requestedOrientation = orientation
         }
         // 3. 重置 VideoPlay 单会话状态（订阅源文章列表上下文由 ReadRss 在 startActivity 前写入）
@@ -469,7 +441,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         VideoPlay.resetForNewIntent(preserveRssArticlesContext = isRssArticleIntent)
         // 4. 重新走初始化流程（与首次启动一致）
         initFromIntent(newIntent)
-        initComposeTopBar()
+        initPlayerOverlay()
     }
 
     /**
@@ -695,9 +667,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         binding.legacyContainer.gone()
         binding.viewPagerContainer.visible()
 
-        // L-D9 S5 改造：顶栏已 Compose 化（GlassTopAppBar），不再绑定 ActionBar，
-        // 返回按钮由 initComposeTopBar 的 onNavClick 直接委托 onBackPressedDispatcher。
-        // 原 B1 双 TitleBar setSupportActionBar 冲突问题随 ActionBar 移除而消失。
+        // video-player-redesign：顶栏已移除，返回按钮由播放器覆盖按钮直接委托 onBackPressedDispatcher。
         updateSourceDependentMenu()
 
         // P0-1: 书源/单URL模式禁用滑动（单 Fragment），订阅源模式保持垂直滑动
@@ -782,41 +752,19 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         binding.legacyContainer.visible()
         updateSourceDependentMenu()
         setupPlayerView()
-        bindLegacyActions()
+        bindLegacyExtras()
         bindLegacyInfo()
         composeTitle = VideoPlay.videoTitle ?: ""
         startLegacyPlayback()
     }
 
     /**
-     * video-player-dual-layout W2-B2（用户反馈②）：传统布局功能按钮区
-     * 对齐沉浸式核心能力——下载/收藏/悬浮窗/设置（收藏与设置复用沉浸式同一调用链）
+     * video-player-redesign：传统布局辅助绑定。
+     * 原底部动作区（下载/收藏/上一部/下一部/悬浮窗/设置）已移除，
+     * 下载/上一部/下一部并入播放器更多菜单，收藏在 Tab 栏，悬浮窗/设置在更多菜单。
+     * 此处仅保留 DLNA 投屏状态条绑定。
      */
-    private fun bindLegacyActions() {
-        // 下载：与 VideoFragment.btn_download 同链（videoUrl 非空且非 file:// 直连才可下载）
-        binding.actionDownload.setOnClickListener {
-            val url = VideoPlay.videoUrl
-            if (url.isNullOrBlank() || url.startsWith("file://")) {
-                toastOnUi(getString(R.string.video_no_play_url))
-                return@setOnClickListener
-            }
-            val taskType = if (url.endsWith(".m3u8")) {
-                io.legado.app.service.DownloadTaskType.HLS
-            } else {
-                io.legado.app.service.DownloadTaskType.DIRECT
-            }
-            io.legado.app.model.Download.start(this, url, VideoPlay.videoTitle ?: "", taskType, VideoPlay.currentPlayHeaders)
-            toastOnUi(getString(R.string.action_download))
-        }
-        // 收藏：复用沉浸式同一链（已收藏弹编辑框，未收藏先收藏）
-        binding.actionStar.setOnClickListener { onFragmentStarClicked() }
-        // W3（用户反馈①②）：上一部/下一部——书源队列 → 订阅源文章列表（等价沉浸式上滑/下滑语义）
-        binding.actionPrev.setOnClickListener { switchLegacyFilm(-1) }
-        binding.actionNext.setOnClickListener { switchLegacyFilm(+1) }
-        // 悬浮窗：复用既有双分支实现（legacy 自动取 playerView）
-        binding.actionFloat.setOnClickListener { startFloatingWindow() }
-        // 设置：BottomSheet 面板（与沉浸式同一组件，host=PLAYER_PAGE）
-        binding.actionSettings.setOnClickListener { showLegacySettingsPanel() }
+    private fun bindLegacyExtras() {
         // add-dlna-cast AD-05 兜底②：投屏中状态条 —— 面板被关/通知被清后用户仍能看到并回到面板
         lifecycleScope.launch {
             DlnaCastManager.state.collect { st ->
@@ -842,17 +790,15 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     /**
-     * 传统布局收藏按钮同步（video-live-favorite-fix AD-03 接线：此前从未被调用）。
-     *
-     * 可见性口径与 Compose 顶栏完全一致（`VideoPlay.canFavoriteCurrent()`）——
+     * video-player-redesign：Tab 栏收藏按钮状态同步。
+     * 可见性口径与原 Compose 顶栏完全一致（`VideoPlay.canFavoriteCurrent()`）——
      * 书源视频/单 URL 直连不出现收藏入口；订阅源视频恒出现。
-     * 用 INVISIBLE 而非 GONE：该按钮与其它动作按钮均分权重，GONE 会让其余按钮变宽（布局跳动）。
      */
     private fun upLegacyStarState() {
-        binding.ivActionStar.setImageResource(
+        binding.btnFavorite.setImageResource(
             if (VideoPlay.rssStar != null) R.drawable.ic_star else R.drawable.ic_star_border
         )
-        binding.actionStar.visibility =
+        binding.btnFavorite.visibility =
             if (VideoPlay.canFavoriteCurrent()) View.VISIBLE else View.INVISIBLE
     }
 
@@ -892,6 +838,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      * 注：rssEpisode.cover/duration 为预留字段（当前恒空），封面回退 rssArticle.image、时长隐藏。
      */
     private fun bindLegacyInfo() {
+        isEntryBinding = true
         // video-source-dual-track AD-04：线路/集数列表已并入 legacy_scroll 整体滚动（wrap_content），
         // 关闭其自身嵌套滚动，避免与外层 NestedScrollView 争抢手势。
         // 注意：该属性只能在视图构造完成后于运行时设置——若写在 XML 的 android:nestedScrollingEnabled 上，
@@ -955,6 +902,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 upNextFilmVisible()
             }
         }
+        isEntryBinding = false
     }
 
     /**
@@ -1062,7 +1010,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 isFullScreen = false
                 requestedOrientation = orientation
             }
-            binding.composeTopBar.visible()
+            binding.tabBar.visible()
+            binding.contentFrame.visible()
             runCatching { playerView.backFromFull(this) }
             // 保存精确位置到 PlayHistoryStore（绕过互斥标记的强制保存）
             savePlayHistory(force = true, positionOverride = position)
@@ -1091,15 +1040,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      * → 执行切换 → 保持 [LAYOUT_SWITCH_NOTICE_MS] 后自动消退（新容器起播是异步的：
      * `restorePlayHistory` 内含 2s 延迟 seek，用上界时长覆盖该窗口）。
      */
-    private fun requestLayoutModeSwitch(targetMode: Int) {
-        layoutSwitching = true
+     private fun requestLayoutModeSwitch(targetMode: Int) {
         binding.root.post {
-            val switched = switchLayoutMode(targetMode)
-            if (!switched) {
-                layoutSwitching = false
-                return@post
-            }
-            binding.root.postDelayed({ layoutSwitching = false }, LAYOUT_SWITCH_NOTICE_MS)
+            switchLayoutMode(targetMode)
         }
     }
 
@@ -1150,39 +1093,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     /**
-     * K6/W3：「上一部/下一部」入口可见性（用户反馈①②）
-     * - 书源：VideoPlaylistHolder 队列有邻居才显示
-     * - 订阅源文章模式：列表索引范围内显示
-     * - 订阅源集数模式/单URL：隐藏
+     * video-player-redesign：上一部/下一部已移入播放器更多菜单，始终可见。
+     * 邻居存在性由 switchLegacyFilm 内部兜底处理，本函数保留为空操作兼容既有调用点。
      */
     private fun upNextFilmVisible() {
-        if (useViewPagerMode) {
-            binding.actionPrev.gone()
-            binding.actionNext.gone()
-            return
-        }
-        val current = VideoPlay.book?.bookUrl
-        val hasPrev: Boolean
-        val hasNext: Boolean
-        if (VideoPlay.book != null || VideoPlaylistHolder.containsBookUrl(current)) {
-            // video-regression-fix-0906 AD-04 修订（整体考虑）：书源跨影片邻居或集内邻居任一存在即显示
-            // （集内邻居=上一集/下一集，与沉浸式上滑降级语义一致）
-            val crossPrev = VideoPlaylistHolder.neighborOf(current, -1) != null
-            val crossNext = VideoPlaylistHolder.neighborOf(current, +1) != null
-            val eps = VideoPlay.episodes
-            val inPrev = !eps.isNullOrEmpty() && VideoPlay.chapterInVolumeIndex - 1 >= 0
-            val inNext = !eps.isNullOrEmpty() && VideoPlay.chapterInVolumeIndex + 1 < eps.size
-            hasPrev = crossPrev || inPrev
-            hasNext = crossNext || inNext
-        } else if (!VideoPlay.rssArticles.isNullOrEmpty()) {
-            hasPrev = VideoPlay.rssArticleIndex > 0
-            hasNext = VideoPlay.rssArticleIndex < VideoPlay.rssArticles!!.size - 1
-        } else {
-            hasPrev = false
-            hasNext = false
-        }
-        binding.actionPrev.visibility = if (hasPrev) View.VISIBLE else View.GONE
-        binding.actionNext.visibility = if (hasNext) View.VISIBLE else View.GONE
+        // 保留空操作：prev/next 菜单项不再随邻居状态显隐
     }
 
     /**
@@ -1315,85 +1230,266 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         binding.root.setBackgroundColor(backgroundColor)
         // P0-1: 统一 ViewPager2 模式，旧版 UI 初始化全部移除
         // Fragment 自行管理播放器和控件，设置面板由 VideoSettingsPanel 提供
-        // 返回按钮由 Compose 顶栏 initComposeTopBar 的 onNavClick 直接委托 onBackPressedDispatcher
+        // 返回按钮由播放器覆盖按钮直接委托 onBackPressedDispatcher
     }
 
     /**
-     * Compose 顶栏（L-D9 S5 改造）：GlassTopAppBar + 自定义/刷新/收藏图标按钮 + MoreVert 下拉菜单
+     * video-player-redesign：播放器覆盖按钮 + Tab 栏初始化。
      *
-     * - 标题：composeTitle 状态驱动（VIDEO_SUB_TITLE / UP_VIDEO_INFO / onPageSelected 更新）
-     * - 全屏显隐：toggleFullScreen() 通过 binding.composeTopBar.gone()/visible() 控制
-     * - 返回按钮：直接委托 onBackPressedDispatcher（全屏退出全屏，非全屏 finish）
+     * - 返回按钮（播放器左上）：委托 onBackPressedDispatcher（全屏退出全屏，非全屏 finish）
+     * - 更多按钮（播放器右上）：PopupMenu，承载投屏/画中画/设置/下载/浮窗等
+     * - Tab 栏：简介/推荐/换源切换 + 弹幕开关 + 收藏
      */
-    private fun initComposeTopBar() {
+    private fun initPlayerOverlay() {
         composeTitle = VideoPlay.videoTitle ?: ""
         updateSourceDependentMenu()
-        binding.composeTopBar.setContent {
-            LegadoTheme {
-                GlassTopAppBar(
-                    title = composeTitle,
-                    navIcon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onNavClick = { onBackPressedDispatcher.onBackPressed() },
-                    actions = {
-                        if (showCustomBtn) {
-                            IconButton(onClick = { clickCustomButton() }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Tune,
-                                    contentDescription = getString(R.string.custom_button)
-                                )
-                            }
-                        }
-                        if (showRefresh) {
-                            IconButton(onClick = { recreate() }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = getString(R.string.refresh)
-                                )
-                            }
-                        }
-                        if (starVisible) {
-                            IconButton(onClick = { onFragmentStarClicked() }) {
-                                Icon(
-                                    imageVector = if (starChecked) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                    contentDescription = getString(R.string.favorite)
-                                )
-                            }
-                        }
-                        Box {
-                            IconButton(onClick = { menuExpanded = true }) {
-                                Icon(
-                                    imageVector = Icons.Filled.MoreVert,
-                                    contentDescription = getString(R.string.more)
-                                )
-                            }
-                            AppDropdownMenu(
-                                expanded = menuExpanded,
-                                onDismiss = { menuExpanded = false },
-                                actions = buildMenuActions()
-                            )
-                        }
-                    },
-                    // F182（2026-09-21）：布局切换过渡反馈——状态类第二行必须走 secondRow
-                    //（F317：subtitle 槽在固定栏高下会被裁掉不可见）
-                    secondRow = when {
-                        layoutSwitching -> {
-                            {
-                                Text(
-                                    text = getString(R.string.video_layout_switching),
-                                    color = AppUiTokens.settingPalette().accent,
-                                    fontSize = MaterialTheme.typography.labelMedium.fontSize,
-                                    // 第二行无内建内边距（GlassTopAppBar 只给标题行加），
-                                    // 留 16dp 与标题左缘对齐，否则文字会贴屏边
-                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp)
-                                )
-                            }
-                        }
 
-                        else -> null
+        binding.btnPlayerBack.setOnClickListener {
+            onBackPressedDispatcher.onBackPressed()
+        }
+        binding.btnPlayerMore.setOnClickListener { anchor ->
+            showMoreMenu(anchor)
+        }
+
+        binding.tabIntro.setOnClickListener { switchTab(0) }
+        binding.tabRecommend.setOnClickListener { switchTab(1) }
+        binding.tabSource.setOnClickListener { switchTab(2) }
+
+        binding.btnDanmaku.setOnClickListener {
+            playerView.toggleDanmakuShow()
+            updateDanmakuButton()
+        }
+        updateDanmakuButton()
+
+        binding.btnFavorite.setOnClickListener { onFragmentStarClicked() }
+        binding.btnViewAll.setOnClickListener { showEpisodeListDialog() }
+
+        switchTab(0)
+    }
+
+    /** Tab 切换：更新选中态 + 内容区显隐 + 按需加载数据 */
+    private fun switchTab(tab: Int) {
+        currentTab = tab
+        val primary = ContextCompat.getColor(this, R.color.primary)
+        val summary = ContextCompat.getColor(this, R.color.tv_text_summary)
+        binding.tabIntro.setTextColor(if (tab == 0) primary else summary)
+        binding.tabRecommend.setTextColor(if (tab == 1) primary else summary)
+        binding.tabSource.setTextColor(if (tab == 2) primary else summary)
+        binding.introScroll.visibility = if (tab == 0) View.VISIBLE else View.GONE
+        binding.recommendList.visibility = if (tab == 1) View.VISIBLE else View.GONE
+        binding.sourceSwitchList.visibility = if (tab == 2) View.VISIBLE else View.GONE
+        if (tab == 1 && !recommendLoaded) loadRecommend()
+        if (tab == 2 && !sourceSwitchLoaded) loadSourceSwitch()
+    }
+
+    /** 推荐 Tab：调用当前源 home() 获取推荐影视，填充网格列表 */
+    private fun loadRecommend() {
+        val pluginId = VideoPlay.pyEpisodesPluginId ?: return
+        lifecycleScope.launch {
+            try {
+                val info = VideoSourceRegistry.getSourceInfo(pluginId) ?: return@launch
+                val source = VideoSourceRegistry.createSource(info) ?: return@launch
+                val (_, recommends) = source.home()
+                if (recommends.isNotEmpty()) {
+                    binding.recommendList.layoutManager = GridLayoutManager(this@VideoPlayerActivity, 3)
+                    val adapter = VideoRecommendAdapter(recommends) { item ->
+                        playVideoFromSource(pluginId, item)
                     }
-                )
+                    binding.recommendList.adapter = adapter
+                    recommendLoaded = true
+                }
+            } catch (e: Exception) {
+                AppLog.put("loadRecommend failed: $pluginId", e)
             }
         }
+    }
+
+    /** 换源 Tab：遍历其他源搜索当前片名，填充换源列表 */
+    private fun loadSourceSwitch() {
+        val currentPluginId = VideoPlay.pyEpisodesPluginId ?: return
+        val keyword = VideoPlay.showTitle ?: VideoPlay.videoTitle ?: return
+        if (keyword.isBlank()) return
+        lifecycleScope.launch {
+            try {
+                val results = mutableListOf<VideoItem>()
+                val names = mutableListOf<String>()
+                withContext(IO) {
+                    VideoSourceRegistry.listSources().forEach { info ->
+                        if (info.id == currentPluginId) return@forEach
+                        val src = VideoSourceRegistry.createSource(info) ?: return@forEach
+                        try {
+                            val items = src.search(keyword, 1)
+                            if (items.isNotEmpty()) {
+                                val first = items.first()
+                                results.add(first)
+                                names.add(info.name)
+                            }
+                        } catch (e: Exception) {
+                            AppLog.put("loadSourceSwitch search failed: ${info.id}", e)
+                        }
+                    }
+                }
+                if (results.isNotEmpty()) {
+                    binding.sourceSwitchList.layoutManager = LinearLayoutManager(this@VideoPlayerActivity)
+                    val adapter = VideoSourceSwitchAdapter(results, names) { item, _ ->
+                        playVideoFromSource(item.sourceId.ifBlank { currentPluginId }, item)
+                    }
+                    binding.sourceSwitchList.adapter = adapter
+                    sourceSwitchLoaded = true
+                }
+            } catch (e: Exception) {
+                AppLog.put("loadSourceSwitch failed", e)
+            }
+        }
+    }
+
+    /** 播放推荐/换源条目：解析详情取播放地址，启动新播放会话 */
+    private fun playVideoFromSource(pluginId: String, item: VideoItem) {
+        lifecycleScope.launch {
+            try {
+                val info = VideoSourceRegistry.getSourceInfo(pluginId) ?: return@launch
+                val source = VideoSourceRegistry.createSource(info) ?: return@launch
+                val detail = source.detail(item.id)
+                val firstLine = detail.playLines.firstOrNull() ?: return@launch
+                val result = source.play(firstLine.url)
+                val resolvedUrl = result.url.ifBlank { firstLine.url }
+                if (resolvedUrl.isNotEmpty()) {
+                    PngStripDataSourceFactory.PngStripDataSource.enabled =
+                        (source.sourceType == io.legado.app.data.video.SourceType.JAR)
+                    val episodesJson = org.json.JSONArray().apply {
+                        put(org.json.JSONObject().apply {
+                            put("title", item.title)
+                            put("url", resolvedUrl)
+                        })
+                    }.toString()
+                    startActivity(
+                        android.content.Intent(this@VideoPlayerActivity, VideoPlayerActivity::class.java)
+                            .putExtra("videoUrl", resolvedUrl)
+                            .putExtra("videoTitle", item.title)
+                            .putExtra("episodesJson", episodesJson)
+                            .putExtra("pyPluginId", pluginId)
+                            .putExtra("initialEpisodeIndex", 0)
+                            .putExtra(PreferKey.layoutModeOverride, 1)
+                    )
+                }
+            } catch (e: Exception) {
+                AppLog.put("playVideoFromSource failed: $pluginId", e)
+            }
+        }
+    }
+
+    /** 弹幕开关按钮图标同步 */
+    private fun updateDanmakuButton() {
+        binding.btnDanmaku.setImageResource(
+            if (playerView.isDanmakuShowing) R.drawable.ic_danmaku else R.drawable.ic_danmaku_off
+        )
+    }
+
+    /** 更多菜单：PopupMenu，镜像原 Compose AppDropdownMenu 的菜单项 */
+    private fun showMoreMenu(anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        val menu = popup.menu
+        menu.add(Menu.NONE, 1, Menu.NONE, R.string.float_window)
+        if (DlnaCastManager.isEntryAvailable()) {
+            menu.add(Menu.NONE, 2, Menu.NONE, R.string.dlna_cast)
+        }
+        menu.add(Menu.NONE, 3, Menu.NONE, R.string.config_settings)
+        if (showLogin) {
+            menu.add(Menu.NONE, 4, Menu.NONE, R.string.login)
+        }
+        if (showRefresh) {
+            menu.add(Menu.NONE, 5, Menu.NONE, R.string.refresh)
+        }
+        if (showCustomBtn) {
+            menu.add(Menu.NONE, 6, Menu.NONE, R.string.custom_button)
+        }
+        menu.add(Menu.NONE, 7, Menu.NONE, R.string.copy_play_url)
+        menu.add(Menu.NONE, 8, Menu.NONE, R.string.open_in_browser)
+        menu.add(Menu.NONE, 9, Menu.NONE, R.string.open_other_video_player)
+        if (showChangeSource) {
+            menu.add(Menu.NONE, 10, Menu.NONE, R.string.change_source)
+        }
+        menu.add(Menu.NONE, 11, Menu.NONE, R.string.edit_book_source)
+        menu.add(Menu.NONE, 12, Menu.NONE, R.string.log)
+        menu.add(Menu.NONE, 13, Menu.NONE, R.string.action_download)
+        menu.add(Menu.NONE, 14, Menu.NONE, R.string.prev_film)
+        menu.add(Menu.NONE, 15, Menu.NONE, R.string.next_film)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> startFloatingWindow()
+                2 -> openCastPanel()
+                3 -> showDialogFragment(
+                    SettingsDialog(this).apply {
+                        onLayoutModeSelected = { target -> requestLayoutModeSwitch(target) }
+                    }
+                )
+                4 -> openSourceLogin()
+                5 -> recreate()
+                6 -> clickCustomButton()
+                7 -> copyVideoUrl()
+                8 -> openVideoInBrowser()
+                9 -> openInOtherPlayer()
+                10 -> showDialogFragment(ChangeRssArticleSourceDialog())
+                11 -> editSource()
+                12 -> showDialogFragment<AppLogDialog>()
+                13 -> downloadCurrentVideo()
+                14 -> switchLegacyFilm(-1)
+                15 -> switchLegacyFilm(+1)
+            }
+            true
+        }
+        popup.show()
+    }
+
+    /** 下载当前播放视频（原底部下载按钮逻辑迁移） */
+    private fun downloadCurrentVideo() {
+        val url = VideoPlay.videoUrl
+        if (url.isNullOrBlank() || url.startsWith("file://")) {
+            toastOnUi(getString(R.string.video_no_play_url))
+            return
+        }
+        val taskType = if (url.endsWith(".m3u8")) {
+            io.legado.app.service.DownloadTaskType.HLS
+        } else {
+            io.legado.app.service.DownloadTaskType.DIRECT
+        }
+        io.legado.app.model.Download.start(this, url, VideoPlay.videoTitle ?: "", taskType, VideoPlay.currentPlayHeaders)
+        toastOnUi(getString(R.string.action_download))
+    }
+
+    /** 查看全部：弹窗展示完整选集列表 */
+    private fun showEpisodeListDialog() {
+        val episodes = when {
+            VideoPlay.book != null -> VideoPlay.episodes?.map { it.title } ?: emptyList()
+            !VideoPlay.rssEpisodes.isNullOrEmpty() -> VideoPlay.rssEpisodes?.map { it.title } ?: emptyList()
+            else -> emptyList()
+        }
+        if (episodes.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.video_section_episodes)
+            .setItems(episodes.toTypedArray()) { _, which ->
+                when {
+                    VideoPlay.book != null && VideoPlay.episodes != null -> {
+                        if (which != VideoPlay.chapterInVolumeIndex) {
+                            endCastForLocalSwitch()
+                            VideoPlay.chapterInVolumeIndex = which
+                            VideoPlay.saveRead(0)
+                            upEpisodesView()
+                            VideoPlay.startPlay(playerView)
+                        }
+                    }
+                    !VideoPlay.rssEpisodes.isNullOrEmpty() -> {
+                        if (which != VideoPlay.rssEpisodeIndex) {
+                            endCastForLocalSwitch()
+                            val episode = VideoPlay.rssEpisodes!![which]
+                            VideoPlay.rssEpisodeIndex = which
+                            VideoPlay.playRssEpisode(playerView, episode)
+                            upRssEpisodesView()
+                        }
+                    }
+                }
+            }
+            .show()
     }
 
     /**
@@ -1404,84 +1500,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         showRefresh = VideoPlay.source is RssSource
         showLogin = !VideoPlay.source?.loginUrl.isNullOrBlank()
         showChangeSource = (RssSearchSourceHolder.articles?.size ?: 0) > 1
-    }
-
-    /**
-     * 下拉菜单数据驱动（迁移自 video_play.xml + onCompatOptionsItemSelected）
-     */
-    private fun buildMenuActions(): List<MenuAction> {
-        val actions = mutableListOf<MenuAction>()
-        // 浮窗播放
-        actions += MenuAction(
-            icon = Icons.Filled.PictureInPicture,
-            title = getString(R.string.float_window),
-            onClick = { startFloatingWindow() }
-        )
-        // 投屏（add-dlna-cast REQ-01）：受「启用投屏功能」与"有播放地址"双重门控
-        if (DlnaCastManager.isEntryAvailable()) {
-            actions += MenuAction(
-                icon = Icons.Filled.Cast,
-                title = getString(R.string.dlna_cast),
-                onClick = { openCastPanel() }
-            )
-        }
-        // 配置设置
-        actions += MenuAction(
-            icon = Icons.Filled.Settings,
-            title = getString(R.string.config_settings),
-            onClick = {
-                // video-player-dual-layout：设置弹框内切换布局模式 → 即时重建续播（R7）
-                showDialogFragment(SettingsDialog(this).apply {
-                    onLayoutModeSelected = { target -> requestLayoutModeSwitch(target) }
-                })
-            }
-        )        // 登录（源配置了登录地址才显示）
-        if (showLogin) {
-            actions += MenuAction(
-                icon = Icons.Filled.Login,
-                title = getString(R.string.login),
-                onClick = { openSourceLogin() }
-            )
-        }
-        // 复制播放地址
-        actions += MenuAction(
-            icon = Icons.Filled.ContentCopy,
-            title = getString(R.string.copy_play_url),
-            onClick = { copyVideoUrl() }
-        )
-        // 浏览器打开
-        actions += MenuAction(
-            icon = Icons.Filled.OpenInBrowser,
-            title = getString(R.string.open_in_browser),
-            onClick = { openVideoInBrowser() }
-        )
-        // 其他播放器打开
-        actions += MenuAction(
-            icon = Icons.Filled.Movie,
-            title = getString(R.string.open_other_video_player),
-            onClick = { openInOtherPlayer() }
-        )
-        // 换源（搜索结果多源场景显示）
-        if (showChangeSource) {
-            actions += MenuAction(
-                icon = Icons.Filled.SwapVert,
-                title = getString(R.string.change_source),
-                onClick = { showDialogFragment(ChangeRssArticleSourceDialog()) }
-            )
-        }
-        // 编辑书源
-        actions += MenuAction(
-            icon = Icons.Filled.Edit,
-            title = getString(R.string.edit_book_source),
-            onClick = { editSource() }
-        )
-        // 日志
-        actions += MenuAction(
-            icon = Icons.Filled.Info,
-            title = getString(R.string.log),
-            onClick = { showDialogFragment<AppLogDialog>() }
-        )
-        return actions
     }
 
     // ==================== 下拉菜单动作实现（迁移自 onCompatOptionsItemSelected） ====================
@@ -1765,10 +1783,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     private fun showToc(toc: List<BookChapter>) {
         // video-player-dual-layout W2-B3（用户反馈③）：去掉 iv_chapter 二级目录页入口，
-        // 选集直接页内平铺（tocActivityResult 保留给未来页内展开复用）
-        // 2026-09-14 布局重排二轮：多集网格平铺（一行 N 个按集名平均分配宽度，列数屏宽自适应）
+        // 选集横向滚动（进入播放页不自动滚到底部，scrollToDurChapter 由 isEntryBinding 控制）
         val recyclerView = binding.chapters
-        recyclerView.layoutManager = GridLayoutManager(this, episodeGridSpanCount())
+        recyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         val adapter = ChapterAdapter(toc, VideoPlay.chapterInVolumeIndex, false,
             R.layout.item_video_chapter_vertical) { chapter, index ->
             if (index != VideoPlay.chapterInVolumeIndex) {
@@ -1782,15 +1799,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
         recyclerView.adapter = adapter
         scrollToDurChapter(recyclerView, VideoPlay.chapterInVolumeIndex)
-    }
-
-    /**
-     * 2026-09-14 布局重排二轮：多集网格列数自适应
-     * 按屏宽/110dp（item 目标最小宽度）估算，钳制 [3,6]，横竖屏旋转后重进页面自动重算
-     */
-    private fun episodeGridSpanCount(): Int {
-        val screenWidthDp = resources.configuration.screenWidthDp
-        return (screenWidthDp / 110).coerceIn(3, 6)
     }
 
     /**
@@ -1866,9 +1874,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      */
     private fun showRssEpisodes(episodes: List<RssEpisode>) {
         binding.tvEpisodeLabel.visible()
+        // 选集横向滚动
         val recyclerView = binding.chapters
-        // 2026-09-14 布局重排二轮：多集网格平铺（一行 N 个按集名平均分配宽度）
-        recyclerView.layoutManager = GridLayoutManager(this, episodeGridSpanCount())
+        recyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         val adapter = RssEpisodeAdapter(
             episodes, VideoPlay.rssEpisodeIndex, true
         ) { episode, index ->
@@ -1962,10 +1970,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         recyclerView.postDelayed({
             val adapter = recyclerView.adapter as? ChapterAdapter
             adapter?.updateSelectedPosition(index)
-            // video-source-dual-track AD-04：集数区已并入 legacy_scroll 整体滚动
-            // （layout_height=wrap_content + nestedScrollingEnabled=false），RecyclerView 自身滚动范围≈0，
-            // 原 LinearSmoothScroller 定位在此形态下失效；改为计算目标子项在滚动容器内的偏移并滚动父容器。
-            val scrollContainer = findViewById<NestedScrollView>(R.id.legacy_scroll)
+            // video-player-redesign：入口绑定期间不自动滚动（进入播放页不自动滚到底部）
+            if (isEntryBinding) return@postDelayed
+            // 集数区已并入 intro_scroll 整体滚动（wrap_content + nestedScrollingEnabled=false），
+            // RecyclerView 自身滚动范围≈0，改为计算目标子项在滚动容器内的偏移并滚动父容器。
+            val scrollContainer = findViewById<NestedScrollView>(R.id.intro_scroll)
             val targetChild = recyclerView.layoutManager?.findViewByPosition(index)
             if (scrollContainer != null && targetChild != null) {
                 scrollContainer.smoothScrollTo(0, offsetInAncestor(targetChild, scrollContainer))
@@ -2017,11 +2026,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 } else {
                     ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 }
-                // F1 真全屏修复：用 composeTopBar.gone() 替代 supportActionBar?.hide()
-                // 根因：supportActionBar?.hide() 只隐藏 ActionBar 内容显示，但顶栏仍占据布局空间，
-                // 导致 ViewPager2 高度 = 屏幕高度 - 顶栏高度，playerView 无法铺满全屏。
-                // gone() 释放布局空间，ViewPager2 可铺满整个屏幕实现真全屏。
-                binding.composeTopBar.gone()
+                // video-player-redesign：ViewPager 全屏隐藏 Tab 栏与内容区（已随 legacyContainer 隐藏，显式调用保证一致）
+                binding.tabBar.gone()
+                binding.contentFrame.gone()
                 currentFragment?.onFullScreenChanged(true)
             } else {
                 requestedOrientation = if (VideoPlay.isPortraitVideo) {
@@ -2029,43 +2036,28 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 } else {
                     ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏
                 }
-                // video-player-dual-layout W2-B1：传统布局全屏同步隐藏 Compose 顶栏（与沉浸式 F1 真全屏一致）
-                binding.composeTopBar.gone()
+                // video-player-redesign：传统布局全屏隐藏 Tab 栏与内容区，仅留播放器
+                binding.tabBar.gone()
+                binding.contentFrame.gone()
                 supportActionBar?.hide()
-                binding.chaptersContainer.gone()
-                binding.data.gone()
-                binding.legacyActions?.gone()
                 playerView.startWindowFullscreen(this, false, false)
             }
         } else {
             if (useViewPagerMode) {
                 // R3 阶段4：ViewPager2 模式恢复竖屏
                 requestedOrientation = orientation
-                // F1 真全屏修复：恢复顶栏显示（与 entering 的 gone() 对应）
-                binding.composeTopBar.visible()
+                // video-player-redesign：ViewPager 退出全屏恢复 Tab 栏与内容区
+                binding.tabBar.visible()
+                binding.contentFrame.visible()
                 supportActionBar?.show()
                 currentFragment?.onFullScreenChanged(false)
             } else {
                 requestedOrientation = orientation
-                // video-player-dual-layout W2-B1：退出全屏恢复顶栏与信息区
-                binding.composeTopBar.visible()
+                // video-player-redesign：退出全屏恢复 Tab 栏与内容区
+                // data/线路/选集均在 content_frame/intro_scroll 内部，随 contentFrame 显示
+                binding.tabBar.visible()
+                binding.contentFrame.visible()
                 supportActionBar?.show()
-                // video-player-dual-layout W3（用户反馈③）：所有源类型统一恢复 data+按钮区
-                // （原 book 分支才恢复 data，订阅源全屏返回后信息区/按钮区丢失）
-                binding.data.visible()
-                binding.legacyActions.visible()
-                if (VideoPlay.book != null) {
-                    binding.chaptersContainer.visible()
-                } else {
-                    if (!VideoPlay.rssRoutes.isNullOrEmpty() || !VideoPlay.rssEpisodes.isNullOrEmpty()) {
-                        // R3 多线路 / R1 多集：退出全屏恢复线路+集数列表
-                        binding.chaptersContainer.visible()
-                        val routes = VideoPlay.rssRoutes
-                        if (!routes.isNullOrEmpty() && routes.size > 1) {
-                            binding.volumes.visible()
-                        }
-                    }
-                }
                 playerView.postDelayed({
                     playerView.backFromFull(this)
                 }, if (VideoPlay.isPortraitVideo) 300 else 0)
@@ -2607,11 +2599,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
-    /**
-     * P0-1.4: 重试当前播放（ExoPlayer）
-     *
-     * 由错误对话框"重试"按钮调用，重新触发当前 Fragment 的 ExoPlayer 播放。
-     */
     private fun retryCurrentPlayback() {
         currentFragment?.retryExoPlayback()
     }

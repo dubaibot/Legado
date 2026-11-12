@@ -8019,4 +8019,12 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="export_to_clipboard">Export JSON to clipboard</string>
 
     <string name="query_result">Found %1$d matches</string>
+
+    <string name="tab_intro">简介</string>
+    <string name="tab_recommend">推荐</string>
+    <string name="tab_source">换源</string>
+    <string name="view_all">查看全部</string>
+    <string name="danmaku">弹幕</string>
+    <string name="prev_film">上一部</string>
+    <string name="next_film">下一部</string>
 </resources>

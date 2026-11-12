@@ -1,18 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- video-player-dual-layout AD-10：根布局改垂直 LinearLayout，composeTopBar 提升到根（两布局共用），
-     内容区 FrameLayout 承载双容器（沉浸式 viewPagerContainer / 传统 legacyContainer），由 layoutMode 分发显隐 -->
+<!-- video-player-redesign：移除顶部导航栏与底部操作栏，重构为 播放器(固定顶部) + Tab栏 + 内容区 结构。
+     播放器常驻顶部，切换Tab/线路/选集时不销毁不断流；全屏时隐藏Tab栏与内容区，仅留播放器。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
-
-    <!-- Compose 顶栏（L-D9 S5 改造）：GlassTopAppBar，全屏时 gone/visible 控制显隐 -->
-    <androidx.compose.ui.platform.ComposeView
-        android:id="@+id/compose_top_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
 
     <!-- add-dlna-cast AD-05 兜底②：投屏中状态条（面板关闭后仍可见，点击回到投屏面板） -->
     <TextView
@@ -36,7 +30,7 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <!-- R3 沉浸竖滑风格：ViewPager2 容器（垂直滑动切换视频） -->
+        <!-- R3 沉浸竖滑风格：ViewPager2 容器（垂直滑动切换视频，订阅源多文章模式） -->
         <LinearLayout
             android:id="@+id/viewPagerContainer"
             android:layout_width="match_parent"
@@ -51,336 +45,334 @@
 
         </LinearLayout>
 
-        <!-- 传统布局（video-player-dual-layout：上播放器 + 下部信息区） -->
+        <!-- 传统布局（video-player-redesign：播放器固定顶部 + Tab栏 + 内容区） -->
         <LinearLayout
             android:id="@+id/legacyContainer"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical">
 
-            <io.legado.app.help.gsyVideo.VideoPlayer
-                android:id="@+id/playerView"
+            <!-- 播放器容器：播放器 + 覆盖按钮（返回/更多） -->
+            <FrameLayout
+                android:id="@+id/player_container"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                tools:layout_height="300dp" />
+                android:layout_height="wrap_content">
 
-            <!-- video-source-dual-track AD-04：信息区合并为单一滚动容器——图片(iv_cover)、详情(intro)、
-                 线路(volumes)、集数(chapters) 整体上下滚动；playerView 与底部操作栏 legacy_actions
-                 留在滚动区外，避免影响 setupPlayerView() 的 surface 尺寸计算 -->
-            <androidx.core.widget.NestedScrollView
-                android:id="@+id/legacy_scroll"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:fillViewport="true"
-                android:scrollbars="none">
-
-                <LinearLayout
+                <io.legado.app.help.gsyVideo.VideoPlayer
+                    android:id="@+id/playerView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    tools:layout_height="220dp" />
 
+                <!-- 播放器覆盖按钮：返回（左上） -->
+                <ImageButton
+                    android:id="@+id/btn_player_back"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="start|top"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/back"
+                    android:src="@drawable/ic_arrow_back"
+                    app:tint="@color/white" />
+
+                <!-- 播放器覆盖按钮：更多菜单（右上，含投屏/画中画/下载/浮窗/设置等） -->
+                <ImageButton
+                    android:id="@+id/btn_player_more"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="end|top"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/more"
+                    android:src="@drawable/ic_more_vert"
+                    app:tint="@color/white" />
+
+            </FrameLayout>
+
+            <!-- Tab 标签栏：简介 / 推荐 / 换源 + 弹幕开关 / 收藏 -->
             <LinearLayout
-                android:id="@+id/data"
+                android:id="@+id/tab_bar"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginEnd="12dp"
-                android:orientation="horizontal">
+                android:layout_height="44dp"
+                android:background="@color/background_card"
+                android:elevation="2dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp">
 
-                <io.legado.app.ui.widget.image.CoverImageView
-                    android:id="@+id/iv_cover"
-                    android:layout_width="104dp"
-                    android:layout_height="148dp"
-                    android:contentDescription="@string/img_cover"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/image_cover_default" />
+                <TextView
+                    android:id="@+id/tab_intro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="@string/tab_intro"
+                    android:textColor="@color/primary"
+                    android:textSize="@dimen/text_15sp"
+                    android:textStyle="bold" />
 
-                <LinearLayout
-                    android:id="@+id/info"
+                <TextView
+                    android:id="@+id/tab_recommend"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="@string/tab_recommend"
+                    android:textColor="@color/tv_text_summary"
+                    android:textSize="@dimen/text_15sp" />
+
+                <TextView
+                    android:id="@+id/tab_source"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="@string/tab_source"
+                    android:textColor="@color/tv_text_summary"
+                    android:textSize="@dimen/text_15sp" />
+
+                <View
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
 
-                    <TextView
-                        android:id="@+id/tv_name"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:includeFontPadding="false"
-                        android:maxLines="2"
-                        android:text="@string/book_name"
-                        android:textColor="@color/primaryText"
-                        android:textSize="@dimen/text_18sp"
-                        android:textStyle="bold" />
+                <ImageButton
+                    android:id="@+id/btn_danmaku"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/danmaku"
+                    android:src="@drawable/ic_danmaku"
+                    app:tint="@color/primaryText" />
+
+                <ImageButton
+                    android:id="@+id/btn_favorite"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/favorite"
+                    android:src="@drawable/ic_star_border"
+                    app:tint="@color/primaryText" />
+
+            </LinearLayout>
+
+            <!-- 内容区：三 Tab 内容切换（简介/推荐/换源） -->
+            <FrameLayout
+                android:id="@+id/content_frame"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <!-- 简介 Tab：信息卡 + 线路 + 选集（可滚动） -->
+                <androidx.core.widget.NestedScrollView
+                    android:id="@+id/intro_scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:fillViewport="true"
+                    android:scrollbars="none">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:orientation="vertical">
 
-                        <TextView
-                            android:id="@+id/tv_author"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:ellipsize="end"
-                            android:includeFontPadding="false"
-                            android:maxLines="1"
-                            android:text="@string/author"
-                            android:textColor="@color/tv_text_summary"
-                            android:textSize="@dimen/text_12sp" />
-                    </LinearLayout>
-
-                    <androidx.core.widget.NestedScrollView
-                        android:id="@+id/scroll_view_r"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:scrollbars="none">
-                        <FrameLayout
-                            android:id="@+id/tv_intro_container"
+                        <!-- 基础信息卡片：封面 + 标题/源标记/作者/简介 -->
+                        <LinearLayout
+                            android:id="@+id/data"
                             android:layout_width="match_parent"
-                            android:layout_height="wrap_content" />
-                    </androidx.core.widget.NestedScrollView>
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:layout_marginTop="8dp"
+                            android:layout_marginEnd="12dp"
+                            android:orientation="horizontal">
 
-                </LinearLayout>
+                            <io.legado.app.ui.widget.image.CoverImageView
+                                android:id="@+id/iv_cover"
+                                android:layout_width="104dp"
+                                android:layout_height="148dp"
+                                android:contentDescription="@string/img_cover"
+                                android:scaleType="centerCrop"
+                                android:src="@drawable/image_cover_default" />
 
-            </LinearLayout>
+                            <LinearLayout
+                                android:id="@+id/info"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
 
-            <!-- 线路/集数区：已并入 legacy_scroll 整体滚动（video-source-dual-track AD-04）；
-                     高度改 wrap_content 随内容展开，集数 RecyclerView 自身不再滚动（nestedScrollingEnabled=false） -->
-            <LinearLayout
-                android:id="@+id/chapters_container"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
+                                <TextView
+                                    android:id="@+id/tv_name"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="2"
+                                    android:text="@string/book_name"
+                                    android:textColor="@color/primaryText"
+                                    android:textSize="@dimen/text_18sp"
+                                    android:textStyle="bold" />
 
-                <!-- W2-B3：区块标题平铺（去掉 iv_chapter 二级目录页入口，线路/选集直接页内呈现） -->
-                <TextView
-                    android:id="@+id/tv_route_label"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="16dp"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="2dp"
-                    android:text="@string/video_section_routes"
-                    android:textColor="@color/primaryText"
-                    android:textSize="@dimen/text_14sp"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
+                                <TextView
+                                    android:id="@+id/tv_source_tag"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_12sp"
+                                    android:visibility="gone" />
 
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
+
+                                    <TextView
+                                        android:id="@+id/tv_author"
+                                        android:layout_width="0dp"
+                                        android:layout_height="wrap_content"
+                                        android:layout_weight="1"
+                                        android:ellipsize="end"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="@string/author"
+                                        android:textColor="@color/tv_text_summary"
+                                        android:textSize="@dimen/text_12sp" />
+                                </LinearLayout>
+
+                                <androidx.core.widget.NestedScrollView
+                                    android:id="@+id/scroll_view_r"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="8dp"
+                                    android:scrollbars="none">
+                                    <FrameLayout
+                                        android:id="@+id/tv_intro_container"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content" />
+                                </androidx.core.widget.NestedScrollView>
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                        <!-- 线路选择区 -->
+                        <LinearLayout
+                            android:id="@+id/chapters_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <!-- 线路区块标题 -->
+                            <TextView
+                                android:id="@+id/tv_route_label"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:paddingStart="16dp"
+                                android:paddingTop="12dp"
+                                android:paddingBottom="4dp"
+                                android:text="@string/video_section_routes"
+                                android:textColor="@color/primaryText"
+                                android:textSize="@dimen/text_14sp"
+                                android:textStyle="bold"
+                                android:visibility="gone" />
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/volumes"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:clipToPadding="false"
+                                android:orientation="horizontal"
+                                android:paddingStart="12dp"
+                                android:paddingTop="2dp"
+                                android:paddingEnd="12dp"
+                                android:paddingBottom="2dp"
+                                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
+                            <!-- 选集区块标题：合集 + 查看全部 -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingStart="16dp"
+                                android:paddingTop="12dp"
+                                android:paddingBottom="4dp">
+
+                                <TextView
+                                    android:id="@+id/tv_episode_label"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="@string/video_section_episodes"
+                                    android:textColor="@color/primaryText"
+                                    android:textSize="@dimen/text_14sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:id="@+id/btn_view_all"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:paddingStart="8dp"
+                                    android:paddingEnd="8dp"
+                                    android:paddingTop="2dp"
+                                    android:paddingBottom="2dp"
+                                    android:text="@string/view_all"
+                                    android:textColor="@color/primary"
+                                    android:textSize="@dimen/text_12sp"
+                                    android:visibility="gone" />
+                            </LinearLayout>
+
+                            <!-- 选集：横向滚动 -->
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/chapters"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:clipToPadding="false"
+                                android:orientation="horizontal"
+                                android:paddingTop="2dp"
+                                android:paddingBottom="12dp"
+                                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+                </androidx.core.widget.NestedScrollView>
+
+                <!-- 推荐 Tab：同源相关推荐影视卡片网格 -->
                 <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/volumes"
+                    android:id="@+id/recommend_list"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:clipToPadding="false"
-                    android:orientation="horizontal"
-                    android:paddingStart="12dp"
-                    android:paddingTop="2dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="2dp"
+                    android:padding="8dp"
+                    android:visibility="gone"
+                    app:layoutManager="androidx.recyclerview.widget.GridLayoutManager" />
+
+                <!-- 换源 Tab：其他源搜索该片名结果列表 -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/source_switch_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:padding="8dp"
+                    android:visibility="gone"
                     app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
-                <TextView
-                    android:id="@+id/tv_episode_label"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="16dp"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="2dp"
-                    android:text="@string/video_section_episodes"
-                    android:textColor="@color/primaryText"
-                    android:textSize="@dimen/text_14sp"
-                    android:textStyle="bold" />
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/chapters"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:clipToPadding="false"
-                    android:orientation="vertical"
-                    android:paddingTop="2dp"
-                    android:paddingBottom="6dp"
-                    app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-
-            </LinearLayout>
-
-                </LinearLayout>
-            </androidx.core.widget.NestedScrollView>
-
-            <!-- video-player-dual-layout W2-B2：传统布局功能按钮区（对齐沉浸式核心能力：下载/收藏/悬浮窗/设置）
-                 2026-09-14 布局重排：操作按钮区移至最底部（在线路/集数区下方），线路/集数区上移到图片描述下方 -->
-            <LinearLayout
-                android:id="@+id/legacy_actions"
-                android:layout_width="match_parent"
-                android:layout_height="60dp"
-                android:layout_marginStart="8dp"
-                android:layout_marginTop="4dp"
-                android:layout_marginEnd="8dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <LinearLayout
-                    android:id="@+id/action_download"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
-                        android:contentDescription="@string/action_download"
-                        android:src="@drawable/ic_download"
-                        app:tint="@color/primaryText" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/action_download"
-                        android:textColor="@color/tv_text_summary"
-                        android:textSize="@dimen/text_11sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/action_star"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:id="@+id/iv_action_star"
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
-                        android:contentDescription="@string/favorite"
-                        android:src="@drawable/ic_star_border"
-                        app:tint="@color/primaryText" />
-
-                    <TextView
-                        android:id="@+id/tv_action_star"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/favorite"
-                        android:textColor="@color/tv_text_summary"
-                        android:textSize="@dimen/text_11sp" />
-                </LinearLayout>
-
-                <!-- video-player-dual-layout W3：跨影片「上一部」按钮（与功能按钮区同构，书源队列/订阅源文章列表） -->
-                <LinearLayout
-                    android:id="@+id/action_prev"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
-                        android:contentDescription="@string/play_prev_film"
-                        android:src="@drawable/ic_skip_previous"
-                        app:tint="@color/primaryText" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/play_prev_film"
-                        android:textColor="@color/tv_text_summary"
-                        android:textSize="@dimen/text_11sp" />
-                </LinearLayout>
-
-                <!-- video-player-dual-layout W3：跨影片「下一部」按钮（书源队列/订阅源文章列表） -->
-                <LinearLayout
-                    android:id="@+id/action_next"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
-                        android:contentDescription="@string/play_next_film"
-                        android:src="@drawable/ic_skip_next"
-                        app:tint="@color/primaryText" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/play_next_film"
-                        android:textColor="@color/tv_text_summary"
-                        android:textSize="@dimen/text_11sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/action_float"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
-                        android:contentDescription="@string/float_window"
-                        android:src="@drawable/ic_screen"
-                        app:tint="@color/primaryText" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/float_window"
-                        android:textColor="@color/tv_text_summary"
-                        android:textSize="@dimen/text_11sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/action_settings"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
-                        android:contentDescription="@string/setting"
-                        android:src="@drawable/ic_settings"
-                        app:tint="@color/primaryText" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/setting"
-                        android:textColor="@color/tv_text_summary"
-                        android:textSize="@dimen/text_11sp" />
-                </LinearLayout>
-
-            </LinearLayout>
+            </FrameLayout><!-- content_frame end -->
 
         </LinearLayout><!-- legacyContainer end -->
 
