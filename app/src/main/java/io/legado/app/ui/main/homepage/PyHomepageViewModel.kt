@@ -351,15 +351,13 @@ class PyHomepageViewModel : ViewModel() {
         }
     }
 
-    /** 壳源点击直进播放页：解析详情取播放地址，直接启动播放会话 */
+    /** 壳源点击直进播放页：立即启动 VideoPlayerActivity，URL 在 Activity 后台解析，避免跳转延迟 */
     fun playVideoDirectly(pluginId: String, id: String, title: String) {
-        viewModelScope.launch {
-            val source = sourceFor(pluginId) ?: return@launch
-            val detail = source.detail(id)
-            val playUrls = detail.playLines.map { it.name to it.url }
-            if (playUrls.isNotEmpty()) {
-                playVideo(pluginId, playUrls, title, 0)
-            }
+        appCtx.startActivity<VideoPlayerActivity> {
+            putExtra("videoTitle", title)
+            putExtra("pyPluginId", pluginId)
+            putExtra("pyVideoItemId", id)
+            putExtra(PreferKey.layoutModeOverride, 1)
         }
     }
 

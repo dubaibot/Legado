@@ -143,15 +143,6 @@
                     android:layout_weight="1" />
 
                 <ImageButton
-                    android:id="@+id/btn_danmaku"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="@android:color/transparent"
-                    android:contentDescription="@string/danmaku"
-                    android:src="@drawable/ic_danmaku"
-                    app:tint="@color/primaryText" />
-
-                <ImageButton
                     android:id="@+id/btn_favorite"
                     android:layout_width="36dp"
                     android:layout_height="36dp"
@@ -336,16 +327,16 @@
                                     android:visibility="gone" />
                             </LinearLayout>
 
-                            <!-- 选集：横向滚动 -->
+                            <!-- 选集：网格列表 -->
                             <androidx.recyclerview.widget.RecyclerView
                                 android:id="@+id/chapters"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:clipToPadding="false"
-                                android:orientation="horizontal"
+                                android:nestedScrollingEnabled="false"
                                 android:paddingTop="2dp"
                                 android:paddingBottom="12dp"
-                                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+                                app:layoutManager="androidx.recyclerview.widget.GridLayoutManager" />
 
                         </LinearLayout>
 

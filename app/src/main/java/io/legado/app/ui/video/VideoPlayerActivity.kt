@@ -477,6 +477,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             val episodeJson = intent.getStringExtra("episodesJson")
             val initialEpisodeIndexExtra = intent.getIntExtra("initialEpisodeIndex", 0)
             val pyPluginIdExtra = intent.getStringExtra("pyPluginId")
+            val pyVideoItemIdExtra = intent.getStringExtra("pyVideoItemId")
             var intentEpisodes: List<RssEpisode>? = null
             var intentEpisodeIndex = 0
             var intentPyPluginId: String? = null
@@ -526,6 +527,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             snapshotSingleUrl = VideoPlay.singleUrl
             snapshotInBookshelf = VideoPlay.inBookshelf
             AppLog.put("VideoPlayerActivity state snapshot saved: singleUrl=$snapshotSingleUrl, inBookshelf=$snapshotInBookshelf")
+            // py 源后台解析路径：未传 videoUrl 但传了 pyVideoItemId，标记 singleUrl 避免 initSource 因 source==null 失败
+            if (pyVideoItemIdExtra != null && VideoPlay.videoUrl.isNullOrBlank()) {
+                VideoPlay.singleUrl = true
+            }
             // T2.8: 保存 initSource 协程 Job 引用，onPause 时取消
             initSourceJob = lifecycleScope.launch {
                 if (!VideoPlay.initSource(sourceKey, sourceType, bookUrl, record)) {
@@ -534,6 +539,40 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                     AppLog.put("VideoPlayerActivity initSource failed, finish activity, sourceKey=${sourceKey?.take(2)}***")
                     finish()
                     return@launch
+                }
+                // py 源后台解析：pyVideoItemId 存在时，detail()+play() 取播放地址与集数列表
+                pyVideoItemIdExtra?.let { itemId ->
+                    pyPluginIdExtra?.let { pluginId ->
+                        try {
+                            val info = VideoSourceRegistry.getSourceInfo(pluginId) ?: return@let
+                            val source = VideoSourceRegistry.createSource(info) ?: return@let
+                            val detail = source.detail(itemId)
+                            val playLines = detail.playLines
+                            if (playLines.isNotEmpty()) {
+                                val firstLine = playLines.first()
+                                val result = source.play(firstLine.url)
+                                val resolvedUrl = result.url.ifBlank { firstLine.url }
+                                VideoPlay.videoUrl = resolvedUrl
+                                VideoPlay.singleUrl = true
+                                PngStripDataSourceFactory.PngStripDataSource.enabled =
+                                    (source.sourceType == io.legado.app.data.video.SourceType.JAR)
+                                val episodes = playLines.map { line ->
+                                    RssEpisode(
+                                        title = line.name,
+                                        url = line.url,
+                                        duration = 0L,
+                                        cover = "",
+                                    )
+                                }
+                                VideoPlay.rssEpisodes = episodes
+                                VideoPlay.rssEpisodeIndex = 0
+                                VideoPlay.pyEpisodesPluginId = pluginId
+                                AppLog.put("initSourceJob: py source resolved, episodes=${episodes.size}, url=${resolvedUrl.take(40)}")
+                            }
+                        } catch (e: Exception) {
+                            AppLog.put("initSourceJob: py source resolve failed: $itemId", e)
+                        }
+                    }
                 }
                 // initSource 会重置 rssEpisodes/rssEpisodeIndex（多线路状态重建），
                 // 此处回填 intent 传入的 py 源集数列表，保证首页/订阅源播放器选集列表不丢失
@@ -1255,12 +1294,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         binding.tabRecommend.setOnClickListener { switchTab(1) }
         binding.tabSource.setOnClickListener { switchTab(2) }
 
-        binding.btnDanmaku.setOnClickListener {
-            playerView.toggleDanmakuShow()
-            updateDanmakuButton()
-        }
-        updateDanmakuButton()
-
         binding.btnFavorite.setOnClickListener { onFragmentStarClicked() }
         binding.btnViewAll.setOnClickListener { showEpisodeListDialog() }
 
@@ -1376,13 +1409,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 AppLog.put("playVideoFromSource failed: $pluginId", e)
             }
         }
-    }
-
-    /** 弹幕开关按钮图标同步 */
-    private fun updateDanmakuButton() {
-        binding.btnDanmaku.setImageResource(
-            if (playerView.isDanmakuShowing) R.drawable.ic_danmaku else R.drawable.ic_danmaku_off
-        )
     }
 
     /** 更多菜单：PopupMenu，镜像原 Compose AppDropdownMenu 的菜单项 */
@@ -1783,9 +1809,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     private fun showToc(toc: List<BookChapter>) {
         // video-player-dual-layout W2-B3（用户反馈③）：去掉 iv_chapter 二级目录页入口，
-        // 选集横向滚动（进入播放页不自动滚到底部，scrollToDurChapter 由 isEntryBinding 控制）
+        // 选集网格列表（进入播放页不自动滚到底部，scrollToDurChapter 由 isEntryBinding 控制）
         val recyclerView = binding.chapters
-        recyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        recyclerView.layoutManager = GridLayoutManager(this, 4)
         val adapter = ChapterAdapter(toc, VideoPlay.chapterInVolumeIndex, false,
             R.layout.item_video_chapter_vertical) { chapter, index ->
             if (index != VideoPlay.chapterInVolumeIndex) {
@@ -1874,9 +1900,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      */
     private fun showRssEpisodes(episodes: List<RssEpisode>) {
         binding.tvEpisodeLabel.visible()
-        // 选集横向滚动
+        // 选集网格列表
         val recyclerView = binding.chapters
-        recyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        recyclerView.layoutManager = GridLayoutManager(this, 4)
         val adapter = RssEpisodeAdapter(
             episodes, VideoPlay.rssEpisodeIndex, true
         ) { episode, index ->
@@ -2013,9 +2039,17 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
+    /** 全屏时播放器覆盖按钮加方框线，非全屏恢复透明背景，确保全屏时返回/更多按钮在任意画面可见 */
+    private fun updateOverlayButtonBorder(fullScreen: Boolean) {
+        val bgRes = if (fullScreen) R.drawable.bg_player_overlay_border else android.R.color.transparent
+        binding.btnPlayerBack.setBackgroundResource(bgRes)
+        binding.btnPlayerMore.setBackgroundResource(bgRes)
+    }
+
     internal fun toggleFullScreen() {
         isFullScreen = !isFullScreen
         toggleSystemBar(!isFullScreen)
+        updateOverlayButtonBorder(isFullScreen)
         if (isFullScreen) {
             orientation = requestedOrientation
             if (useViewPagerMode) {
@@ -2162,7 +2196,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //提前进入了全屏，并且默认横屏了，纠正回来
                             return@post
                         }
-                        if (VideoPlay.startFull && VideoPlay.autoPlay && !isFullScreen) {
+                        // 合并布局（layoutModeOverride=1）不自动全屏，直接展示播放器+Tab+内容
+                        if (VideoPlay.startFull && VideoPlay.autoPlay && !isFullScreen && layoutModeOverride != 1) {
                             toggleFullScreen()
                             return@post
                         }

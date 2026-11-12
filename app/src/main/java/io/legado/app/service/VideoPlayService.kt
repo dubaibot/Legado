@@ -372,7 +372,9 @@ class VideoPlayService : BaseService() {
     private fun createNotification(): NotificationCompat.Builder {
         val nTitle = getString(R.string.audio_play_t) + ": $VideoPlay.videoTitle"
         val nSubtitle = getString(R.string.audio_play_s)
-        val builder = NotificationCompat.Builder(this@VideoPlayService, AppConst.channelIdReadAloud)
+        // 播放控制不放入通知栏：仅保留最小化前台通知（Android 前台服务必需），
+        // 移除播放控制按钮与 MediaStyle，播放控制由播放器界面与悬浮窗承载
+        return NotificationCompat.Builder(this@VideoPlayService, AppConst.channelIdReadAloud)
             .setSmallIcon(R.drawable.ic_volume_up)
             .setSubText(getString(R.string.video))
             .setOngoing(true)
@@ -382,42 +384,7 @@ class VideoPlayService : BaseService() {
             .setContentIntent(
                 activityPendingIntent<VideoPlayerActivity>("activity")
             )
-        builder.setLargeIcon(cover)
-        builder.addAction(
-            R.drawable.ic_skip_previous,
-            getString(R.string.previous),
-            servicePendingIntent<VideoPlayService>(IntentAction.prev)
-        )
-        if (pause) {
-            builder.addAction(
-                R.drawable.ic_play_24dp,
-                getString(R.string.resume),
-                servicePendingIntent<VideoPlayService>(IntentAction.resume)
-            )
-        } else {
-            builder.addAction(
-                R.drawable.ic_pause_24dp,
-                getString(R.string.pause),
-                servicePendingIntent<VideoPlayService>(IntentAction.pause)
-            )
-        }
-        builder.addAction(
-            R.drawable.ic_skip_next,
-            getString(R.string.next),
-            servicePendingIntent<VideoPlayService>(IntentAction.next)
-        )
-        builder.addAction(
-            R.drawable.ic_stop_black_24dp,
-            getString(R.string.stop),
-            servicePendingIntent<VideoPlayService>(IntentAction.stop)
-        )
-        builder.setStyle(
-            androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(0, 1, 2)
-                .setMediaSession(mediaSessionCompat.sessionToken)
-        )
-        builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-        return builder
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
     }
 
     @OptIn(UnstableApi::class)
