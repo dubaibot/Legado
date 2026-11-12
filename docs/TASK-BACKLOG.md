@@ -346,12 +346,32 @@
 
 ## 里程碑 M5 — 离线与备份
 
-### T40 `[ ]` 下载队列与章节落盘
+### T40 `[~]` 下载队列与章节落盘
 - **要做**：批量下载、并发上限、失败重试与退避、断点续传、
   已下载标记、空间占用统计与清理入口。
 - **约束**：下载与搜索共用 `core/net/` 的限流，不要另开一套并发池
   ——否则批量下载会把搜索请求全挤掉。
 - **验收**：断网能读已下载章节；下载中断后重进能续传。
+
+> **状态说明（2026-11-13）**：`[~]`。不依赖 Android 的队列协调层已完成并通过
+> 39 套 / 2848 项回归（新增 `tests/DownloadQueueTest.kt`，104 项断言）。
+>
+> 已完成（`source/download/DownloadQueueCoordinator.kt`）：
+> - **批量入队与已下载标记**：`enqueue` 自动跳过 `completedIds` 中的项；
+>   断网重进时 `preloadCompleted` 从数据库恢复已完成 ID，不重复下载；
+>   下载成功后 `finishSuccess` 自动加入标记，同 ID 再入队仍跳过；
+> - **并发上限**：`startNext` 在 `downloadingCount >= maxConcurrent` 时返回 null，
+>   与搜索共用 `GlobalConcurrencyGate` 的口径协调（不另开并发池）；
+> - **失败重试与指数退避**：`finishFailure` 安排重试，退避 = `initialBackoff ×
+>   2^(attempts-1)`，不超过 `maxBackoffMs`；退避期内 `startNext` 不返回该项；
+>   重试耗尽标记 FAILED；用户可 `retry` 手动重置失败项；
+> - **状态机**：PENDING → DOWNLOADING → COMPLETED/FAILED，CANCELLED 可从任意非终态转入；
+> - **快照汇总**：`snapshot()` 提供各项计数与总下载字节，`summary()` 一句话文案供通知栏；
+> - **clearHistory**：清除已完成和已取消的历史记录，保留失败项供查看/重试。
+>
+> 缺口（沙箱无 Android SDK，均未做）：下载执行者接线（`DownloadExecutor` →
+> `MediaDownloadService`）、断点续传 `.part` 文件管理接入队列、空间占用统计与
+> 清理入口 UI、前台服务与通知栏接线、真机断网续传验证。
 
 ### T41 `[ ]` 备份与恢复
 - **要用**：`data/backup/`（DTO、JSON 编解码、合并策略）。

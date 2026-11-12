@@ -101,7 +101,8 @@ for cls in \
   ReadingSessionTestKt \
   SearchSessionTestKt \
   ContentStageTestKt \
-  TtsChapterCoordinatorTestKt; do
+  TtsChapterCoordinatorTestKt \
+  DownloadQueueTestKt; do
   if grep -q "$cls" <<< "$JAR_LIST"; then
     java -cp "$OUT/tests.jar:$JARS" "$cls" || exit 1
     echo ""

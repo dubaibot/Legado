@@ -650,6 +650,37 @@ Room 对表结构的内部哈希结果——它不是可以手推的值。我尝
 **本轮没有顺带做的事**：Compose 朗读控制条与高亮渲染（T21）、`TextToSpeech` 引擎
 适配层（T20）、真机语音包与续读计时验证——均依赖 Android SDK。
 
+### 下载队列协调器（第三十二轮）
+
+`source/download/DownloadQueueCoordinator`：批量下载的队列管理与状态机，
+补上 T40「批量下载、并发上限、失败重试与退避」的纯逻辑层。
+
+**为什么需要这一层。** `MediaDownloadService` 只管**单任务串行**下载（前台服务的
+硬约束），但没有「一批章节怎么排队、谁先谁后、失败了怎么办、哪些已经下过了」
+的队列管理。如果每个调用方自己写一遍这层逻辑，不可避免会漏掉退避、去重或并发控制。
+
+**已下载标记防重复下载。** `enqueue` 时自动跳过 `completedIds` 中的项——断网重进时
+调用方把数据库里已标记完成的 ID 塞进 `preloadCompleted`，就不会重复下载。下载成功后
+`finishSuccess` 自动加入 `completedIds`，同一 ID 再次入队仍被跳过。
+
+**指数退避不让坏源拖垮队列。** 失败后 `nextRetryAt = now + min(initialBackoff ×
+2^(attempts-1), maxBackoff)`，退避期内 `startNext` 不返回该项，给其他章节让路。
+重试次数耗尽后标记 FAILED，不再重试；用户可手动 `retry` 重置。
+
+**并发上限与搜索共用限流。** `startNext` 在 `downloadingCount >= maxConcurrent` 时
+返回 null，调用方据此停止取新任务。T40 要求「下载与搜索共用 core/net/ 的限流」——
+生产环境应把 `maxConcurrent` 与 `GlobalConcurrencyGate` 协调，不要另开一套并发池
+把搜索请求挤掉。
+
+**`startNext` / `finishSuccess` / `finishFailure` 是调用方的下载循环骨架。**
+协调器不碰 HTTP、不碰文件 IO、不碰前台服务——生产环境的下载循环是：
+`while (!queue.isAllDone()) { item = queue.startNext(); if (item == null) wait; 
+result = download(item); if (success) queue.finishSuccess(id, bytes) else queue.finishFailure(id, err) }`。
+
+**本轮没有顺带做的事**：下载执行者（`DownloadExecutor` 接线到 `MediaDownloadService`）、
+断点续传的 `.part` 文件管理（已有但未接入队列）、空间占用统计与清理入口的 UI、
+前台服务与通知栏接线——均依赖 Android SDK。
+
 ## 合规门禁
 
 ```bash
@@ -711,8 +742,9 @@ Composable 里直接注入 DAO，CI 会立刻拦住。
 | `tests/ReadingSessionTest.kt` | 阅读会话：位置持久化用字符偏移而非页号（编码字段固定顺序、二次编解码幂等）、反序列化逐字段防御（空串/垃圾串回初始、章号越界夹到末章、偏移超过本章夹到章尾、负值归 0、页号超界夹到末页、页数 0 兜底 1、已读下标过滤）、**重排版保位置**（字号 16→28 后 locator 不变、页数随之增加、页号必须指向包含该偏移的页）、分页完整性（拼接等于原文、无截断无重叠、页偏移单调不回退、页码连续）、冷启动恢复（存档页号在新字号下被重算覆盖、空存档回开头）、进度条跳转（0/10/50/100% 落点、负值与超界夹紧、跳转重置页号但不清已读、空书不崩、单章书书内定位）、章内百分比跳转、页码 1 基与百分比文案、重排版后再翻页仍走同一位置真值、全字号档位（12..34）分页自洽且页数单调不减（74 项） |
 | `tests/ContentStageTest.kt` | 正文获取与净化串联：水印/站点后缀去除、正则去标签、全局+源级规则合成、段落拆分（空行滤除、全角空格归一、行尾空白去除）、**按章结果缓存**（二次打开 fromCache=true、同源不同章各自缓存、命中后段落/统计完全一致）、缓存失效（replaceRule 变更后重跑、全局规则变更后指纹不命中、invalidate/clear）、FIFO 淘汰、边界（空内容/null 规则/纯空白）、stats 透明性、**全链路 prepare→repaginate**（排版总字数==净化后字数、页偏移落在净化文本内）、**净化必须在排版前的证明**（原文排版含水印字数 160、净化排版不含水印 100）、缓存命中后分页一致、多段正文端到端（73 项） |
 | `tests/TtsChapterCoordinatorTest.kt` | 朗读章节续读协调器：基本装载与续读（auto-continue ENABLED 默认）、续读关闭（读完停 FINISHED）、全书读完（BOOK_DONE）、**空章自动跳过**（startChapter 跳过空/空白章）、续读时遇到空章自动跳到下一非空章、**点正文起读**（startFromPosition with charOffset 定位到正确段）、**高亮区间数据**（highlightRange 映射段偏移、回切原文验证、推进后高亮移动、续读后重映射新章）、**迟到回调安全**（停止后 IGNORED 不触发续读、暂停后 IGNORED）、多章连续续读（3 章逐章读完）、hasNextChapter（含跳过尾部空章）、空书/单章书/越界/负索引、续读从头开始（charOffset 不跨章）、续读时后面全空返回 BOOK_DONE、play/pause/stop/skip 透传、进度章号与协调器一致、长章多段续读后章号正确（97 项） |
+| `tests/DownloadQueueTest.kt` | 下载队列协调器：批量入队（跳过已下载 preloadCompleted、跳过重复）、startNext（标记 DOWNLOADING、并发上限 maxConcurrent、退避到期才返回、多候选取 nextRetryAt 最早、空队列返回 null）、finishSuccess（标记完成 + 加入 completedIds）、finishFailure（安排重试 + **指数退避计算** 2^n、退避上限 maxBackoff 夹取、重试耗尽标记 FAILED）、cancel/cancelAll、retry（手动重试失败项、非失败项拒绝）、isAllDone（含失败项也算完成）、snapshot summary 文案（空队列/进行中/全完成/部分失败）、clearHistory（清除已完成+已取消、保留失败项）、边界（越界 ID 不崩、maxRetries=0 首次失败即 FAILED）、config 参数校验、**端到端批量下载全流程**（5 章 × 混合成功/失败/重试、循环有界不死锁、完成数/失败数/总字节校验）（104 项） |
 
-合计 38 套 / 2744 项断言，全部通过（FAIL = 0）。上表逐行数字与
+合计 39 套 / 2848 项断言，全部通过（FAIL = 0）。上表逐行数字与
 `tools/test_jvm.sh` 的实际输出一一对应，可用一条命令复现。
 
 完整运行方式见 `tools/test_jvm.sh`。
