@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
@@ -296,6 +297,8 @@ object SourceHelp {
                 putExtra("videoTitle", title)
                 putExtra("sourceKey", source?.getKey())
                 putExtra("sourceType", source?.getSourceType())
+                // video-merged-detail-play：源详情打开播放器统一合并布局
+                putExtra(PreferKey.layoutModeOverride, 1)
             }
         }
     }

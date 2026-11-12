@@ -38,6 +38,7 @@ import androidx.preference.PreferenceManager
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.legado.app.R
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.book.isAudio
@@ -76,6 +77,10 @@ fun Context.startActivityForBook(
     val intent = Intent(this, cls)
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     intent.putExtra("bookUrl", book.bookUrl)
+    // video-merged-detail-play：视频书源统一合并布局（详情+播放同页）
+    if (cls == VideoPlayerActivity::class.java) {
+        intent.putExtra(PreferKey.layoutModeOverride, 1)
+    }
     intent.apply(configIntent)
     startActivity(intent)
 }

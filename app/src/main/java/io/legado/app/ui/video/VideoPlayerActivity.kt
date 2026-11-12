@@ -70,6 +70,7 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.PlayHistoryStore
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -199,6 +200,13 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     // R3 沉浸竖滑风格：ViewPager2 相关
     // video-player-dual-layout D1：初值由持久化 layoutMode 决定（0=沉浸式 ViewPager，1=传统 legacy）
     private var useViewPagerMode = VideoPlay.layoutMode == 0
+    /**
+     * 会话级布局模式覆盖（video-merged-detail-play）：
+     * -1=未传（按持久化 layoutMode 偏好），0=强制沉浸，1=强制合并（传统布局）
+     * 由入口 intent `layout_mode_override` 传入，仅作用于本次会话，不污染持久化偏好；
+     * 用户经设置面板主动切换时清空覆盖并写持久化。
+     */
+    private var layoutModeOverride: Int = -1
     private var videoPagerAdapter: VideoPagerAdapter? = null
     private var currentFragment: VideoFragment? = null
     internal var settingsPanel: VideoSettingsPanel? = null  // 阶段5：当前打开的设置面板引用
@@ -469,6 +477,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      */
     private fun initFromIntent(intent: Intent) {
         isNew = intent.getBooleanExtra("isNew", true)
+        // video-merged-detail-play：会话级布局模式覆盖（0=沉浸，1=合并），非法值按未传
+        layoutModeOverride = intent.getIntExtra(PreferKey.layoutModeOverride, -1).takeIf { it in 0..1 } ?: -1
         if (isNew) {
             intent.getStringExtra("videoUrl")?.let {
                 VideoPlay.videoUrl = it
@@ -750,7 +760,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      * D1/D2/D3 统一分发入口：按持久化 layoutMode 挂载对应容器（AD-01 四分发点路由）
      */
     private fun dispatchLayoutMode() {
-        if (VideoPlay.layoutMode == 1) {
+        // video-merged-detail-play：会话级覆盖优先于持久化偏好（列表直达等场景强制合并布局）
+        val targetMode = layoutModeOverride.takeIf { it in 0..1 } ?: VideoPlay.layoutMode
+        if (targetMode == 1) {
             setupLegacyMode()
         } else {
             switchToViewPagerMode()
@@ -1020,6 +1032,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         val currentMode = if (useViewPagerMode) 0 else 1
         if (normalized == currentMode) return false
         VideoPlay.layoutMode = normalized
+        // video-merged-detail-play：用户主动切换，清除会话级覆盖并持久化偏好
+        layoutModeOverride = -1
         AppLog.put("VideoPlayerActivity switchLayoutMode: $currentMode -> $normalized")
         // 2：互斥标记（savePlayHistory/内部链短路，防切换窗口串写）
         VideoPlay.layoutSwitchInProgress = true

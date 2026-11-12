@@ -5,6 +5,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssArticle
@@ -126,6 +127,8 @@ object ReadRss {
             putExtra("sourceType", SourceType.rss)
             putExtra("record", rssArticle.link)
             putExtra("videoTitle", rssArticle.title) // R3 title 修复：传递标题给 VideoPlayerActivity
+            // video-merged-detail-play：订阅源文章播放统一合并布局
+            putExtra(PreferKey.layoutModeOverride, 1)
         }
     }
 
@@ -145,6 +148,8 @@ object ReadRss {
             putExtra("sourceType", SourceType.rss)
             putExtra("record", rssArticle.link)
             putExtra("videoTitle", rssArticle.title)
+            // video-merged-detail-play：订阅源文章播放统一合并布局
+            putExtra(PreferKey.layoutModeOverride, 1)
         }
     }
 

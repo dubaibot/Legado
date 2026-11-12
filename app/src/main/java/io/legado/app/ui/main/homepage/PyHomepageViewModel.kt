@@ -406,6 +406,8 @@ class PyHomepageViewModel : ViewModel() {
                     putExtra("episodesJson", episodesJson)
                     putExtra("pyPluginId", pluginId)
                     putExtra("initialEpisodeIndex", initialIndex)
+                    // video-merged-detail-play：影视壳源统一合并布局（详情+播放同页）
+                    putExtra(PreferKey.layoutModeOverride, 1)
                 }
             }
         }

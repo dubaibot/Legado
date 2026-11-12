@@ -9,6 +9,7 @@ object PreferKey {
     const val userAgent = "userAgent"
     const val customHosts = "customHosts"
     const val videoSetting = "videoSetting"
+    const val layoutModeOverride = "layout_mode_override"
     const val editTheme = "editTheme"
     const val editThemeDark = "editThemeDark"
     const val editTemeAuto = "editTemeAuto"

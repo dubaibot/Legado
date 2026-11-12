@@ -200,3 +200,15 @@ Entries discovered by the Agent during task execution should follow this format:
   - 嗅探只对非流媒体且非 parse=0 的 URL 触发，直链 m3u8 快速路径与直播流均跳过，零行为变更
   - 同名陷阱：io.legado.app.constant.SourceType（book/rss int）与 io.legado.app.data.video.SourceType（video 枚举）同名，VideoPlay.kt 用 import alias VideoSourceType 区分，勿直接 import 后混用
   - b12/b13/b14 实测：BUILD SUCCESSFUL（20m1s / 23m11s），APK 已产出 110413 版本 x64/armeabi-v7a/universal
+
+[LogVar 弹幕服务器协议（dandanplay 兼容）与播放链路集成知识]
+- Date: 2026-11-11
+- Context: 弹幕 API 配置改用 LogVar 弹幕服务器（github huangxd-/danmu_api），完善阅读播放器弹幕支持；沙箱验证 danmu.mimiruku.cn 演示站 401（部署方设了自定义 TOKEN，默认 87654321 不可用）
+- Category: Operations & Deployment
+- Instructions:
+  - LogVar 弹幕 API 端点（token 是路径段：`https://host/{TOKEN}/api/v2/...`，默认 token 87654321 可省略）：`GET /api/v2/search/episodes?anime=`（dandanplay 检索）、`GET /api/v2/comment/{id}?format=json`（弹幕，dandanplay 响应 `{"count":N,"comments":[{"cid":1,"p":"time,mode,color","m":"文本"}]}`，p 模式 1-3滚动/4底部/5顶部/6逆向）、`GET|POST /api/v2/fongmi/danmaku?name=&episode=`（FongMi 影视端点，返回 `[{name,url}]` 候选列表，服务端匹配，客户端再按 url 拉 XML）、`GET /api/v2/comment/{id}?format=xml`（直出 B站 8 字段 p XML，LogVar 扩展，非 dandanplay 标准）
+  - LogVar 演示站 https://danmu.mimiruku.cn 需要部署方自定义 TOKEN（实测 401 Unauthorized），自部署无 token 则免鉴权；用户配置时粘贴根地址（无 token）、含 token 路径段（/TOKEN）或完整 API 端点（/TOKEN/api/v2）均可，客户端 serverUrl() 自动剥离尾部 /api/v2
+  - LogVar 服务端智能路径归一：/api/v2 前缀可重复可缺失（自动补全/清理），`/danmaku/api/v2/fongmi/danmaku` 嵌套折叠，token 缺失时部分公开接口（收藏列表）仍放行
+  - 阅读 App 弹幕链路：书源 chapter.getDanmaku()（String→danmakuStr/File→danmakuFile）→ GSY setUp→initDanmaku→onPrepared→onPrepareDanmaku→view.prepare（DanmakuFlameMaster TAG_BILI，只认 B站 XML，p 解析取前 4 字段）；Dandanplay JSON 需客户端转 B站 XML（DanmakuItem mode 1→5顶部/4→4底部/else→1滚动，p=`time,mode,25,color`）；`VideoSource.danmaku()` 接口是死代码（全无人调用）
+  - py 源片名丢失问题：playPyEpisode/playRssEpisode 的 videoTitle 会被覆写为集名，故 VideoPlay 新增 showTitle 字段（intent 传入片名）供 LogVar 检索；检索上下文优先级：book.name → showTitle → videoTitle
+  - 弹幕加载统一入口：GSY initDanmaku 无弹幕数据时触发 VideoPlay.loadDanmakuFromServer（Coroutine.async(loadScope,IO)+danmakuLoadKey 防重复请求/防过期写回），成功后 postEvent(EventBus.VIDEO_DANMAKU_READY) 通知 Activity 刷新悬浮层开关；书源/py/jar/订阅源全部路径共用，取代原 py 源专属 `{id}` 模板拉取（已删除）

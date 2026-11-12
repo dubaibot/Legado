@@ -21,6 +21,7 @@ import com.google.android.flexbox.FlexboxLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -36,7 +37,9 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.help.book.isVideo
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarMargin
@@ -462,11 +465,20 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 显示书籍详情
      */
-    override fun showBookInfo(name: String, author: String, bookUrl: String) {
+    override fun showBookInfo(book: SearchBook) {
+        // video-merged-detail-play：视频类书源搜索结果直进合并播放页（详情+播放同页）
+        if (book.type and BookType.video > 0) {
+            startActivity<VideoPlayerActivity> {
+                putExtra("bookUrl", book.bookUrl)
+                putExtra("inBookshelf", viewModel.isInBookShelf(book))
+                putExtra(PreferKey.layoutModeOverride, 1)
+            }
+            return
+        }
         startActivity<BookInfoActivity> {
-            putExtra("name", name)
-            putExtra("author", author)
-            putExtra("bookUrl", bookUrl)
+            putExtra("name", book.name)
+            putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
         }
     }
 
@@ -481,7 +493,20 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      * 显示书籍详情
      */
     override fun showBookInfo(book: Book) {
-        showBookInfo(book.name, book.author, book.bookUrl)
+        // video-merged-detail-play：视频类书源（书架搜索）直进合并播放页（详情+播放同页）
+        if (book.isVideo) {
+            startActivity<VideoPlayerActivity> {
+                putExtra("bookUrl", book.bookUrl)
+                putExtra("inBookshelf", true)
+                putExtra(PreferKey.layoutModeOverride, 1)
+            }
+            return
+        }
+        startActivity<BookInfoActivity> {
+            putExtra("name", book.name)
+            putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
+        }
     }
 
     /**

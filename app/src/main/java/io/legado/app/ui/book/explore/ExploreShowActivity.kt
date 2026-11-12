@@ -26,11 +26,14 @@ import io.legado.app.data.entities.rule.ExploreCatNode
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.ActivityExploreShowBinding
 import io.legado.app.databinding.ViewLoadMoreBinding
+import io.legado.app.constant.BookType
+import io.legado.app.constant.PreferKey
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.recycler.LoadMoreView
 import io.legado.app.ui.widget.recycler.VerticalDivider
@@ -305,6 +308,15 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
     }
 
     override fun showBookInfo(book: SearchBook) {
+        // video-merged-detail-play：视频类书源列表点击直进合并播放页（详情+播放同页）
+        if (book.type and BookType.video > 0) {
+            startActivity<VideoPlayerActivity> {
+                putExtra("bookUrl", book.bookUrl)
+                putExtra("inBookshelf", viewModel.isInBookShelf(book))
+                putExtra(PreferKey.layoutModeOverride, 1)
+            }
+            return
+        }
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)

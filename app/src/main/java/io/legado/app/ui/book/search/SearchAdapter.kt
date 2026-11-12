@@ -74,7 +74,7 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
     override fun registerListener(holder: ItemViewHolder, binding: ItemSearchBinding) {
         binding.root.setOnClickListener {
             getItem(holder.layoutPosition)?.let {
-                callBack.showBookInfo(it.name, it.author, it.bookUrl)
+                callBack.showBookInfo(it)
             }
         }
     }
@@ -142,8 +142,8 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
         fun isInBookshelf(book: SearchBook): Boolean
 
         /**
-         * 显示书籍详情
+         * 显示书籍详情（传入完整条目以携带书源类型，视频书源直进合并播放页）
          */
-        fun showBookInfo(name: String, author: String, bookUrl: String)
+        fun showBookInfo(book: SearchBook)
     }
 }

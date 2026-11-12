@@ -60,6 +60,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
@@ -1265,6 +1266,8 @@ class BookInfoActivity :
                     Intent(this, VideoPlayerActivity::class.java)
                         .putExtra("bookUrl", book.bookUrl)
                         .putExtra("inBookshelf", viewModel.inBookshelf)
+                        // video-merged-detail-play：详情页内播放统一合并布局
+                        .putExtra(PreferKey.layoutModeOverride, 1)
                 )
             }
 
