@@ -24,13 +24,40 @@
         android:background="#50000000"
         android:orientation="vertical">
 
-        <io.legado.app.ui.widget.TitleBar
-            android:id="@+id/title_bar"
+        <LinearLayout
+            android:id="@+id/top_bar_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toTopOf="parent"
-            app:themeMode="dark"
-            app:title="@string/book_info" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <io.legado.app.ui.widget.TitleBar
+                android:id="@+id/title_bar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                app:themeMode="dark"
+                app:fitStatusBar="false"
+                app:title="@string/book_info" />
+
+            <ImageButton
+                android:id="@+id/iv_info_share"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/share"
+                android:src="@drawable/ic_share"
+                app:tint="@color/white" />
+
+            <ImageButton
+                android:id="@+id/iv_info_menu"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/more"
+                android:src="@drawable/ic_more_vert"
+                app:tint="@color/white" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/ll_info"

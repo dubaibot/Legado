@@ -1,10 +1,31 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:background="@drawable/floating_rounded_background"
+    android:clipChildren="true"
+    android:clipToOutline="true">
 
     <io.legado.app.help.gsyVideo.FloatingPlayer
         android:id="@+id/floatingPlayerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center" />
+
+    <FrameLayout
+        android:id="@+id/resize_handle"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="bottom|end"
+        android:background="@drawable/bg_floating_resize_handle"
+        android:contentDescription="@string/video"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_gravity="bottom|end"
+            android:src="@drawable/ic_floating_resize"
+            android:importantForAccessibility="no" />
+    </FrameLayout>
 </FrameLayout>

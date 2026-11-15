@@ -2,8 +2,6 @@ package io.legado.app.service
 
 import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
-import android.app.Activity
-import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -59,6 +57,8 @@ import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * 视频悬浮窗服务
@@ -87,21 +87,28 @@ class VideoPlayService : BaseService() {
         BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
     private var upPlayProgressJob: Job? = null
     private var broadcastReceiver: BroadcastReceiver? = null
-    private val activityLifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
-        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
-            if (activity is VideoPlayerActivity) {
-                // 确保 Activity 创建完成后才停止服务,留够时间复制播放器
-                stop()
-            }
-        }
+    private var resizeStartX = 0f
+    private var resizeStartWidth = 0
+    private var resizeStartHeight = 0
 
-        override fun onActivityStarted(activity: Activity) {}
-        override fun onActivityResumed(activity: Activity) {}
-        override fun onActivityPaused(activity: Activity) {}
-        override fun onActivityStopped(activity: Activity) {}
-        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-        override fun onActivityDestroyed(activity: Activity) {}
+    private fun screenBounds(): Pair<Int, Int> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            bounds.width() to bounds.height()
+        } else {
+            resources.displayMetrics.widthPixels to resources.displayMetrics.heightPixels
+        }
     }
+
+    private fun clampWindowPosition() {
+        val (screenWidth, screenHeight) = screenBounds()
+        params.width = params.width.coerceAtMost(screenWidth)
+        params.height = params.height.coerceAtMost(screenHeight)
+        params.x = params.x.coerceIn(0, max(0, screenWidth - params.width))
+        params.y = params.y.coerceIn(0, max(0, screenHeight - params.height))
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun updateViewPosition() {
         try {
@@ -123,37 +130,32 @@ class VideoPlayService : BaseService() {
 
             override fun setValue(layoutParams: WindowManager.LayoutParams, value: Float) {
                 layoutParams.x = value.toInt()
+                clampWindowPosition()
                 updateViewPosition()
             }
         }
 
     private fun startEdgeAnimation() {
-        val displayMetrics = resources.displayMetrics
-        val screenWidth = displayMetrics.widthPixels
-        val screenHeight = displayMetrics.heightPixels
+        val (screenWidth, screenHeight) = screenBounds()
         val viewWidth = floatingView.width
         val viewHeight = floatingView.height
         val currentX = params.x
         val endX = if (viewWidth == screenWidth) {
             0
         } else if (currentX + viewWidth / 2 > screenWidth / 2) {
-            screenWidth - viewWidth - 30
+            max(0, screenWidth - viewWidth - dp(16))
         } else {
-            30
+            dp(16)
         }
         val currentY = params.y
-        var endY = currentY
-        if (currentY < 30) {
-            endY = 30
-        } else if (currentY > screenHeight - viewHeight - 60) {
-            endY = screenHeight - viewHeight - 60
-        }
+        val endY = currentY.coerceIn(dp(16), max(dp(16), screenHeight - viewHeight - dp(16)))
         if (endY != currentY) {
             ObjectAnimator.ofInt(currentY, endY).apply {
                 duration = 200
                 interpolator = DecelerateInterpolator()
                 addUpdateListener { animation ->
                     params.y = animation.animatedValue as Int
+                    clampWindowPosition()
                     updateViewPosition()
                 }
                 start()
@@ -174,7 +176,6 @@ class VideoPlayService : BaseService() {
         startForegroundNotification()
         initMediaSession()
         initBroadcastReceiver()
-        application.registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
         // P1-5 AppFreeze修复：loadBitmap 的 .get() 在 execute{} 的 IO 线程中执行，不阻塞主线程
         execute {
             ImageLoader
@@ -385,7 +386,13 @@ class VideoPlayService : BaseService() {
             .setContentTitle(nTitle)
             .setContentText(nSubtitle)
             .setContentIntent(
-                activityPendingIntent<VideoPlayerActivity>("activity")
+                activityPendingIntent<VideoPlayerActivity>("activity") {
+                    putExtra("isNew", false)
+                    putExtra(VideoPlayerActivity.EXTRA_RESTORE_FULLSCREEN, true)
+                    if (layoutModeOverride in 0..1) {
+                        putExtra(PreferKey.layoutModeOverride, layoutModeOverride)
+                    }
+                }
             )
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
     }
@@ -394,7 +401,7 @@ class VideoPlayService : BaseService() {
     @SuppressLint("ClickableViewAccessibility", "InflateParams")
     private fun createFloatingWindow() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        val screenWidth = resources.displayMetrics.widthPixels
+        val (screenWidth, screenHeight) = screenBounds()
         val videoWidth = playerView.currentVideoWidth
         val videoHeight = playerView.currentVideoHeight
         val windowWidth = if (videoHeight > videoWidth * 1.2) {
@@ -402,10 +409,18 @@ class VideoPlayService : BaseService() {
         } else {
             screenWidth * 3 / 4 //默认为屏幕3/4宽
         }
-        val windowHeight = if (videoWidth > 0 && videoHeight > 0) (windowWidth * videoHeight / videoWidth) else (windowWidth * 9 / 16) // 默认16:9比例
+        val aspectRatio = if (videoWidth > 0 && videoHeight > 0) {
+            videoHeight.toFloat() / videoWidth
+        } else {
+            9f / 16f
+        }
+        val maxHeight = screenHeight * 3 / 4
+        val maxWidthForAspect = (maxHeight / aspectRatio).toInt()
+        val boundedWidth = min(windowWidth, min(screenWidth, maxWidthForAspect))
+        val windowHeight = (boundedWidth * aspectRatio).toInt().coerceAtLeast(1)
         // 设置窗口参数
         params = WindowManager.LayoutParams(
-            windowWidth,
+            boundedWidth,
             windowHeight,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -414,15 +429,39 @@ class VideoPlayService : BaseService() {
                 WindowManager.LayoutParams.TYPE_PHONE
             },
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.START or Gravity.TOP
-            x = 30
-            y = screenWidth / 10
+            x = dp(16).coerceAtMost(max(0, screenWidth - boundedWidth))
+            y = (screenHeight / 10).coerceAtMost(max(0, screenHeight - windowHeight))
         }
         floatingView.setOnTouchListener(FloatingTouchListener())
+        floatingView.findViewById<View>(R.id.resize_handle).setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    cancelAnimator()
+                    resizeStartX = event.rawX
+                    resizeStartWidth = params.width
+                    resizeStartHeight = params.height
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val (screenWidth, screenHeight) = screenBounds()
+                    val ratio = resizeStartHeight.toFloat() / resizeStartWidth.coerceAtLeast(1)
+                    val requestedWidth = resizeStartWidth + (event.rawX - resizeStartX).toInt()
+                    val maxWidth = min(screenWidth, (screenHeight * 3 / 4 / ratio).toInt())
+                    val minWidth = min(dp(160), maxWidth)
+                    params.width = requestedWidth.coerceIn(minWidth, maxWidth)
+                    params.height = (params.width * ratio).toInt()
+                    clampWindowPosition()
+                    updateViewPosition()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> true
+                else -> true
+            }
+        }
         windowManager.addView(floatingView, params)
 
     }
@@ -453,6 +492,7 @@ class VideoPlayService : BaseService() {
                         isClick = false
                         params.x = (initialX + (event.rawX - initialTouchX)).toInt()
                         params.y = (initialY + (event.rawY - initialTouchY)).toInt()
+                        clampWindowPosition()
                         updateViewPosition()
                         cancelAnimator()
                     } else {
@@ -491,7 +531,7 @@ class VideoPlayService : BaseService() {
                 //根据实际视频比例再次调整悬浮窗高度,来适配竖屏视频。如果是全屏切换过来的时候不会触发
                 val videoWidth = playerView.currentVideoWidth
                 val videoHeight = playerView.currentVideoHeight
-                val screenWidth = resources.displayMetrics.widthPixels
+                val (screenWidth, screenHeight) = screenBounds()
                 if (videoWidth > 0 && videoHeight > 0) {
                     val parentWidth = if (videoHeight > videoWidth * 1.2) {
                         VideoPlay.isPortraitVideo = true
@@ -501,9 +541,14 @@ class VideoPlayService : BaseService() {
                         params.width
                     }
                     val aspectRatio = videoHeight.toFloat() / videoWidth.toFloat()
-                    val height = (parentWidth * aspectRatio).toInt()
-                    params.height = height
-                    windowManager.updateViewLayout(floatingView, params)
+                    params.width = min(parentWidth, screenWidth)
+                    val maxHeight = screenHeight * 3 / 4
+                    if (params.width * aspectRatio > maxHeight) {
+                        params.width = (maxHeight / aspectRatio).toInt()
+                    }
+                    params.height = (params.width * aspectRatio).toInt()
+                    clampWindowPosition()
+                    updateViewPosition()
                 }
             }
             override fun onAutoComplete(url: String?, vararg objects: Any?) {
@@ -533,12 +578,12 @@ class VideoPlayService : BaseService() {
         val fullscreenIntent = Intent(this, VideoPlayerActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("isNew", false)
-            if (layoutModeOverride in 0..1) {
-                putExtra(PreferKey.layoutModeOverride, layoutModeOverride)
-            }
+            putExtra(VideoPlayerActivity.EXTRA_RESTORE_FULLSCREEN, true)
+            putExtra(PreferKey.layoutModeOverride, 0)
         }
-        startActivity(fullscreenIntent)
         playerView.needDestroy = false
+        VideoPlay.layoutMode = 0
+        startActivity(fullscreenIntent)
     }
 
 
@@ -566,7 +611,6 @@ class VideoPlayService : BaseService() {
             upNotificationJob?.invokeOnCompletion {
                 notificationManager.cancel(NotificationId.VideoPlayService)
             }
-            application.unregisterActivityLifecycleCallbacks(activityLifecycleCallbacks)
             playerView.release()
         } catch (e: Exception) {
             AppLog.put("VideoPlayService: release", e)

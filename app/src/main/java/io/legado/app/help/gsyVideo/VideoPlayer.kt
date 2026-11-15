@@ -520,6 +520,26 @@ class VideoPlayer: StandardGSYVideoPlayer {
             child.isEnabled = enabled
             child.alpha = if (enabled) 1f else 0f
         }
+        refreshEpisodeNavigation()
+    }
+
+    fun refreshEpisodeNavigation() {
+        val bookEpisodes = VideoPlay.episodes
+        val count = if (!bookEpisodes.isNullOrEmpty()) bookEpisodes.size
+            else VideoPlay.rssEpisodes?.size ?: 0
+        val index = if (!bookEpisodes.isNullOrEmpty()) VideoPlay.chapterInVolumeIndex
+            else VideoPlay.rssEpisodeIndex
+        episodeList?.visibility = if (count > 0) VISIBLE else GONE
+        listOf(prevEpisode to (index > 0 && index < count),
+            btnNext to (index >= 0 && index < count - 1)).forEach { (button, available) ->
+            button?.apply {
+                visibility = if (count > 0) VISIBLE else GONE
+                isEnabled = available && !mLockCurScreen
+                imageTintList = ColorStateList.valueOf(
+                    if (available) android.graphics.Color.WHITE else android.graphics.Color.GRAY
+                )
+            }
+        }
     }
 
     override fun setViewShowState(view: View?, visibility: Int) {
@@ -1056,7 +1076,12 @@ class VideoPlayer: StandardGSYVideoPlayer {
         updateMuteIcon()
         applyMirror()
         // R3：片头/片尾自动跳过（进度监听器驱动，仅在播放中触发）
-        setGSYVideoProgressListener { _, _, _, _ -> getCurrentPlayer().checkIntroOutroSkip() }
+        setGSYVideoProgressListener { _, _, _, _ ->
+            getCurrentPlayer().apply {
+                checkIntroOutroSkip()
+                refreshEpisodeNavigation()
+            }
+        }
         ivMute?.setOnClickListener {
             isMuted = !isMuted
             getGSYVideoManager().player?.setNeedMute(isMuted)
@@ -1073,6 +1098,8 @@ class VideoPlayer: StandardGSYVideoPlayer {
         // R3：上一集
         prevEpisode = findViewById(R.id.prev_episode)
         prevEpisode?.setOnClickListener {
+            refreshEpisodeNavigation()
+            if (prevEpisode?.isEnabled != true) return@setOnClickListener
             if (!VideoPlay.episodes.isNullOrEmpty()) {
                 VideoPlay.upDurIndex(-1, this)
             } else {
@@ -1098,7 +1125,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
         rightRotate = findViewById(R.id.right_rotate)
         rightRotate?.setOnClickListener { toggleScreenRotation() }
         val activity = CommonUtil.scanForActivity(context) as? VideoPlayerActivity
-        findViewById<View>(R.id.player_float)?.setOnClickListener { activity?.onFloatWindow() }
+        findViewById<View>(R.id.player_float)?.setOnClickListener { activity?.startFloatingWindow() }
         findViewById<View>(R.id.player_favorite)?.setOnClickListener {
             activity?.onPlayerFavoriteClicked()
         }
@@ -1126,18 +1153,15 @@ class VideoPlayer: StandardGSYVideoPlayer {
         widgetVolume = findViewById(R.id.widget_volume)
         widgetSpeed = findViewById(R.id.widget_speed)
         widgetError = findViewById(R.id.widget_error)
-        if (VideoPlay.episodes.isNullOrEmpty() && VideoPlay.rssEpisodes.isNullOrEmpty()) {
-            episodeList?.visibility = GONE
-            btnNext?.visibility = GONE
-            prevEpisode?.visibility = GONE
-            return
-        }
+        refreshEpisodeNavigation()
         episodeList?.setOnClickListener {
             if (mHadPlay && !isChanging) {
                 showEpisodeDialog()
             }
         }
         btnNext?.setOnClickListener {
+            refreshEpisodeNavigation()
+            if (btnNext?.isEnabled != true) return@setOnClickListener
             if (!VideoPlay.episodes.isNullOrEmpty()) {
                 VideoPlay.upDurIndex(1, this)
             } else {
@@ -1557,6 +1581,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
             gsyVideoPlayer.isMuted = isMuted
             gsyVideoPlayer.updateMuteIcon()
             gsyVideoPlayer.refreshPlayerFavoriteState()
+            gsyVideoPlayer.refreshEpisodeNavigation()
             // video-player-theme-unify：全屏新建实例同步应用主题高亮
             gsyVideoPlayer.applyThemeColors()
             // 全屏切换标记：新实例 onPrepared 时据此跳过跳过标记重置、重建定时器

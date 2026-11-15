@@ -79,7 +79,7 @@ class RoundedTagBarView @JvmOverloads constructor(
 
     /**
      * 应用二级标签栏样式：栏背景始终透明。
-     * 选中项渲染为整圆角胶囊（强调色半透明填充 + 强调色文字），
+     * 选中项渲染为整圆角胶囊（黑色填充 + 白色文字），
      * 未选中项无背景仅显示次要色文字（保留无边框水波纹反馈），
      * 未选中文字颜色逻辑与首页排行榜多分类 Tab（pageSecondaryTextColor）一致。
      *
@@ -92,9 +92,8 @@ class RoundedTagBarView @JvmOverloads constructor(
         // 始终透明背景，不使用 TopBarConfig 的颜色/透明度作为栏背景
         background = null
         setPadding(0, 0, 0, 0)
-        // Match homepage source tabs: text emphasis and a bottom indicator.
-        adapter.selectedBackgroundColor = android.graphics.Color.TRANSPARENT
-        adapter.selectedTextColor = context.accentColor
+        adapter.selectedBackgroundColor = context.primaryColor
+        adapter.selectedTextColor = android.graphics.Color.WHITE
         adapter.normalTextColor = resolveUnselectedTextColor(context)
         adapter.notifyDataSetChanged()
     }
@@ -221,7 +220,7 @@ class RoundedTagBarView @JvmOverloads constructor(
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): TagViewHolder {
             val textView = LayoutInflater.from(parent.context)
                 .inflate(R.layout.item_bookshelf_group_tag, parent, false) as TextView
-            // 文本颜色通过 isSelected 状态切换（选中强调色/未选中次要色）
+            // 文本颜色通过 isSelected 状态切换（选中白色/未选中次要色）
             textView.setTextColor(
                 ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
@@ -234,8 +233,9 @@ class RoundedTagBarView @JvmOverloads constructor(
         override fun onBindViewHolder(holder: TagViewHolder, position: Int) {
             val item = items[position]
             val selected = position == selectedIndex
-            val horizontalPadding = (16 * resources.displayMetrics.density).toInt()
-            holder.textView.setPadding(horizontalPadding, 0, horizontalPadding, 0)
+            val horizontalPadding = (12 * resources.displayMetrics.density).toInt()
+            val verticalPadding = (4 * resources.displayMetrics.density).toInt()
+            holder.textView.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
             holder.textView.setTextColor(
                 ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
@@ -246,7 +246,6 @@ class RoundedTagBarView @JvmOverloads constructor(
             holder.textView.typeface = holder.textView.context.uiTypeface()
             holder.textView.alpha = item.alpha
             holder.textView.isSelected = selected
-            // Match homepage source tabs: selected text and a bottom indicator.
             holder.textView.background = if (selected) {
                 buildSelectedItemBackground()
             } else {
@@ -271,23 +270,12 @@ class RoundedTagBarView @JvmOverloads constructor(
         override fun getItemCount(): Int = items.size
     }
 
-    /**
-     * Homepage-style underline indicator beneath the selected label.
-     */
+    /** Selected labels use a filled capsule matching the homepage categories. */
     private fun buildSelectedItemBackground(): Drawable {
-        val density = resources.displayMetrics.density
-        val background = GradientDrawable().apply {
+        return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(android.graphics.Color.TRANSPARENT)
-        }
-        val indicator = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(context.accentColor)
-        }
-        return android.graphics.drawable.LayerDrawable(arrayOf(background, indicator)).apply {
-            setLayerGravity(1, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
-            setLayerWidth(1, (44 * density).toInt())
-            setLayerHeight(1, (2 * density).toInt())
+            setColor(adapter.selectedBackgroundColor)
+            cornerRadius = resources.displayMetrics.density * 50
         }
     }
 

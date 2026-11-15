@@ -144,7 +144,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     companion object {
         const val EXTRA_PREPARE_BOOK_INFO = "prepareBookInfo"
+        const val EXTRA_RESTORE_FULLSCREEN = "restoreFullscreen"
     }
+
+    private var pendingRestoreFullscreen = false
+    private var restoringFloatingPlayer = false
 
     override val binding by viewBinding(ActivityVideoPlayerBinding::inflate)
     override val viewModel by viewModels<VideoPlayerViewModel>()
@@ -376,6 +380,14 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     @OptIn(UnstableApi::class)
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.chapters.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val width = (view.width - view.paddingLeft - view.paddingRight) / 4 - 8.dpToPx()
+            if (width > 0 && binding.btnFavorite.layoutParams.width != width) {
+                binding.btnFavorite.layoutParams = binding.btnFavorite.layoutParams.apply {
+                    this.width = width
+                }
+            }
+        }
         initPlayerOverlay()
         initFromIntent(intent)
         onBackPressedDispatcher.addCallback(this) {
@@ -402,10 +414,44 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         val newIntent = intent
         val isNewPlayRequest = intent.getBooleanExtra("isNew", true)
         if (!isNewPlayRequest) {
-            // 悬浮窗/PiP 恢复会话（VideoPlayService 传 isNew=false）：继续原视频，禁止重置
-            AppLog.put("VideoPlayerActivity onNewIntent: isNew=false 悬浮窗恢复, skip reset")
+            pendingRestoreFullscreen = intent.getBooleanExtra(EXTRA_RESTORE_FULLSCREEN, false)
+            restoringFloatingPlayer = true
+            (VideoPlay.videoManager.listener() as? io.legado.app.help.gsyVideo.FloatingPlayer)?.let {
+                VideoPlay.savePlayState(it)
+                it.needDestroy = false
+            }
+            VideoPlay.isResumeFromFloat = true
+            val requestedLayoutMode = intent.getIntExtra(PreferKey.layoutModeOverride, -1)
+                .takeIf { it in 0..1 }
+            val switchedToImmersive = requestedLayoutMode == 0 && !useViewPagerMode
+            if (requestedLayoutMode == 0) {
+                layoutModeOverride = 0
+                if (switchedToImmersive) {
+                    switchLayoutMode(0, persistPreference = false)
+                    currentFragment?.playerView?.post {
+                        if (!isFinishing && !isDestroyed) {
+                            completeFloatingPlayerRestore()
+                        }
+                    }
+                }
+            }
+            if (!switchedToImmersive) {
+                if (useViewPagerMode) {
+                    currentFragment?.deactivatePlayer()
+                    currentFragment?.activatePlayer()
+                    currentFragment?.playerView?.post {
+                        if (!isFinishing && !isDestroyed) {
+                            completeFloatingPlayerRestore()
+                        }
+                    }
+                } else {
+                    startLegacyPlayback()
+                }
+            }
             return
         }
+        pendingRestoreFullscreen = false
+        restoringFloatingPlayer = false
         AppLog.put("VideoPlayerActivity onNewIntent: singleTask 收到新播放意图, reset old session")
         // 1. 取消进行中的 initSource 协程
         if (initSourceJob?.isActive == true) {
@@ -461,6 +507,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      */
     private fun initFromIntent(intent: Intent) {
         isNew = intent.getBooleanExtra("isNew", true)
+        restoringFloatingPlayer = !isNew
+        pendingRestoreFullscreen = !isNew && intent.getBooleanExtra(EXTRA_RESTORE_FULLSCREEN, false)
         // video-merged-detail-play：会话级布局模式覆盖（0=沉浸，1=合并），非法值按未传
         layoutModeOverride = intent.getIntExtra(PreferKey.layoutModeOverride, -1).takeIf { it in 0..1 } ?: -1
         // Size and reveal the merged page before source initialization can suspend.
@@ -659,6 +707,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
         } else {
             // 非新建恢复：从悬浮窗返回，按 layoutMode 分发布局（D3）
+            (VideoPlay.videoManager.listener() as? io.legado.app.help.gsyVideo.FloatingPlayer)?.let {
+                VideoPlay.savePlayState(it)
+                it.needDestroy = false
+            }
             VideoPlay.isResumeFromFloat = true
             // T1.13 方案B: 恢复场景也保存状态快照
             snapshotVideoUrl = VideoPlay.videoUrl
@@ -739,6 +791,34 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 delay(10_000)
                 savePlayHistory()
             }
+        }
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        restoreFullscreenIfReady()
+    }
+
+    private fun completeFloatingPlayerRestore() {
+        if (!restoringFloatingPlayer || VideoPlay.isResumeFromFloat) return
+        restoringFloatingPlayer = false
+        // The destination owns the surface/listener before the overlay is released.
+        stopService(Intent(this, VideoPlayService::class.java))
+        restoreFullscreenIfReady()
+    }
+
+    private fun restoreFullscreenIfReady() {
+        if (!pendingRestoreFullscreen || restoringFloatingPlayer ||
+            !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return
+        val activePlayer = if (useViewPagerMode) currentFragment?.playerView else playerView
+        activePlayer ?: return
+        activePlayer.post {
+            if (!pendingRestoreFullscreen || restoringFloatingPlayer || isFinishing || isDestroyed ||
+                !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return@post
+            // Consume before rotating; onPrepared is optional when cloning a prepared player.
+            pendingRestoreFullscreen = false
+            intent.removeExtra(EXTRA_RESTORE_FULLSCREEN)
+            if (!isFullScreen) toggleFullScreen()
         }
     }
 
@@ -904,13 +984,14 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      * （悬浮窗恢复走 clonePlayState 链；书源/文章/集数三分支与沉浸式一致）
      */
     private fun startLegacyPlayback() {
-        val pv = playerView
+        val pv = playerView.getCurrentPlayer()
         if (VideoPlay.isResumeFromFloat) {
             // D3：悬浮窗恢复——clonePlayState 链与 VideoPlayService 同构（R10）
             VideoPlay.isResumeFromFloat = false
             VideoPlay.clonePlayState(pv)
             pv.setSurfaceToPlay()
             pv.startAfterPrepared()
+            completeFloatingPlayerRestore()
         } else {
             when {
                 VideoPlay.book != null -> VideoPlay.startPlay(pv)
@@ -1119,13 +1200,15 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      * @return true = 实际执行了切换；false = 目标模式与当前一致，未做任何事
      *（供 F182 过渡反馈判断是否要亮提示，避免同模式点击也闪一条提示）
      */
-    internal fun switchLayoutMode(targetMode: Int): Boolean {
+    internal fun switchLayoutMode(targetMode: Int, persistPreference: Boolean = true): Boolean {
         val normalized = if (targetMode == 1) 1 else 0
         val currentMode = if (useViewPagerMode) 0 else 1
         if (normalized == currentMode) return false
-        VideoPlay.layoutMode = normalized
-        // video-merged-detail-play：用户主动切换，清除会话级覆盖并持久化偏好
-        layoutModeOverride = -1
+        if (persistPreference) {
+            VideoPlay.layoutMode = normalized
+            // video-merged-detail-play：用户主动切换，清除会话级覆盖并持久化偏好
+            layoutModeOverride = -1
+        }
         AppLog.put("VideoPlayerActivity switchLayoutMode: $currentMode -> $normalized")
         // 2：互斥标记（savePlayHistory/内部链短路，防切换窗口串写）
         VideoPlay.layoutSwitchInProgress = true
@@ -1282,6 +1365,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         // 激活播放（playerView 可能未就绪，由 onFragmentViewReady 兜底）
         if (fragment?.playerView != null) {
             fragment.activatePlayer()
+            completeFloatingPlayerRestore()
         }
         // 更新标题（适配文章模式/集数模式/书源单页模式）
         composeTitle = when {
@@ -1314,6 +1398,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             // 首次就绪：激活播放
             currentFragment = fragment
             fragment.activatePlayer()
+            completeFloatingPlayerRestore()
         } else if (position == binding.viewPager.currentItem) {
             // 当前页 Fragment 重建（如回收后恢复）：也需要激活播放
             // Bug修复：原代码只设置 currentFragment 不调用 activatePlayer，
@@ -1321,6 +1406,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             // onFragmentViewReady 兜底也不激活播放，视频永远不播放
             currentFragment = fragment
             fragment.activatePlayer()
+            completeFloatingPlayerRestore()
         }
         // 非当前页 Fragment 就绪：不做操作，等 onPageSelected 触发
     }
@@ -2501,7 +2587,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
-    private fun startFloatingWindow() {
+    fun startFloatingWindow() {
         // add-dlna-cast REQ-08 / AD-07：**禁止第二路播放**。
         // 悬浮窗会让本地播放恢复，与正在投屏的那一路叠加 → 流量翻倍 + 声音重叠。
         // 因此先终止投屏会话（含向设备下发 Stop 与代理注销），再走本地播放。
@@ -2510,9 +2596,9 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             toastOnUi(getString(R.string.dlna_stopped_local_paused))
         }
         val activePlayer = if (useViewPagerMode) {
-            currentFragment?.playerView ?: return
+            currentFragment?.playerView?.getCurrentPlayer() ?: return
         } else {
-            playerView
+            playerView.getCurrentPlayer()
         }
         // 悬浮窗Bug修复：在启动服务之前先检查 overlay 权限
         // 之前在 VideoPlayService.onStartCommand() 中检查权限，
@@ -2629,6 +2715,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
 
         observeEvent<ArrayList<Int>>(EventBus.UP_VIDEO_INFO) {
+            playerView.getCurrentPlayer().refreshEpisodeNavigation()
+            currentFragment?.playerView?.getCurrentPlayer()?.refreshEpisodeNavigation()
             AppLog.put("VideoRoutesDiag UP_VIDEO_INFO: viewPager=$useViewPagerMode, articles=${VideoPlay.rssArticles?.size}, routes=${VideoPlay.rssRoutes?.size}, episodes=${VideoPlay.rssEpisodes?.size}, book=${if (VideoPlay.book != null) 1 else 0}")
             // video-live-favorite-fix AD-03：切文章/切线路/切集后收藏状态同步刷新
             // （保证上滑到下一篇直播后星标可见性与实心态立即正确，而非等到下次收藏动作）

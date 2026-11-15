@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.widget.PopupMenu
@@ -101,6 +102,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.longSnackbar
@@ -218,7 +220,7 @@ class BookInfoActivity :
     private var readRecordJob: Job? = null
     private val readRecordRepository by lazy { ReadRecordRepository(appDb.readRecordDao) }
     private val infoMenu by lazy {
-        PopupMenu(this, binding.titleBar).apply {
+        PopupMenu(this, binding.ivInfoMenu, Gravity.END).apply {
             menuInflater.inflate(R.menu.book_info, menu)
             setOnMenuItemClickListener { onCompatOptionsItemSelected(it) }
         }
@@ -274,9 +276,11 @@ class BookInfoActivity :
 
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.topBarRow.applyStatusBarPadding(withInitialPadding = true)
         binding.titleBar.setBackgroundResource(R.color.transparent)
         binding.titleBar.refreshTopBarContentColor()
         binding.ivInfoMenu?.setOnClickListener { infoMenu.show() }
+        binding.ivInfoShare?.setOnClickListener { shareBook() }
         binding.flAction.applyNavigationBarPadding(withInitialPadding = true)
         binding.refreshLayout?.setColorSchemeColors(accentColor)
         binding.arcView?.setBgColor(backgroundColor)
