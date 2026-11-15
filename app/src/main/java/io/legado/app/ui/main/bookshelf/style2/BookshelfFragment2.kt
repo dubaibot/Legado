@@ -385,7 +385,7 @@ class BookshelfFragment2() :
                 tagBar?.submitItems(
                     currentTagList.map { tag ->
                         RoundedTagBarView.Item(
-                            BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
+                            tag.ifBlank { allText },
                         )
                     },
                     selectedIndex,

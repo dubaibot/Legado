@@ -721,7 +721,7 @@ private fun HomeContent(
                             bottom = 8.dp + with(androidx.compose.ui.platform.LocalDensity.current) { bottomPaddingPx.toDp() },
                         ),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(37.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         // spider 源返回列表可能含重复 id（同片多入口/翻页重叠），
                         // Lazy key 全局唯一要求下去重保序

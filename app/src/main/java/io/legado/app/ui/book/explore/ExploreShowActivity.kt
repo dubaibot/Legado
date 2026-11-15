@@ -215,6 +215,10 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
 
     private fun initRecyclerView(isGrid: Boolean) {
         isGridStyle = isGrid
+        val horizontalPadding = if (isGrid) 4.dpToPx() else 0
+        binding.recyclerView.run {
+            setPadding(horizontalPadding, paddingTop, horizontalPadding, paddingBottom)
+        }
         if (isGrid) {
             val gridLayoutManager = GridLayoutManager(this, 3)
             gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
@@ -368,6 +372,7 @@ class ExploreShowActivity : VMBaseActivity<ActivityExploreShowBinding, ExploreSh
                 R.layout.item_quick_group, container, false
             ) as TextView
             tv.text = names[index]
+            tv.background = null
             tv.isSelected = current == node
             tv.setTextColor(if (current == node) selectedColor else contentColor)
             tv.setOnClickListener {

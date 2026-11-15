@@ -380,14 +380,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     @OptIn(UnstableApi::class)
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.chapters.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-            val width = (view.width - view.paddingLeft - view.paddingRight) / 4 - 8.dpToPx()
-            if (width > 0 && binding.btnFavorite.layoutParams.width != width) {
-                binding.btnFavorite.layoutParams = binding.btnFavorite.layoutParams.apply {
-                    this.width = width
-                }
-            }
-        }
         initPlayerOverlay()
         initFromIntent(intent)
         onBackPressedDispatcher.addCallback(this) {
@@ -2403,16 +2395,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     private fun setupPlayerView() {
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
-        val rootPaddingTop = binding.root.paddingTop
-        val rootPaddingBottom = binding.root.paddingBottom
-        val availableHeight = displayMetrics.heightPixels - rootPaddingTop - rootPaddingBottom
         val layoutParams = playerView.layoutParams
         layoutParams.width = screenWidth
-        val videoWidth = playerView.currentVideoWidth
-        val videoHeight = playerView.currentVideoHeight
-        val height = if (videoWidth > 0 && videoHeight > 0) (screenWidth * videoHeight / videoWidth) else (screenWidth * 9 / 16) //默认16:9
-        //高度不超过可用区域的一半
-        layoutParams.height = if (height < availableHeight / 2) height else availableHeight / 2
+        // Keep the merged page stable when the video's actual dimensions arrive.
+        layoutParams.height = screenWidth * 9 / 16
         playerView.layoutParams = layoutParams
         playerView.isNeedOrientationUtils = false //关闭自带的屏幕方向控制
         // video-player-dual-layout W2-B1（用户反馈①）：全屏按钮固定在底部控制栏时间行右侧
@@ -2430,12 +2416,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                     if (VideoPlay.lockCurScreen &&  !player.getLockCurScreen()) {
                         player.lockTouchLogic()
                     }
-                    //根据实际视频比例再次调整
+                    // Actual dimensions determine fullscreen orientation only.
                     val videoWidth = playerView.currentVideoWidth
                     val videoHeight = playerView.currentVideoHeight
                     if (videoWidth > 0 && videoHeight > 0) {
-                        val layoutParams = playerView.layoutParams
-                        val parentWidth = playerView.width
                         val aspectRatio = videoHeight.toFloat() / videoWidth.toFloat()
                         val isPortraitVideo = if (aspectRatio > 1.2) true else false
                         VideoPlay.isPortraitVideo = isPortraitVideo
@@ -2448,12 +2432,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                             toggleFullScreen()
                             return@post
                         }
-                        val height = (parentWidth * aspectRatio).toInt()
-                        val displayMetrics = resources.displayMetrics
-                        val screenHeight = displayMetrics.heightPixels
-                        //高度不超过一半屏幕
-                        layoutParams.height = if (height < screenHeight / 2) height else screenHeight / 2
-                        playerView.layoutParams = layoutParams
                     }
                 }
             }

@@ -201,6 +201,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
     private fun updateSkipButtons() {
         introSkip?.apply {
             visibility = VISIBLE
+            setTextColor(if (VideoPlay.introSkipSeconds > 0) android.graphics.Color.YELLOW else android.graphics.Color.BLACK)
             contentDescription = context.getString(R.string.video_intro_skip_btn) +
                 if (VideoPlay.introSkipSeconds > 0) " " + context.getString(
                     R.string.video_seconds_format, VideoPlay.introSkipSeconds
@@ -209,6 +210,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
         outroSkip?.apply {
             visibility = VISIBLE
+            setTextColor(if (VideoPlay.outroSkipSeconds > 0) android.graphics.Color.YELLOW else android.graphics.Color.BLACK)
             contentDescription = context.getString(R.string.video_outro_skip_btn) +
                 if (VideoPlay.outroSkipSeconds > 0) " " + context.getString(
                     R.string.video_seconds_format, VideoPlay.outroSkipSeconds
@@ -243,6 +245,17 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
         updateSkipButtons()
         showOverlayTip(context.getString(R.string.video_seconds_format, seconds), 2000)
+    }
+
+    private fun clearSkipPosition(intro: Boolean) {
+        if (intro) {
+            VideoPlay.introSkipSeconds = 0
+            VideoPlay.introSkipped = false
+        } else {
+            VideoPlay.outroSkipSeconds = 0
+            VideoPlay.outroSkipped = false
+        }
+        updateSkipButtons()
     }
 
     /** 片头跳过：跳转到片头结束点 */
@@ -1109,8 +1122,16 @@ class VideoPlayer: StandardGSYVideoPlayer {
         // Tapping records the current position for the current video.
         introSkip = findViewById(R.id.intro_skip)
         introSkip?.setOnClickListener { markSkipPosition(true) }
+        introSkip?.setOnLongClickListener {
+            clearSkipPosition(true)
+            true
+        }
         outroSkip = findViewById(R.id.outro_skip)
         outroSkip?.setOnClickListener { markSkipPosition(false) }
+        outroSkip?.setOnLongClickListener {
+            clearSkipPosition(false)
+            true
+        }
         updateSkipButtons()
         // R3：清晰度切换
         videoQualityBtn = findViewById(R.id.video_quality)

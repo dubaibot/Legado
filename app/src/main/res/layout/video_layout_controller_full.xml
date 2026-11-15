@@ -194,9 +194,11 @@
             android:id="@+id/title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_centerInParent="true"
-            android:layout_marginHorizontal="196dp"
-            android:gravity="center"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="200dp"
+            android:gravity="start|center_vertical"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@android:color/white"
@@ -204,6 +206,7 @@
             tools:ignore="RtlSymmetry" />
 
         <LinearLayout
+            android:id="@+id/top_action_container"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:layout_alignParentEnd="true"

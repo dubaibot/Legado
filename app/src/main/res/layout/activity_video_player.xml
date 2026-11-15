@@ -337,6 +337,8 @@
                                     android:id="@+id/btn_favorite"
                                     android:layout_width="wrap_content"
                                     android:layout_height="36dp"
+                                    android:layout_marginBottom="8dp"
+                                    android:ellipsize="none"
                                     android:minHeight="0dp"
                                     android:minWidth="0dp"
                                     android:background="@drawable/bg_video_shelf"

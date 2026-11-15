@@ -3,7 +3,6 @@ package io.legado.app.ui.widget
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -17,7 +16,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.uiTypeface
 
 /**
@@ -79,7 +77,7 @@ class RoundedTagBarView @JvmOverloads constructor(
 
     /**
      * 应用二级标签栏样式：栏背景始终透明。
-     * 选中项渲染为整圆角胶囊（黑色填充 + 白色文字），
+     * 选中项仅使用强调色文字标记，
      * 未选中项无背景仅显示次要色文字（保留无边框水波纹反馈），
      * 未选中文字颜色逻辑与首页排行榜多分类 Tab（pageSecondaryTextColor）一致。
      *
@@ -92,8 +90,7 @@ class RoundedTagBarView @JvmOverloads constructor(
         // 始终透明背景，不使用 TopBarConfig 的颜色/透明度作为栏背景
         background = null
         setPadding(0, 0, 0, 0)
-        adapter.selectedBackgroundColor = context.primaryColor
-        adapter.selectedTextColor = android.graphics.Color.WHITE
+        adapter.selectedTextColor = context.accentColor
         adapter.normalTextColor = resolveUnselectedTextColor(context)
         adapter.notifyDataSetChanged()
     }
@@ -213,14 +210,13 @@ class RoundedTagBarView @JvmOverloads constructor(
 
     private inner class TagAdapter : RecyclerView.Adapter<TagViewHolder>() {
 
-        var selectedBackgroundColor: Int = context.primaryColor
         var selectedTextColor: Int = context.accentColor
         var normalTextColor: Int = ThemeStore.textColorSecondary(context)
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): TagViewHolder {
             val textView = LayoutInflater.from(parent.context)
                 .inflate(R.layout.item_bookshelf_group_tag, parent, false) as TextView
-            // 文本颜色通过 isSelected 状态切换（选中白色/未选中次要色）
+            // 文本颜色通过 isSelected 状态切换（选中强调色/未选中次要色）
             textView.setTextColor(
                 ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
@@ -246,11 +242,7 @@ class RoundedTagBarView @JvmOverloads constructor(
             holder.textView.typeface = holder.textView.context.uiTypeface()
             holder.textView.alpha = item.alpha
             holder.textView.isSelected = selected
-            holder.textView.background = if (selected) {
-                buildSelectedItemBackground()
-            } else {
-                buildUnselectedItemBackground()
-            }
+            holder.textView.background = buildUnselectedItemBackground()
             holder.textView.setOnClickListener {
                 val bindingPosition = holder.bindingAdapterPosition
                 if (bindingPosition != RecyclerView.NO_POSITION) {
@@ -268,15 +260,6 @@ class RoundedTagBarView @JvmOverloads constructor(
         }
 
         override fun getItemCount(): Int = items.size
-    }
-
-    /** Selected labels use a filled capsule matching the homepage categories. */
-    private fun buildSelectedItemBackground(): Drawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(adapter.selectedBackgroundColor)
-            cornerRadius = resources.displayMetrics.density * 50
-        }
     }
 
     /** 未选中标签背景：无描边无填充，仅保留无边框水波纹作为点击反馈（解析结果缓存，bind 时仅创建新实例） */
