@@ -1,12 +1,16 @@
 package io.legado.app.help.gsyVideo
 
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.content.res.ColorStateList
+import android.media.MediaScannerConnection
+import android.graphics.Bitmap
 import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
+import android.graphics.Matrix
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.Gravity
@@ -16,7 +20,11 @@ import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.ImageView
+import android.widget.SeekBar
 import android.widget.TextView
 import com.shuyu.gsyvideoplayer.listener.LockClickListener
 import com.shuyu.gsyvideoplayer.utils.CommonUtil
@@ -29,6 +37,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.video.ImageEnhanceController
+import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.model.VideoPlay
 import io.legado.app.utils.postEvent
@@ -44,6 +53,7 @@ import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
 import master.flame.danmaku.ui.widget.DanmakuView
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 
 class VideoPlayer: StandardGSYVideoPlayer {
     constructor(context: Context?, fullFlag: Boolean?) : super(context, fullFlag) //必须的,全屏时依靠这个构建知道获取全屏布局
@@ -71,7 +81,333 @@ class VideoPlayer: StandardGSYVideoPlayer {
     internal var playSpeed: Float = 1.0f
     private var btnNext: ImageView? = null
     private var ivMute: ImageView? = null
+    private var prevEpisode: ImageView? = null
+    private var introSkip: TextView? = null
+    private var outroSkip: TextView? = null
+    private var videoQualityBtn: TextView? = null
+    private var rightLock: ImageView? = null
+    private var rightRotate: ImageView? = null
     private var isMuted = false
+
+    // FongMi 风格浮动 widget
+    private var widgetContainer: ViewGroup? = null
+    private var widgetSeek: ViewGroup? = null
+    private var widgetSeekTime: TextView? = null
+    private var widgetBright: ViewGroup? = null
+    private var widgetVolume: ViewGroup? = null
+    private var widgetSpeed: ImageView? = null
+    private var widgetError: View? = null
+
+    /** R3：画面镜像状态（由 VideoPlay 持久化） */
+    var isMirrored = VideoPlay.mirrorOnStart
+        set(value) {
+            field = value
+            VideoPlay.mirrorOnStart = value
+            applyMirror()
+        }
+
+    /** 切换画面镜像 */
+    fun toggleMirror() {
+        isMirrored = !isMirrored
+    }
+
+    /** 对渲染视图应用镜像变换（仅横向翻转） */
+    fun applyMirror() {
+        val textureView = mTextureView ?: return
+        val matrix = Matrix().apply {
+            setScale(if (isMirrored) -1f else 1f, 1f, textureView.width / 2f, textureView.height / 2f)
+        }
+        textureView.setTransform(matrix)
+    }
+
+    /** R3：定时关闭（分钟，0=关闭，-1=播放完毕），由 VideoPlay 持久化 */
+    var sleepTimerMinutes: Int = VideoPlay.sleepTimerMinutes
+        set(value) {
+            field = value
+            VideoPlay.sleepTimerMinutes = value
+        }
+
+    private var sleepTimerRunnable: Runnable? = null
+
+    /** 全屏切换标记：新实例创建时设为 true，onPrepared 中据此跳过跳过标记重置并重建定时器 */
+    var isFullscreenSwitch: Boolean = false
+
+    /** 设置定时关闭（minutes: 0=关闭, 15/30/60/90=分钟, -1=播放完毕） */
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerMinutes = minutes
+        if (minutes in 1..9999) {
+            VideoPlay.sleepTimerStartTime = System.currentTimeMillis()
+        }
+        setupSleepTimer()
+    }
+
+    /** 清除定时关闭并恢复播放 */
+    fun clearSleepTimer() {
+        sleepTimerRunnable?.let { removeCallbacks(it) }
+        sleepTimerRunnable = null
+        if (sleepTimerMinutes != 0) {
+            sleepTimerMinutes = 0
+        }
+        VideoPlay.sleepTimerStartTime = 0L
+    }
+
+    private fun setupSleepTimer() {
+        sleepTimerRunnable?.let { removeCallbacks(it) }
+        sleepTimerRunnable = null
+        when (sleepTimerMinutes) {
+            -1 -> showOverlayTip(context.getString(R.string.video_sleep_timer_until_end), 2000)
+            in 1..9999 -> {
+                showOverlayTip(
+                    context.getString(R.string.video_sleep_timer_set, sleepTimerMinutes),
+                    2000
+                )
+                // 计算剩余时间：支持全屏切换后新实例重建定时器时继续倒计时
+                val totalDuration = sleepTimerMinutes * 60L * 1000L
+                val startTime = VideoPlay.sleepTimerStartTime
+                val remaining = if (startTime > 0) {
+                    val elapsed = System.currentTimeMillis() - startTime
+                    (totalDuration - elapsed).coerceAtLeast(0L)
+                } else {
+                    totalDuration
+                }
+                if (remaining <= 0) {
+                    fireSleepTimer()
+                    return
+                }
+                val runnable = Runnable { fireSleepTimer() }
+                sleepTimerRunnable = runnable
+                postDelayed(runnable, remaining)
+            }
+            else -> showOverlayTip(context.getString(R.string.video_sleep_timer_off), 2000)
+        }
+    }
+
+    private fun fireSleepTimer() {
+        sleepTimerRunnable = null
+        VideoPlay.sleepTimerStartTime = 0L
+        showOverlayTip(context.getString(R.string.video_sleep_timer_finished), 3000)
+        getGSYVideoManager().player?.pause()
+    }
+
+    /** R3：片头/片尾自动跳过（每段仅触发一次，由 VideoPlay 持久化，全屏切换不丢失） */
+    private val introSkipped: Boolean get() = VideoPlay.introSkipped
+    private val outroSkipped: Boolean get() = VideoPlay.outroSkipped
+
+    private fun validSkipRange(): Boolean = IntroOutroSkipPolicy.isValid(
+        getDuration(), VideoPlay.introSkipSeconds, VideoPlay.outroSkipSeconds,
+        VideoPlay.isLiveStream(mOriginUrl.orEmpty())
+    )
+
+    private fun updateSkipButtons() {
+        introSkip?.apply {
+            visibility = VISIBLE
+            contentDescription = context.getString(R.string.video_intro_skip_btn) +
+                if (VideoPlay.introSkipSeconds > 0) " " + context.getString(
+                    R.string.video_seconds_format, VideoPlay.introSkipSeconds
+                ) else ""
+            text = context.getString(R.string.video_intro_skip_btn)
+        }
+        outroSkip?.apply {
+            visibility = VISIBLE
+            contentDescription = context.getString(R.string.video_outro_skip_btn) +
+                if (VideoPlay.outroSkipSeconds > 0) " " + context.getString(
+                    R.string.video_seconds_format, VideoPlay.outroSkipSeconds
+                ) else ""
+            text = context.getString(R.string.video_outro_skip_btn)
+        }
+    }
+
+    private fun markSkipPosition(intro: Boolean) {
+        if (VideoPlay.isLiveStream(mOriginUrl.orEmpty())) {
+            showOverlayTip(context.getString(R.string.video_skip_unavailable), 2000)
+            return
+        }
+        val seconds = IntroOutroSkipPolicy.markedSeconds(
+            getDuration(), getCurrentPositionWhenPlaying(), intro
+        ) ?: run {
+            showOverlayTip(context.getString(R.string.video_skip_unavailable), 2000)
+            return
+        }
+        val introSeconds = if (intro) seconds else VideoPlay.introSkipSeconds
+        val outroSeconds = if (intro) VideoPlay.outroSkipSeconds else seconds
+        if (!IntroOutroSkipPolicy.isValid(getDuration(), introSeconds, outroSeconds, false)) {
+            showOverlayTip(context.getString(R.string.video_skip_unavailable), 2000)
+            return
+        }
+        if (intro) {
+            VideoPlay.introSkipSeconds = seconds
+            VideoPlay.introSkipped = false
+        } else {
+            VideoPlay.outroSkipSeconds = seconds
+            VideoPlay.outroSkipped = false
+        }
+        updateSkipButtons()
+        showOverlayTip(context.getString(R.string.video_seconds_format, seconds), 2000)
+    }
+
+    /** 片头跳过：跳转到片头结束点 */
+    fun skipIntro() {
+        if (VideoPlay.introSkipSeconds <= 0) {
+            showOverlayTip(context.getString(R.string.video_intro_skip_disabled), 2000)
+            return
+        }
+        val target = VideoPlay.introSkipSeconds * 1000L
+        if (!mHadPlay || !validSkipRange()) {
+            showOverlayTip(context.getString(R.string.video_skip_unavailable), 2000)
+            return
+        }
+        if (getCurrentPositionWhenPlaying() >= target) return
+        VideoPlay.introSkipped = true
+        seekTo(target)
+        showOverlayTip(context.getString(R.string.video_intro_skipped), 2000)
+    }
+
+    /** 片尾跳过：跳转到结尾 */
+    fun skipOutro() {
+        if (VideoPlay.outroSkipSeconds <= 0) {
+            showOverlayTip(context.getString(R.string.video_outro_skip_disabled), 2000)
+            return
+        }
+        if (!mHadPlay || outroSkipped || !validSkipRange()) {
+            showOverlayTip(context.getString(R.string.video_skip_unavailable), 2000)
+            return
+        }
+        VideoPlay.outroSkipped = true
+        showOverlayTip(context.getString(R.string.video_outro_skipped), 2000)
+        // Use the same completion callback as natural playback end (including RSS queues).
+        onAutoCompletion()
+    }
+
+    /** 检查片头/片尾自动跳过（由进度监听器驱动） */
+    fun checkIntroOutroSkip() {
+        updateSkipButtons()
+        refreshPlayerFavoriteState()
+        if (mCurrentState != CURRENT_STATE_PLAYING || isChanging || mChangePosition ||
+            !validSkipRange()
+        ) return
+        val current = getCurrentPositionWhenPlaying()
+        val duration = getDuration()
+        if (current < 0 || current >= duration) return
+        // Once the intro has been passed, seeking back must not trigger it again.
+        if (!introSkipped && current >= VideoPlay.introSkipSeconds * 1000L) {
+            VideoPlay.introSkipped = true
+        }
+        // 片头跳过：播放位置处于片头区间时，自动跳转到片头结束点
+        if (!introSkipped && VideoPlay.introSkipSeconds > 0 &&
+            current < VideoPlay.introSkipSeconds * 1000L
+        ) {
+            skipIntro()
+            return
+        }
+        // 片尾跳过：播放位置进入片尾区间时，自动跳转到结尾
+        if (!outroSkipped && VideoPlay.outroSkipSeconds > 0 &&
+            current >= duration - VideoPlay.outroSkipSeconds * 1000L
+        ) {
+            skipOutro()
+        }
+    }
+
+    /** 新视频加载时重置跳过标记（仅换集时调用，全屏切换不调用） */
+    fun resetSkipFlags() {
+        VideoPlay.introSkipped = false
+        VideoPlay.outroSkipped = false
+    }
+
+    /** R3：设置视频清晰度（0=自动, 1=1080p, 2=720p, 3=480p, 4=360p） */
+    fun setVideoQuality(quality: Int) {
+        VideoPlay.videoQuality = quality
+        getGSYVideoManager().setVideoQuality(quality)
+        showOverlayTip(
+            context.getString(R.string.video_quality_label, qualityLabel(quality)),
+            2000
+        )
+    }
+
+    private fun qualityLabel(quality: Int): String = when (quality) {
+        1 -> context.getString(R.string.video_quality_1080p)
+        2 -> context.getString(R.string.video_quality_720p)
+        3 -> context.getString(R.string.video_quality_480p)
+        4 -> context.getString(R.string.video_quality_360p)
+        else -> context.getString(R.string.video_quality_auto)
+    }
+
+    /** R3：截取当前视频帧并保存到相册 */
+    fun screenshot() {
+        taskShotPic { bitmap ->
+            if (bitmap == null) {
+                showOverlayTip(context.getString(R.string.video_screenshot_failed), 2000)
+                return@taskShotPic
+            }
+            post {
+                val file = File(
+                    context.cacheDir,
+                    "video_screenshot_${System.currentTimeMillis()}.png"
+                )
+                try {
+                    FileOutputStream(file).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        saveToAlbumQ(file)
+                    } else {
+                        MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(file.absolutePath),
+                            null,
+                            MediaScannerConnection.OnScanCompletedListener { _, uri ->
+                                showOverlayTip(
+                                    if (uri != null)
+                                        context.getString(R.string.video_screenshot_saved)
+                                    else
+                                        context.getString(R.string.video_screenshot_failed),
+                                    2000
+                                )
+                            }
+                        )
+                    }
+                } catch (e: Exception) {
+                    AppLog.put("GSY VideoPlayer screenshot failed: ${e.message}")
+                    showOverlayTip(context.getString(R.string.video_screenshot_failed), 2000)
+                }
+            }
+        }
+    }
+
+    /** API 29+：通过 MediaStore 保存到相册（指定相册目录） */
+    private fun saveToAlbumQ(file: File) {
+        val name = "阅读视频截图_${System.currentTimeMillis()}.png"
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(
+                MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/LegadoVideo"
+            )
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        if (uri == null) {
+            showOverlayTip(context.getString(R.string.video_screenshot_failed), 2000)
+            return
+        }
+        try {
+            resolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input -> input.copyTo(output) }
+            } ?: run {
+                showOverlayTip(context.getString(R.string.video_screenshot_failed), 2000)
+                return
+            }
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            showOverlayTip(context.getString(R.string.video_screenshot_saved), 2000)
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            AppLog.put("GSY VideoPlayer saveToAlbumQ failed: ${e.message}")
+            showOverlayTip(context.getString(R.string.video_screenshot_failed), 2000)
+        }
+    }
 
     /** R3 阶段2：供外部读取当前静音状态 */
     val isMutedPublic: Boolean get() = isMuted
@@ -122,7 +458,6 @@ class VideoPlayer: StandardGSYVideoPlayer {
     private var isLongPressSpeed = false
     private var tvRatio: TextView? = null
     private var currentRatioIndex = 0 // 0:默认 1:16:9 2:4:3 3:填充 4:原始
-    private var tvAudio: TextView? = null
 
     private var mParser: BaseDanmakuParser? = null //解析器对象
     private var mDanmakuView: DanmakuView? = null //弹幕view
@@ -163,7 +498,34 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
     fun getLockCurScreen() = mLockCurScreen
 
-    public override fun lockTouchLogic() = super.lockTouchLogic()
+    public override fun lockTouchLogic() {
+        super.lockTouchLogic()
+        rightLock?.setImageResource(if (mLockCurScreen) R.drawable.lock else R.drawable.unlock)
+        syncCenterControls()
+    }
+
+    private fun syncCenterControls() {
+        updateSkipButtons()
+        refreshPlayerFavoriteState()
+        val controls = findViewById<ViewGroup>(R.id.center_controls) ?: return
+        val show = !mLockCurScreen && mStartButton?.visibility == VISIBLE
+        controls.visibility = if (show) VISIBLE else INVISIBLE
+        findViewById<View>(R.id.right_control_container)?.visibility =
+            if (mIfCurrentIsFullscreen && (show || mLockCurScreen)) VISIBLE else GONE
+        rightLock?.visibility = if (mIfCurrentIsFullscreen) VISIBLE else GONE
+        rightRotate?.visibility = if (!mIfCurrentIsFullscreen) GONE else if (mLockCurScreen) INVISIBLE else VISIBLE
+        for (index in 0 until controls.childCount) {
+            val child = controls.getChildAt(index)
+            val enabled = !mLockCurScreen
+            child.isEnabled = enabled
+            child.alpha = if (enabled) 1f else 0f
+        }
+    }
+
+    override fun setViewShowState(view: View?, visibility: Int) {
+        super.setViewShowState(view, visibility)
+        if (view === mStartButton) syncCenterControls()
+    }
 
     /**
      * F2-Bug3 标志：GSY 原始控件是否应保持可见
@@ -205,8 +567,54 @@ class VideoPlayer: StandardGSYVideoPlayer {
      *
      * @param show true=显示GSY原始控件，false=隐藏GSY原始控件
      */
+    /**
+     * FongMi 风格：切换屏幕旋转方向（横屏/竖屏）
+     */
+    fun toggleScreenRotation() {
+        val activity = CommonUtil.scanForActivity(context) ?: return
+        val current = activity.requestedOrientation
+        val newOrientation = if (current == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        activity.requestedOrientation = newOrientation
+    }
+
+    /**
+     * FongMi 风格：显示播放信息（当前倍速、清晰度、镜像等状态）
+     */
+    fun showPlayInfo() {
+        val speedLabel = if (playSpeed != 1.0f) "${playSpeed}X" else "1.0X"
+        val qualityLabel = qualityLabel(VideoPlay.videoQuality)
+        val mirrorLabel = if (isMirrored) "已开启" else "未开启"
+        val timerLabel = when (sleepTimerMinutes) {
+            0 -> context.getString(R.string.video_sleep_timer_off)
+            -1 -> context.getString(R.string.video_sleep_timer_until_end)
+            else -> context.getString(R.string.video_sleep_timer_set, sleepTimerMinutes)
+        }
+        val info = buildString {
+            append(context.getString(R.string.video_speed)).append("：").append(speedLabel).append("\n")
+            append(context.getString(R.string.video_quality)).append("：").append(qualityLabel).append("\n")
+            append(context.getString(R.string.video_mirror)).append("：").append(mirrorLabel).append("\n")
+            append(context.getString(R.string.video_sleep_timer)).append("：").append(timerLabel)
+        }
+        context.alert(title = context.getString(R.string.video_play_info)) {
+            setMessage(info)
+        }
+    }
+
     fun setGsyControlVisibility(show: Boolean) {
+        if (mLockCurScreen) {
+            hideAllWidget()
+            return
+        }
         gsyControlsVisible = show  // F2-Bug3：设置标志供 override 方法检查
+        // FongMi 风格：右侧竖排控制栏跟随整体显隐
+        findViewById<View?>(R.id.right_control_container)?.visibility =
+            if (mIfCurrentIsFullscreen && show) VISIBLE else GONE
+        // FongMi 风格：浮动 widget 容器跟随整体显隐
+        toggleWidgetContainer(show)
         if (show) {
             // 调用 GSY 标准 UI 切换方法，正确设置 UI 状态并显示所有控件
             // 直接设置 visibility 不够：GSY 的 UI 状态机仍是"hide"状态，
@@ -232,6 +640,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
         } else {
             hideAllWidget()  // 隐藏所有 GSY 原始控件（内部会 cancelDismissControlViewTimer）
         }
+        syncCenterControls()
     }
 
     /**
@@ -245,12 +654,15 @@ class VideoPlayer: StandardGSYVideoPlayer {
      */
     override fun changeUiToPlayingBufferingClear() {
         super.changeUiToPlayingBufferingClear()
-        if (gsyControlsVisible) {
+        if (gsyControlsVisible && !mLockCurScreen) {
             // 缓冲结束后恢复控件可见性，防止 GSY 内部逻辑覆盖用户的"显示控件"设置
             mTopContainer?.visibility = VISIBLE
             mBottomContainer?.visibility = VISIBLE
             mStartButton?.visibility = VISIBLE
+            findViewById<View?>(R.id.right_control_container)?.visibility =
+                if (mIfCurrentIsFullscreen) VISIBLE else GONE
         }
+        syncCenterControls()
     }
 
     /**
@@ -264,11 +676,78 @@ class VideoPlayer: StandardGSYVideoPlayer {
      */
     override fun changeUiToClear() {
         super.changeUiToClear()
-        if (gsyControlsVisible) {
+        if (gsyControlsVisible && !mLockCurScreen) {
+            // 缓冲结束后恢复控件可见性，防止 GSY 内部逻辑覆盖用户的"显示控件"设置
             mTopContainer?.visibility = VISIBLE
             mBottomContainer?.visibility = VISIBLE
             mStartButton?.visibility = VISIBLE
+            findViewById<View?>(R.id.right_control_container)?.visibility =
+                if (mIfCurrentIsFullscreen) VISIBLE else GONE
+        } else {
+            // FongMi 风格控件跟随 GSY 控件隐藏
+            findViewById<View?>(R.id.right_control_container)?.visibility = GONE
+            hideFongMiWidgets()
         }
+        syncCenterControls()
+    }
+
+    /** 隐藏所有 FongMi 风格浮动 widget（不含 widget_container 本身） */
+    private fun hideFongMiWidgets() {
+        widgetSeek?.visibility = GONE
+        widgetBright?.visibility = GONE
+        widgetVolume?.visibility = GONE
+        widgetSpeed?.visibility = GONE
+    }
+
+    /** 显示/隐藏 widget_container（跟随控制栏显隐） */
+    private fun toggleWidgetContainer(show: Boolean) {
+        widgetContainer?.visibility = if (show) VISIBLE else GONE
+    }
+
+    /**
+     * FongMi 风格：单点切换控制栏显隐时同步管理右侧竖排控制栏与浮动 widget 容器。
+     * GSY 的 onClickUiToggle 仅管理 top/bottom/start 容器，此处补充 FongMi 控件。
+     */
+    override fun onClickUiToggle(e: MotionEvent) {
+        super.onClickUiToggle(e)
+        val controlsVisible = mTopContainer?.visibility == VISIBLE || mBottomContainer?.visibility == VISIBLE
+        findViewById<View?>(R.id.right_control_container)?.visibility =
+            if (mIfCurrentIsFullscreen && controlsVisible) VISIBLE else GONE
+        toggleWidgetContainer(controlsVisible)
+        if (!controlsVisible) {
+            hideFongMiWidgets()
+        }
+        syncCenterControls()
+    }
+
+    /** Keep GSY's gesture dialog as the single volume indicator. */
+    override fun showVolumeDialog(percent: Float, pixels: Int) {
+        widgetVolume?.visibility = GONE
+        super.showVolumeDialog(percent, pixels)
+    }
+
+    override fun dismissVolumeDialog() {
+        super.dismissVolumeDialog()
+        widgetVolume?.visibility = GONE
+    }
+
+    /** Keep GSY's gesture dialog as the single brightness indicator. */
+    override fun showBrightnessDialog(percent: Float) {
+        widgetBright?.visibility = GONE
+        super.showBrightnessDialog(percent)
+    }
+
+    override fun dismissBrightnessDialog() {
+        super.dismissBrightnessDialog()
+        widgetBright?.visibility = GONE
+    }
+
+    /** 隐藏所有 widget（GSY 原始 + FongMi 风格） */
+    override fun hideAllWidget() {
+        super.hideAllWidget()
+        hideFongMiWidgets()
+        findViewById<View>(R.id.right_control_container)?.visibility = GONE
+        syncCenterControls()
     }
 
     override fun init(context: Context) {
@@ -298,6 +777,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
                             val speed = VideoPlay.longPressSpeed / 10.0f
                             setVideoSpeed(speed)
                             showOverlayTip(context.getString(R.string.video_speed_long_press, speed))
+                            widgetSpeed?.visibility = VISIBLE
                             isLongPressSpeed = true
                         }
                         super.onLongPress(e)
@@ -310,19 +790,43 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
     }
     override fun touchSurfaceUp(){
+        if (mChangePosition) VideoPlay.introSkipped = true
         if (isLongPressSpeed) {
             isLongPressSpeed = false
             setVideoSpeed(playSpeed)
             showOverlayTip()
+            widgetSpeed?.visibility = GONE
             val time = getCurrentPositionWhenPlaying()
             resolveDanmakuStart(time)
         }
+        // 手势结束：隐藏 seek widget
+        if (!mChangePosition && !mChangeVolume && !mBrightness) {
+            widgetSeek?.visibility = GONE
+        }
         super.touchSurfaceUp()
+    }
+
+    /** FongMi 风格：滑动进度时显示 seek widget */
+    override fun touchSurfaceMove(deltaX: Float, deltaY: Float, deltaZ: Float) {
+        super.touchSurfaceMove(deltaX, deltaY, deltaZ)
+        if (mChangePosition) {
+            val targetTime = (mDownPosition + deltaX * mSeekRatio / CommonUtil.getScreenWidth(context)).toLong()
+            widgetSeek?.visibility = VISIBLE
+            widgetSeekTime?.text = formatTimeText(targetTime)
+        }
+    }
+
+    /** 格式化时间文本（秒 → mm:ss） */
+    private fun formatTimeText(seconds: Long): String {
+        val mins = seconds / 60
+        val secs = seconds % 60
+        return String.format("%02d:%02d", mins, secs)
     }
 
     /** video-gesture-overhaul: 改为 internal 供 VideoFragment 访问（长按倍速设置） */
     internal fun setVideoSpeed(speed: Float) {
         setSpeed(speed, true)
+        playbackSpeed?.text = "${speed}X"
         if (mDanmakuView != null&& !mDanmakuView!!.isPaused) {
             mDanmakuContext!!.setScrollSpeedFactor(VideoPlay.danmakuSpeed - (speed - 1f) / 6f)
             mDanmakuView!!.invalidate()
@@ -339,14 +843,20 @@ class VideoPlayer: StandardGSYVideoPlayer {
     override fun onPrepared() {
         super.onPrepared()
         onPrepareDanmaku(this)
+        // R3：片头/片尾跳过标记仅换集时重置，全屏切换时不重置（isFullscreenSwitch=true）
+        if (!isFullscreenSwitch) {
+            resetSkipFlags()
+        }
+        isFullscreenSwitch = false
+        // R3：应用用户配置的清晰度限制
+        getGSYVideoManager().setVideoQuality(VideoPlay.videoQuality)
+        // R3：全屏切换后新实例需重建定时关闭定时器（基于 VideoPlay 持久化状态计算剩余时间）
+        if (VideoPlay.sleepTimerMinutes != 0) {
+            setupSleepTimer()
+        }
         // V-01 修复：换集时跟随用户当前静音状态（isMuted），而非每次强制 muteOnStart
         // 首次播放时 isMuted 已在 initView 初始化为 VideoPlay.muteOnStart
         getGSYVideoManager().player?.setNeedMute(isMuted)
-        // 检查音轨数量，多音轨时显示音轨按钮
-        post {
-            val tracks = getGSYVideoManager().getAudioTracks()
-            tvAudio?.visibility = if (tracks.size > 1) VISIBLE else GONE
-        }
         // video-player-image-enhance A1.2: 播放准备完成后应用画质增强滤镜
         //（K2 实证：GSY 播放状态变化会重置渲染视图，必须在此重新应用，切集/重播均会触发本回调）
         post { ImageEnhanceController.apply(this) }
@@ -394,20 +904,30 @@ class VideoPlayer: StandardGSYVideoPlayer {
     }
 
     override fun onAutoCompletion() { //播放完成
+        if (mCurrentState == CURRENT_STATE_AUTO_COMPLETE) return
         super.onAutoCompletion()
-        VideoPlay.upDurIndex(1, this)
     }
 
     override fun onCompletion() {
         super.onCompletion()
         releaseDanmaku(this)
+        // R3：定时关闭为"播放完毕"模式时，播放结束提示
+        if (sleepTimerMinutes == -1) {
+            showOverlayTip(context.getString(R.string.video_sleep_timer_finished), 3000)
+        }
     }
     fun releaseDanmaku(gsyVideoPlayer: VideoPlayer) {
         gsyVideoPlayer.mDanmakuView?.release()
     }
 
 
+    override fun onStartTrackingTouch(seekBar: SeekBar) {
+        VideoPlay.introSkipped = true
+        super.onStartTrackingTouch(seekBar)
+    }
+
     override fun onSeekComplete() {
+        VideoPlay.introSkipped = true
         super.onSeekComplete()
         val time = mProgressBar.progress * getDuration() / 100
         //如果已经初始化过的，直接seek到对于位置
@@ -510,7 +1030,14 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
     private fun initView() {
         isNeedLockFull = true //使用锁定按钮
+        setEnlargeImageRes(R.drawable.ic_player_fullscreen_bold)
+        setShrinkImageRes(R.drawable.ic_player_fullscreen_exit_bold)
+        mFullscreenButton?.setImageResource(
+            if (mIfCurrentIsFullscreen) R.drawable.ic_player_fullscreen_exit_bold
+            else R.drawable.ic_player_fullscreen_bold
+        )
         playbackSpeed = findViewById(R.id.playback_speed)
+        playbackSpeed?.text = "${playSpeed.takeIf { it > 0f } ?: 1.0f}X"
         playbackSpeed?.setOnClickListener {
             if (mHadPlay && !isChanging) {
                 showSpeedDialog()
@@ -527,6 +1054,9 @@ class VideoPlayer: StandardGSYVideoPlayer {
         ivMute = findViewById(R.id.iv_mute)
         isMuted = VideoPlay.muteOnStart
         updateMuteIcon()
+        applyMirror()
+        // R3：片头/片尾自动跳过（进度监听器驱动，仅在播放中触发）
+        setGSYVideoProgressListener { _, _, _, _ -> getCurrentPlayer().checkIntroOutroSkip() }
         ivMute?.setOnClickListener {
             isMuted = !isMuted
             getGSYVideoManager().player?.setNeedMute(isMuted)
@@ -534,21 +1064,72 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
         //画面比例按钮
         tvRatio = findViewById(R.id.tv_ratio)
+        updateRatioLabel()
         tvRatio?.setOnClickListener {
             if (mHadPlay && !isChanging) {
                 showRatioDialog()
             }
         }
-        //音轨按钮（默认隐藏，有多音轨时显示）
-        tvAudio = findViewById(R.id.tv_audio)
-        tvAudio?.setOnClickListener {
-            if (mHadPlay && !isChanging) {
-                showAudioTrackDialog()
+        // R3：上一集
+        prevEpisode = findViewById(R.id.prev_episode)
+        prevEpisode?.setOnClickListener {
+            if (!VideoPlay.episodes.isNullOrEmpty()) {
+                VideoPlay.upDurIndex(-1, this)
+            } else {
+                VideoPlay.upRssEpisodeIndex(-1, this)
             }
         }
-        if (VideoPlay.episodes == null) {
+        // Tapping records the current position for the current video.
+        introSkip = findViewById(R.id.intro_skip)
+        introSkip?.setOnClickListener { markSkipPosition(true) }
+        outroSkip = findViewById(R.id.outro_skip)
+        outroSkip?.setOnClickListener { markSkipPosition(false) }
+        updateSkipButtons()
+        // R3：清晰度切换
+        videoQualityBtn = findViewById(R.id.video_quality)
+        videoQualityBtn?.setOnClickListener {
+            (CommonUtil.scanForActivity(context) as? VideoPlayerActivity)?.showPlayerRoutes(this)
+        }
+        // Center lock control and side rotation control.
+        rightLock = findViewById(R.id.right_lock)
+        rightLock?.setOnClickListener {
+            lockTouchLogic()
+        }
+        rightRotate = findViewById(R.id.right_rotate)
+        rightRotate?.setOnClickListener { toggleScreenRotation() }
+        val activity = CommonUtil.scanForActivity(context) as? VideoPlayerActivity
+        findViewById<View>(R.id.player_float)?.setOnClickListener { activity?.onFloatWindow() }
+        findViewById<View>(R.id.player_favorite)?.setOnClickListener {
+            activity?.onPlayerFavoriteClicked()
+        }
+        findViewById<View>(R.id.player_menu)?.setOnClickListener { anchor ->
+            activity?.showPlayerMenu(anchor)
+        }
+        refreshPlayerFavoriteState()
+        mToggleDanmaku = findViewById(R.id.toggle_danmaku)
+        mToggleDanmaku?.setOnClickListener { toggleDanmakuShow() }
+        updateDanmakuButton()
+        // Normalize compound icons so all captions share the same baseline.
+        listOf(episodeList, introSkip, outroSkip, videoQualityBtn, tvRatio, playbackSpeed)
+            .forEach { label ->
+                label?.compoundDrawables?.get(1)?.let { icon ->
+                    val size = (24 * resources.displayMetrics.density).toInt()
+                    icon.setBounds(0, 0, size, size)
+                    label.setCompoundDrawables(null, icon, null, null)
+                }
+            }
+        // FongMi 风格：浮动 widget 视图
+        widgetContainer = findViewById(R.id.widget_container)
+        widgetSeek = findViewById(R.id.widget_seek)
+        widgetSeekTime = findViewById(R.id.widget_seek_time)
+        widgetBright = findViewById(R.id.widget_bright)
+        widgetVolume = findViewById(R.id.widget_volume)
+        widgetSpeed = findViewById(R.id.widget_speed)
+        widgetError = findViewById(R.id.widget_error)
+        if (VideoPlay.episodes.isNullOrEmpty() && VideoPlay.rssEpisodes.isNullOrEmpty()) {
             episodeList?.visibility = GONE
             btnNext?.visibility = GONE
+            prevEpisode?.visibility = GONE
             return
         }
         episodeList?.setOnClickListener {
@@ -557,7 +1138,11 @@ class VideoPlayer: StandardGSYVideoPlayer {
             }
         }
         btnNext?.setOnClickListener {
-            VideoPlay.upDurIndex(1,this)
+            if (!VideoPlay.episodes.isNullOrEmpty()) {
+                VideoPlay.upDurIndex(1, this)
+            } else {
+                VideoPlay.upRssEpisodeIndex(1, this)
+            }
         }
     }
 
@@ -571,7 +1156,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
         val danmakuFile = VideoPlay.danmakuFile
         val danmakuStr = VideoPlay.danmakuStr
         if (danmakuFile == null && danmakuStr.isNullOrBlank()) {
-            mToggleDanmaku?.visibility = GONE
+            updateDanmakuButton()
             // LogVar 弹幕服务器异步加载（书源/py/jar/订阅源统一入口，见 VideoPlay.loadDanmakuFromServer）；
             // 未配置服务器/无检索上下文时静默跳过；就绪回调在主线程
             VideoPlay.loadDanmakuFromServer { prepareDanmakuFromServer() }
@@ -688,14 +1273,51 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
     private fun resolveDanmakuShow() {
         post {
+            val danmakuView = mDanmakuView
             if (VideoPlay.danmakuShow) {
-                if (!mDanmakuView!!.isShown) mDanmakuView!!.show()
-                mToggleDanmaku?.text = context.getString(R.string.video_danmaku_off)
+                if (danmakuView != null && !danmakuView.isShown) danmakuView.show()
             } else {
-                if (mDanmakuView!!.isShown) mDanmakuView!!.hide()
-                mToggleDanmaku?.text = context.getString(R.string.video_danmaku_on)
+                if (danmakuView?.isShown == true) danmakuView.hide()
             }
+            updateDanmakuButton()
         }
+    }
+
+    private fun updateDanmakuButton() {
+        mToggleDanmaku?.apply {
+            text = ""
+            isSelected = VideoPlay.danmakuShow
+            alpha = if (isSelected) 1f else 0.55f
+            contentDescription = context.getString(
+                if (isSelected) R.string.video_danmaku_off else R.string.video_danmaku_on
+            )
+        }
+    }
+
+    /** Call after asynchronous favorite/bookshelf updates, including while paused. */
+    fun refreshPlayerFavoriteState() {
+        findViewById<ImageView>(R.id.player_favorite)?.apply {
+            val book = VideoPlay.book != null
+            val activity = CommonUtil.scanForActivity(context) as? VideoPlayerActivity
+            visibility = if (book || activity?.canShelfExternalVideo() == true || VideoPlay.canFavoriteCurrent()) VISIBLE else GONE
+            isSelected = activity?.isPlayerFavorite() ?: (if (book) VideoPlay.inBookshelf else VideoPlay.rssStar != null)
+            setImageResource(if (isSelected) R.drawable.ic_star else R.drawable.ic_star_border)
+            imageTintList = ColorStateList.valueOf(
+                if (isSelected) ThemeStore.accentColor(context) else android.graphics.Color.WHITE
+            )
+            contentDescription = context.getString(
+                if (book) R.string.add_to_bookshelf else R.string.favorite
+            )
+        }
+    }
+
+    private fun updateRatioLabel() {
+        tvRatio?.setText(when (currentRatioIndex) {
+            1 -> R.string.video_ratio_16_9
+            2 -> R.string.video_ratio_4_3
+            3 -> R.string.video_ratio_fill
+            else -> R.string.video_quality_auto
+        })
     }
 
     /**
@@ -726,6 +1348,22 @@ class VideoPlayer: StandardGSYVideoPlayer {
     }
 
     private fun showEpisodeDialog() {
+        if (mHadPlay && VideoPlay.episodes.isNullOrEmpty()) {
+            val episodes = VideoPlay.rssEpisodes?.takeIf { it.isNotEmpty() } ?: return
+            isChanging = true
+            context.alert(title = context.getString(R.string.video_section_episodes)) {
+                singleChoiceItems(episodes.map { it.title }.toTypedArray(), VideoPlay.rssEpisodeIndex) { dialog, which ->
+                    if (which != VideoPlay.rssEpisodeIndex) {
+                        VideoPlay.rssEpisodeIndex = which
+                        VideoPlay.playRssEpisode(this@VideoPlayer, episodes[which])
+                        postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1))
+                    }
+                    dialog.dismiss()
+                }
+                onDismiss { isChanging = false }
+            }
+            return
+        }
         if (!mHadPlay || VideoPlay.episodes.isNullOrEmpty()) {
             return
         }
@@ -757,12 +1395,9 @@ class VideoPlayer: StandardGSYVideoPlayer {
             @SuppressLint("SetTextI18n")
             override fun onItemClick(value: Float) {
                 playSpeed = value
-                setSpeed(playSpeed, true)
+                setVideoSpeed(playSpeed)
                 if (playSpeed != 1.0f) {
-                    playbackSpeed?.text = "${playSpeed}X"
                     showOverlayTip(context.getString(R.string.video_speed_playing, playSpeed), 2000)
-                } else {
-                    playbackSpeed?.text = context.getString(R.string.video_speed)
                 }
             }
 
@@ -786,11 +1421,47 @@ class VideoPlayer: StandardGSYVideoPlayer {
             singleChoiceItems(ratios, currentRatioIndex) { dialog, which ->
                 currentRatioIndex = which
                 applyRatio(which)
-                tvRatio?.text = if (which == 0) {
-                    context.getString(R.string.video_ratio_button)
-                } else {
-                    ratios[which]
-                }
+                updateRatioLabel()
+                dialog.dismiss()
+            }
+            onDismiss { isChanging = false }
+        }
+    }
+
+    /** R3：清晰度选择对话框 */
+    private fun showQualityDialog() {
+        isChanging = true
+        val qualities = arrayOf(
+            context.getString(R.string.video_quality_auto),
+            context.getString(R.string.video_quality_1080p),
+            context.getString(R.string.video_quality_720p),
+            context.getString(R.string.video_quality_480p),
+            context.getString(R.string.video_quality_360p)
+        )
+        context.alert(title = context.getString(R.string.video_quality)) {
+            singleChoiceItems(qualities, VideoPlay.videoQuality.coerceIn(0, 4)) { dialog, which ->
+                setVideoQuality(which)
+                dialog.dismiss()
+            }
+            onDismiss { isChanging = false }
+        }
+    }
+
+    /** R3：定时关闭选择对话框 */
+    private fun showSleepTimerDialog() {
+        isChanging = true
+        val values = intArrayOf(0, 15, 30, 60, 90, -1)
+        val options = values.map {
+            when (it) {
+                0 -> context.getString(R.string.video_sleep_timer_off)
+                -1 -> context.getString(R.string.video_sleep_timer_until_end)
+                else -> context.getString(R.string.video_sleep_timer_set, it)
+            }
+        }.toTypedArray()
+        val currentIndex = values.indexOf(sleepTimerMinutes).coerceAtLeast(0)
+        context.alert(title = context.getString(R.string.video_sleep_timer)) {
+            singleChoiceItems(options, currentIndex) { dialog, which ->
+                setSleepTimer(values[which])
                 dialog.dismiss()
             }
             onDismiss { isChanging = false }
@@ -879,8 +1550,17 @@ class VideoPlayer: StandardGSYVideoPlayer {
         val gsyBaseVideoPlayer = super.startWindowFullscreen(context, actionBar, statusBar)
         if (gsyBaseVideoPlayer != null) {
             val gsyVideoPlayer = gsyBaseVideoPlayer as VideoPlayer
+            gsyVideoPlayer.playSpeed = playSpeed
+            gsyVideoPlayer.playbackSpeed?.text = "${playSpeed}X"
+            gsyVideoPlayer.currentRatioIndex = currentRatioIndex
+            gsyVideoPlayer.updateRatioLabel()
+            gsyVideoPlayer.isMuted = isMuted
+            gsyVideoPlayer.updateMuteIcon()
+            gsyVideoPlayer.refreshPlayerFavoriteState()
             // video-player-theme-unify：全屏新建实例同步应用主题高亮
             gsyVideoPlayer.applyThemeColors()
+            // 全屏切换标记：新实例 onPrepared 时据此跳过跳过标记重置、重建定时器
+            gsyVideoPlayer.isFullscreenSwitch = true
             //对弹幕设置偏移记录
 //            gsyVideoPlayer.mDanmakuView = this.mDanmakuView
             gsyVideoPlayer.mDanmakuStartSeekPosition = this.getCurrentPositionWhenPlaying()
@@ -903,6 +1583,12 @@ class VideoPlayer: StandardGSYVideoPlayer {
         applyThemeColors()
         if (gsyVideoPlayer != null) {
             val videoPlayer = gsyVideoPlayer as VideoPlayer
+            playSpeed = videoPlayer.playSpeed
+            playbackSpeed?.text = "${playSpeed}X"
+            currentRatioIndex = videoPlayer.currentRatioIndex
+            updateRatioLabel()
+            isMuted = videoPlayer.isMuted
+            updateMuteIcon()
             if (mDanmakuView != null && mDanmakuView!!.isPrepared) {
                 resolveDanmakuSeek(videoPlayer.getCurrentPositionWhenPlaying())
                 resolveDanmakuShow()
@@ -955,6 +1641,11 @@ class VideoPlayer: StandardGSYVideoPlayer {
     }
 
     var needDestroy: Boolean = true
+    override fun onSurfaceAvailable(surface: Surface?) {
+        super.onSurfaceAvailable(surface)
+        // Surface 就绪后应用画面镜像（TextureView 此时已存在）
+        applyMirror()
+    }
     override fun onSurfaceDestroyed(surface: Surface?): Boolean {
         if (needDestroy) {
             return super.onSurfaceDestroyed(surface)

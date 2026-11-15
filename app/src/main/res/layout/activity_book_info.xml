@@ -21,11 +21,32 @@
         android:background="@color/transparent50"
         android:orientation="vertical">
 
-        <androidx.compose.ui.platform.ComposeView
-            android:id="@+id/compose_top_bar"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:layout_constraintTop_toTopOf="parent" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <io.legado.app.ui.widget.TitleBar
+                android:id="@+id/title_bar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                app:themeMode="dark"
+                app:attachToActivity="false"
+                app:displayHomeAsUp="false"
+                app:title="@string/book_info"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <ImageButton
+                android:id="@+id/iv_info_menu"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/more"
+                android:src="@drawable/ic_more_vert"
+                app:tint="@color/white" />
+        </LinearLayout>
 
         <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
             android:id="@+id/refresh_layout"
@@ -218,13 +239,11 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginStart="8dp"
-                                    android:gravity="center_vertical"
-                                    android:minHeight="40dp"
-                                    android:paddingLeft="10dp"
-                                    android:paddingRight="10dp"
+                                    android:paddingLeft="5dp"
+                                    android:paddingRight="5dp"
                                     android:text="@string/change_origin"
-                                    android:textSize="@dimen/text_14sp"
-                                    app:radius="6dp" />
+                                    android:textSize="13sp"
+                                    app:radius="2dp" />
 
                             </LinearLayout>
 
@@ -299,14 +318,54 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginStart="8dp"
-                                    android:gravity="center_vertical"
-                                    android:minHeight="40dp"
-                                    android:paddingLeft="10dp"
-                                    android:paddingRight="10dp"
+                                    android:paddingLeft="5dp"
+                                    android:paddingRight="5dp"
                                     android:text="@string/change_group"
-                                    android:textSize="@dimen/text_14sp"
-                                    app:radius="6dp" />
+                                    android:textSize="13sp"
+                                    app:radius="2dp" />
 
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:id="@+id/ll_book_tag"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingTop="3dp"
+                                android:paddingBottom="3dp"
+                                android:visibility="gone">
+
+                                <ImageView
+                                    android:layout_width="18dp"
+                                    android:layout_height="18dp"
+                                    android:contentDescription="@string/set_book_tag"
+                                    android:paddingRight="2dp"
+                                    android:src="@drawable/ic_bookmark"
+                                    app:tint="@color/tv_text_summary" />
+
+                                <TextView
+                                    android:id="@+id/tv_tag"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:paddingRight="6dp"
+                                    android:singleLine="true"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_13sp" />
+
+                                <io.legado.app.ui.widget.text.AccentBgTextView
+                                    android:id="@+id/tv_set_tag"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="8dp"
+                                    android:paddingLeft="5dp"
+                                    android:paddingRight="5dp"
+                                    android:text="@string/set_book_tag"
+                                    android:textSize="13sp"
+                                    app:radius="2dp" />
                             </LinearLayout>
 
                             <LinearLayout
@@ -346,14 +405,54 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginStart="8dp"
-                                    android:gravity="center_vertical"
-                                    android:minHeight="40dp"
-                                    android:paddingLeft="10dp"
-                                    android:paddingRight="10dp"
+                                    android:paddingLeft="5dp"
+                                    android:paddingRight="5dp"
                                     android:text="@string/view_toc"
-                                    android:textSize="@dimen/text_14sp"
-                                    app:radius="6dp" />
+                                    android:textSize="13sp"
+                                    app:radius="2dp" />
 
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:id="@+id/ll_read_record"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingTop="3dp"
+                                android:paddingBottom="3dp"
+                                android:visibility="gone">
+
+                                <ImageView
+                                    android:layout_width="18dp"
+                                    android:layout_height="18dp"
+                                    android:contentDescription="@string/book_read_record"
+                                    android:paddingRight="2dp"
+                                    android:src="@drawable/ic_history"
+                                    app:tint="@color/tv_text_summary" />
+
+                                <TextView
+                                    android:id="@+id/tv_read_record"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:paddingRight="6dp"
+                                    android:singleLine="true"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_13sp" />
+
+                                <io.legado.app.ui.widget.text.AccentBgTextView
+                                    android:id="@+id/tv_read_record_view"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="8dp"
+                                    android:paddingLeft="5dp"
+                                    android:paddingRight="5dp"
+                                    android:text="@string/view_read_record"
+                                    android:textSize="13sp"
+                                    app:radius="2dp" />
                             </LinearLayout>
 
                         </LinearLayout>
@@ -362,6 +461,71 @@
                             android:id="@+id/tv_intro_container"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/ll_author_other_works"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@color/background"
+                        android:orientation="vertical"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                                android:paddingBottom="8dp"
+                                android:visibility="gone"
+                                tools:visibility="visible">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="16dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingStart="8dp"
+                            android:paddingEnd="8dp">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/book_author_other_works"
+                                android:textColor="@color/primaryText"
+                                android:textSize="15sp"
+                                android:textStyle="bold" />
+
+                            <ImageButton
+                                android:id="@+id/iv_author_other_works_refresh"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:contentDescription="@string/book_author_other_works_idle"
+                                android:src="@drawable/ic_refresh_black_24dp"
+                                app:tint="@color/white" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tv_author_other_works_state"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:includeFontPadding="false"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp"
+                            android:textColor="@color/tv_text_summary"
+                            android:textSize="13sp"
+                            android:visibility="gone" />
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/rv_author_other_works"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:nestedScrollingEnabled="false"
+                            android:overScrollMode="never"
+                            android:visibility="gone"
+                            tools:itemCount="2"
+                            tools:listitem="@layout/item_search" />
 
                     </LinearLayout>
 
@@ -376,12 +540,39 @@
             android:layout_height="1px"
             android:background="@color/bg_divider_line" />
 
-        <androidx.compose.ui.platform.ComposeView
-            android:id="@+id/compose_bottom_bar"
+        <LinearLayout
+            android:id="@+id/fl_action"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@color/background_menu"
-            app:layout_constraintBottom_toBottomOf="parent" />
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <TextView
+                android:id="@+id/tv_shelf"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="@string/add_to_bookshelf"
+                android:textColor="@color/primaryText"
+                android:textSize="15sp" />
+
+            <io.legado.app.ui.widget.text.AccentBgTextView
+                android:id="@+id/tv_read"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="@string/reading"
+                android:textSize="15sp" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

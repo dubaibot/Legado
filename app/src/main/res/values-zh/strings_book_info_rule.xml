@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rule_video_playline">播放线路名（相对于每个章节提取）</string>
+</resources>

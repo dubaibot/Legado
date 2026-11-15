@@ -3963,6 +3963,78 @@ bookUrl：%7$s
 
     <string name="video_skip_time">快进/快退时间</string>
 
+    <string name="video_mirror">画面镜像</string>
+
+    <string name="video_mirror_summary">水平翻转画面（适用于镜面拍摄内容）</string>
+
+    <string name="video_sleep_timer">定时关闭</string>
+
+    <string name="video_sleep_timer_off">定时关闭已关闭</string>
+
+    <string name="video_sleep_timer_set">定时关闭已设置：%1$d 分钟</string>
+
+    <string name="video_sleep_timer_until_end">定时关闭已设置：播放完毕</string>
+
+    <string name="video_sleep_timer_finished">定时关闭已触发，已暂停播放</string>
+
+    <string name="video_intro_skip">片头跳过</string>
+
+    <string name="video_outro_skip">片尾跳过</string>
+
+    <string name="video_intro_skip_time">片头跳过（秒）</string>
+
+    <string name="video_outro_skip_time">片尾跳过（秒）</string>
+
+    <string name="video_intro_skip_disabled">片头跳过未启用</string>
+
+    <string name="video_outro_skip_disabled">片尾跳过未启用</string>
+
+    <string name="video_intro_skipped">已跳过片头</string>
+
+    <string name="video_outro_skipped">已跳过片尾</string>
+
+    <string name="video_off">关闭</string>
+
+    <string name="video_screenshot">截图</string>
+
+    <string name="video_screenshot_saved">截图已保存到相册</string>
+
+    <string name="video_screenshot_failed">截图失败</string>
+
+    <string name="video_intro_skip_btn">片头</string>
+    <string name="video_skip_mark_position">以当前位置标记</string>
+    <string name="video_skip_unavailable">当前视频时长未知、为直播或跳过区间无效</string>
+    <string name="video_outro_skip_btn">片尾</string>
+    <string name="video_quality_btn">清晰</string>
+    <string name="video_sleep_timer_btn">定时</string>
+    <string name="video_screenshot_btn">截图</string>
+    <string name="video_mirror_btn">镜像</string>
+    <string name="video_fullscreen_btn">全屏</string>
+    <string name="video_volume_percent">音量 %1$d%%</string>
+    <string name="video_brightness_percent">亮度 %1$d%%</string>
+    <string name="video_director_label">导演：%1$s</string>
+    <string name="video_actor_label">演员：%1$s</string>
+    <string name="video_year_label">年份：%1$s</string>
+    <string name="video_region_label">地区：%1$s</string>
+    <string name="video_genre_label">类型：%1$s</string>
+    <string name="video_prev_episode_btn">上一集</string>
+    <string name="video_next_episode_btn">下一集</string>
+    <string name="video_exit_fullscreen_btn">退出全屏</string>
+
+    <string name="video_quality">清晰度</string>
+
+    <string name="video_quality_auto">自动</string>
+
+    <string name="video_quality_1080p">1080p</string>
+
+    <string name="video_quality_720p">720p</string>
+
+    <string name="video_quality_480p">480p</string>
+
+    <string name="video_quality_360p">360p</string>
+
+    <string name="video_quality_label">清晰度：%1$s</string>
+
     <string name="ai_balance_querying">正在查询余额…</string>
 
     <string name="import_check_copy_filtered">复制被过滤源列表</string>
@@ -6911,7 +6983,7 @@ bookUrl：%7$s
 
     <string name="query_content">查询网页内容</string>
 
-    <string name="already_in_bookshelf">已在书架中</string>
+    <string name="already_in_bookshelf">已在书架</string>
 
     <string name="applied_nav_bar_config">已应用底栏包: %s</string>
 

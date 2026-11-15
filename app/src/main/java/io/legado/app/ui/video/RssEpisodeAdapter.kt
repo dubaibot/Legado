@@ -16,8 +16,8 @@ import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
  * R1 多集选择播放：订阅源集数列表适配器
  *
  * 结构与 ChapterAdapter 对称，但数据类型为 RssEpisode，点击回调用 rssEpisodeIndex。
- * 默认复用 item_video_chapter 布局（沉浸式左下角横向小格子）；
- * 传统模式集数平铺列表传入 layoutRes=item_video_chapter_vertical（纵向整行）。
+ * 传统模式集数列表使用 item_video_episode（chips 样式，选中实心主题色高亮）；
+ * 沉浸式模式使用 item_video_chapter（CardView 小格子）。
  */
 class RssEpisodeAdapter(
     private var episodes: List<RssEpisode>,
@@ -27,14 +27,17 @@ class RssEpisodeAdapter(
 ) : RecyclerView.Adapter<RssEpisodeAdapter.EpisodeViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EpisodeViewHolder {
-        // 2026-09-14 布局重排：传统模式集数纵向平铺滚动（verticalLayout=true → 整行列表项）
+        // 传统模式集数列表使用 chips 样式，沉浸式模式使用 CardView 小格子
         val res = if (verticalLayout) {
-            R.layout.item_video_chapter_vertical
+            R.layout.item_video_episode
         } else {
             R.layout.item_video_chapter
         }
         val view = LayoutInflater.from(parent.context)
             .inflate(res, parent, false)
+        if ((parent as? RecyclerView)?.layoutManager is androidx.recyclerview.widget.GridLayoutManager) {
+            view.layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+        }
         return EpisodeViewHolder(view)
     }
 
@@ -80,28 +83,32 @@ class RssEpisodeAdapter(
         private val tvChapterName: TextView = itemView.findViewById(R.id.tvChapterName)
 
         fun bind(episode: RssEpisode, isSelected: Boolean) {
-            // F183：三态——当前（accent，沿用既有 cur 态）/ 已看（次级观感 + ✓ 后缀）/ 未看（默认）
+            // F183：三态——当前（accent）/ 已看（次级观感 + ✓ 后缀）/ 未看（默认）
             val watched = !isSelected && watchedUrls.contains(episode.url)
             tvChapterName.text = if (watched) {
                 episode.title + itemView.context.getString(R.string.video_episode_watched_mark)
             } else {
                 episode.title
             }
-            // video-player-image-enhance 样式专项：集数列表为播放页悬浮控件，对齐悬浮层例外体系
-            //（color.md 视频控制层：固定白字+半透明黑底；选中 accent 字+accent 20% 透明底，对齐 ChoiceSpeedDialog）
-            if (isSelected) {
-                tvChapterName.alpha = 1f
-                tvChapterName.setTextColor(accentColor)
-                val accent = accentColor
-                tvChapterName.background = GradientDrawable().apply {
-                    cornerRadius = 12f * itemView.resources.displayMetrics.density
-                    setColor(Color.argb(0x33, Color.red(accent), Color.green(accent), Color.blue(accent)))
-                }
-            } else {
-                tvChapterName.setTextColor(Color.WHITE)
-                tvChapterName.setBackgroundResource(R.drawable.bg_overlay_button)
-                // 次级观感用 alpha 表达，不新增色值（悬浮层为固定白字体系，无「次级色」单源）
+            if (verticalLayout) {
+                // chips 样式：由 bg_video_chip 状态列表 drawable 自动处理选中高亮
+                itemView.isSelected = isSelected
                 tvChapterName.alpha = if (watched) 0.6f else 1f
+            } else {
+                // 沉浸式 CardView 样式：编程式设置选中高亮
+                if (isSelected) {
+                    tvChapterName.alpha = 1f
+                    tvChapterName.setTextColor(accentColor)
+                    val accent = accentColor
+                    tvChapterName.background = GradientDrawable().apply {
+                        cornerRadius = 12f * itemView.resources.displayMetrics.density
+                        setColor(Color.argb(0x33, Color.red(accent), Color.green(accent), Color.blue(accent)))
+                    }
+                } else {
+                    tvChapterName.setTextColor(Color.WHITE)
+                    tvChapterName.setBackgroundResource(R.drawable.bg_overlay_button)
+                    tvChapterName.alpha = if (watched) 0.6f else 1f
+                }
             }
             itemView.setOnClickListener {
                 val previousPosition = selectedPosition

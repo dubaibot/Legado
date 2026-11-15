@@ -520,6 +520,70 @@ object VideoPlay : CoroutineScope by MainScope(){
         set(value) {
             videoPrefs.edit { putInt("videoSkipTime", value) }
         }
+    /**  画面镜像（默认关闭）  **/
+    var mirrorOnStart
+        get() = videoPrefs.getBoolean("mirrorOnStart", false)
+        set(value) {
+            videoPrefs.edit { putBoolean("mirrorOnStart", value) }
+        }
+    /**  定时关闭（分钟，0 表示关闭）  **/
+    var sleepTimerMinutes: Int
+        get() = videoPrefs.getInt("sleepTimerMinutes", 0)
+        set(value) {
+            videoPrefs.edit { putInt("sleepTimerMinutes", value) }
+        }
+    /**  定时关闭启动时间戳（毫秒，用于全屏切换后重建定时器计算剩余时间）  **/
+    var sleepTimerStartTime: Long
+        get() = videoPrefs.getLong("sleepTimerStartTime", 0L)
+        set(value) {
+            videoPrefs.edit { putLong("sleepTimerStartTime", value) }
+        }
+    /** 当前剧集片头标记（秒，0 表示未标记） */
+    var introSkipSeconds: Int
+        get() = book?.config?.videoIntroSkipSeconds
+            ?: currentSkipPrefs()?.getInt("introSkipSeconds", 0) ?: 0
+        set(value) {
+            book?.let { currentBook ->
+                currentBook.config.videoIntroSkipSeconds = value.coerceAtLeast(0)
+                Coroutine.async(loadScope, IO) { currentBook.save() }
+            } ?: currentSkipPrefs()?.edit { putInt("introSkipSeconds", value.coerceAtLeast(0)) }
+        }
+    /** 当前剧集片尾标记（秒，0 表示未标记） */
+    var outroSkipSeconds: Int
+        get() = book?.config?.videoOutroSkipSeconds
+            ?: currentSkipPrefs()?.getInt("outroSkipSeconds", 0) ?: 0
+        set(value) {
+            book?.let { currentBook ->
+                currentBook.config.videoOutroSkipSeconds = value.coerceAtLeast(0)
+                Coroutine.async(loadScope, IO) { currentBook.save() }
+            } ?: currentSkipPrefs()?.edit { putInt("outroSkipSeconds", value.coerceAtLeast(0)) }
+        }
+    private fun currentSkipPrefs(): SharedPreferences? {
+        val identity = book?.bookUrl?.takeIf { it.isNotBlank() }
+            ?: videoSkipSeriesIdentity?.takeIf { it.isNotBlank() }
+            ?: currentRssArticle()?.takeIf { it.origin.isNotBlank() && it.link.isNotBlank() }
+                ?.let { "${it.origin}\n${it.link}" }
+            ?: videoUrl?.takeIf { it.isNotBlank() }
+            ?: return null
+        val key = MD5Utils.md5Encode(identity)
+        return appCtx.getSharedPreferences("video_skip_$key", MODE_PRIVATE)
+    }
+
+    /** Playback-session flags survive fullscreen recreation and reset on episode changes. */
+    var introSkipped: Boolean
+        get() = introSkippedState
+        set(value) { introSkippedState = value }
+    var outroSkipped: Boolean
+        get() = outroSkippedState
+        set(value) { outroSkippedState = value }
+    @Volatile private var introSkippedState = false
+    @Volatile private var outroSkippedState = false
+    /**  清晰度（0=自动, 1=1080p, 2=720p, 3=480p, 4=360p）  **/
+    var videoQuality: Int
+        get() = videoPrefs.getInt("videoQuality", 0)
+        set(value) {
+            videoPrefs.edit { putInt("videoQuality", value) }
+        }
     /**  弹幕滚动速度  **/
     var danmakuSpeed = 1.2f
     /**  锁屏  **/
@@ -558,6 +622,8 @@ object VideoPlay : CoroutineScope by MainScope(){
     @Volatile
     private var isSwitchingArticle = false
     var videoUrl: String? = null //播放链接
+    var videoSkipSeriesIdentity: String? = null
+    var videoDescription: String? = null
     /**
      * video-sniff-403-and-rss-classic-fix 4.8b（Z9）：嗅探前原始 URL（播放历史键）。
      * 记录原始链接（episode.url/文章链接/书源正文链接）而非嗅探后地址——
@@ -1441,9 +1507,13 @@ object VideoPlay : CoroutineScope by MainScope(){
         isResumeFromFloat = false
         release()
         videoUrl = null
+        videoSkipSeriesIdentity = null
+        videoDescription = null
         originalPlayUrl = null // 4.8b：历史键同步清空
         singleUrl = false
         videoTitle = null
+        introSkipped = false
+        outroSkipped = false
         currentPlayHeaders = null
         source = null
         book = null
@@ -1561,6 +1631,10 @@ object VideoPlay : CoroutineScope by MainScope(){
                 else -> null
             }
         }
+        if (bookUrl.isNullOrBlank() && sourceType != SourceType.rss && videoSkipSeriesIdentity == null) {
+            videoSkipSeriesIdentity = sourceKey?.takeIf { it.isNotBlank() }?.let { "source:$it" }
+                ?: showTitle?.takeIf { it.isNotBlank() }?.let { "title:$it" }
+        }
         // P0-7：库中身份先取一次，供书架判定与 book 兜底复用（避免同一 bookUrl 两次 DB 查询）
         val storedBook = bookUrl?.let { appDb.bookDao.getBook(it) }
         book = bookUrl?.let {
@@ -1651,7 +1725,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             // 书源视频直链线路优选（对齐订阅源 directRouteIdx，红队 R3-4 同源问题）：
             // 首线路常为网页播放页（需二次嗅探、易失败黑屏），多线路时优先选含 m3u8/mp4 直链的线路。
             // 仅在无历史进度时生效（book.durChapterIndex>0 尊重用户上次选择）
-            var preferIdx = 0
+            var preferIdx = durVolumeIndex.coerceIn(0, mappedRoutes.lastIndex)
             if ((bookForToc?.durChapterIndex ?: 0) <= 0) {
                 mappedRoutes.indexOfFirst { rt ->
                     rt.episodes.any { VideoUrlExtractor.isDirectVideoStreamUrl(it.url) }
@@ -2032,12 +2106,19 @@ object VideoPlay : CoroutineScope by MainScope(){
     fun switchBookRoute(routeIndex: Int, player: GSYBaseVideoPlayer): Boolean {
         val toc = toc ?: return false
         if (volumes.getOrNull(routeIndex) == null) return false
+        val start = volumes[routeIndex].index + 1
+        val end = volumes.getOrNull(routeIndex + 1)?.index ?: toc.size
+        if (start >= end) return false
+        val oldTitle = episodes?.getOrNull(chapterInVolumeIndex)?.title
+        val target = toc.subList(start, end)
+        val targetIndex = target.indexOfFirst { it.title == oldTitle }.takeIf { it >= 0 }
+            ?: chapterInVolumeIndex.coerceIn(0, target.lastIndex)
         // 竞态守卫：与订阅源 switchToRoute 同一令牌池
         val switchToken = ++switchToRouteToken
         durVolumeIndex = routeIndex
         // 线路索引镜像同步（订阅源 switchToRoute 同款），详情抽屉线路 Tab 高亮依赖
         rssRouteIndex = routeIndex
-        chapterInVolumeIndex = 0
+        chapterInVolumeIndex = targetIndex
         upEpisodes()
         // 卷章 → RssEpisode 映射，复用订阅源集数选择器 UI（数据源 rssEpisodes）
         val routeEpisodes = episodes.orEmpty().map { RssEpisode(title = it.title, url = it.url) }
@@ -2048,7 +2129,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         rssEpisodes = routeEpisodes
         postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1))
         // 默认播放新线路第一集（章节播放链）
-        routeEpisodes.firstOrNull()?.let { playBookEpisode(player, 0, it) }
+        routeEpisodes.getOrNull(targetIndex)?.let { playBookEpisode(player, targetIndex, it) }
         return true
     }
 
@@ -2064,6 +2145,8 @@ object VideoPlay : CoroutineScope by MainScope(){
      * @param episode 集数模型（title/url 与章节一致，来自 rssEpisodes 映射）
      */
     fun playBookEpisode(player: GSYBaseVideoPlayer, episodeIndex: Int, episode: RssEpisode) {
+        introSkipped = false
+        outroSkipped = false
         val book = book ?: return
         val toc = toc ?: return
         // 卷内索引 → 全目录索引（durVolume.index 为卷起始章索引，+1 跳过卷行本身）
@@ -2073,6 +2156,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         this.chapter = chapter
         chapterInVolumeIndex = episodeIndex
         book.chapterInVolumeIndex = episodeIndex
+        book.durVolumeIndex = durVolumeIndex
         book.durChapterIndex = durChapterIndex
         durChapterPos = 0
         // video-booksource-align-rss AD-01：双索引镜像删除——此处唯一写点直接同步
@@ -2341,6 +2425,8 @@ object VideoPlay : CoroutineScope by MainScope(){
      * 采集链已委托 VideoPlaybackPipeline.playEpisode（AnalyzeUrl/setUp/startPlayLogic 由 Pipeline 统一实现）
      */
     fun playRssEpisode(player: GSYBaseVideoPlayer, episode: RssEpisode) {
+        introSkipped = false
+        outroSkipped = false
         // py 源集数模式：source 为空，URL 需经 bridgePlay 解析后播放
         val pyPluginId = pyEpisodesPluginId
         if (pyPluginId != null && source == null) {

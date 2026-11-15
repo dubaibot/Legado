@@ -2,6 +2,7 @@ package io.legado.app.help.gsyVideo
 
 import android.os.Message
 import androidx.annotation.OptIn
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import com.shuyu.gsyvideoplayer.GSYVideoBaseManager
 import io.legado.app.R
@@ -138,6 +139,31 @@ class ExoVideoManager: GSYVideoBaseManager() {
         } catch (t: Throwable) {
             // 效果链注入失败不影响播放（media3 管线异常兜底）
             AppLog.put("ImageEnhance: setVideoEffects failed: ${t.message}")
+        }
+    }
+
+    /**
+     * R3：设置视频清晰度（通过 ExoPlayer 轨道选择限制最大视频尺寸）
+     * 0=自动（不限制），1=1080p，2=720p，3=480p，4=360p
+     * 仅对自适应流（HLS/DASH/SmoothStreaming）生效，直接 MP4 源无多码率时无变化。
+     */
+    @OptIn(UnstableApi::class)
+    fun setVideoQuality(quality: Int) {
+        try {
+            val exoManager = playerManager as? ExoPlayerManager ?: return
+            val mediaPlayer = exoManager.getMediaPlayer() as? Exo2MediaPlayer ?: return
+            val player = mediaPlayer.exoPlayerInstance ?: return
+            val builder = TrackSelectionParameters.Builder()
+            when (quality) {
+                1 -> builder.setMaxVideoSize(1920, 1920)  // 1080p
+                2 -> builder.setMaxVideoSize(1280, 1280)  // 720p
+                3 -> builder.setMaxVideoSize(854, 854)    // 480p
+                4 -> builder.setMaxVideoSize(640, 640)    // 360p
+                else -> Unit                              // 自动：不设限制
+            }
+            player.trackSelectionParameters = builder.build()
+        } catch (t: Throwable) {
+            AppLog.put("VideoQuality: setVideoQuality failed: ${t.message}")
         }
     }
 

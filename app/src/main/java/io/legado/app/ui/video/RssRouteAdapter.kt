@@ -1,21 +1,18 @@
 package io.legado.app.ui.video
 
 import android.annotation.SuppressLint
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
 
 /**
  * R3 多线路支持：线路选择器适配器
  *
- * 结构与 ChapterAdapter/RssEpisodeAdapter 对称，数据为线路名称列表。
- * 复用 item_video_chapter 布局，与书源卷选择器 UI 一致。
+ * chips 样式：选中时实心主题色背景+白色文字，未选中时半透明背景+白色文字。
+ * 背景由 bg_video_chip 状态列表 drawable 自动处理，通过 itemView.isSelected 切换。
  */
 class RssRouteAdapter(
     private var routeNames: List<String>,
@@ -25,7 +22,7 @@ class RssRouteAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RouteViewHolder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_video_chapter, parent, false)
+            .inflate(R.layout.item_video_route, parent, false)
         return RouteViewHolder(view)
     }
 
@@ -60,18 +57,7 @@ class RssRouteAdapter(
 
         fun bind(routeName: String, isSelected: Boolean) {
             tvChapterName.text = routeName
-            // video-player-image-enhance 样式专项：线路列表为播放页悬浮控件，对齐悬浮层例外体系（同 RssEpisodeAdapter）
-            if (isSelected) {
-                tvChapterName.setTextColor(accentColor)
-                val accent = accentColor
-                tvChapterName.background = GradientDrawable().apply {
-                    cornerRadius = 12f * itemView.resources.displayMetrics.density
-                    setColor(Color.argb(0x33, Color.red(accent), Color.green(accent), Color.blue(accent)))
-                }
-            } else {
-                tvChapterName.setTextColor(Color.WHITE)
-                tvChapterName.setBackgroundResource(R.drawable.bg_overlay_button)
-            }
+            itemView.isSelected = isSelected
             itemView.setOnClickListener {
                 val previousPosition = selectedPosition
                 selectedPosition = bindingAdapterPosition

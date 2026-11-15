@@ -69,6 +69,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -720,7 +721,7 @@ private fun HomeContent(
                             bottom = 8.dp + with(androidx.compose.ui.platform.LocalDensity.current) { bottomPaddingPx.toDp() },
                         ),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(44.dp),
                     ) {
                         // spider 源返回列表可能含重复 id（同片多入口/翻页重叠），
                         // Lazy key 全局唯一要求下去重保序
@@ -817,8 +818,9 @@ private fun VideoCard(
         }
         Text(
             text = video.title,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
+            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
+            minLines = 2,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 4.dp),
         )

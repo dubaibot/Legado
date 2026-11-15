@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="video_episode_order_ascending">正序</string>
+    <string name="video_episode_order_descending">倒序</string>
+    <string name="video_episode_total_count">共%1$d集</string>
+</resources>

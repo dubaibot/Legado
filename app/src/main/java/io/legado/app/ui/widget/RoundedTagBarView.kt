@@ -37,12 +37,6 @@ class RoundedTagBarView @JvmOverloads constructor(
         val alpha: Float = 1f
     )
 
-    /** 选中项背景：强调色 alpha 值，与首页排行榜多分类 Tab 的 12% 一致 */
-    private companion object {
-        const val SELECTED_BG_ALPHA = 31 // 约 12%
-        const val SELECTED_STROKE_ALPHA = 102 // 约 40%
-    }
-
     private val layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
     private val adapter = TagAdapter()
     private val recyclerView = RecyclerView(context).apply {
@@ -55,8 +49,7 @@ class RoundedTagBarView @JvmOverloads constructor(
         isHorizontalFadingEdgeEnabled = false
         isVerticalFadingEdgeEnabled = false
         setFadingEdgeLength(0)
-        val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_recycler_padding_vertical)
-        setPadding(0, verticalPadding, 0, verticalPadding)
+        setPadding(0, 0, 0, 0)
     }
     private var items = emptyList<Item>()
     private var selectedIndex = RecyclerView.NO_POSITION
@@ -64,7 +57,7 @@ class RoundedTagBarView @JvmOverloads constructor(
     private var onTagLongClick: ((Int) -> Boolean)? = null
     private var styleSignature: String? = null
     private var selectedBackgroundVisible = true
-    private var displayMode = DisplayMode.CHIP
+    private var displayMode = DisplayMode.TEXT
     private var backgroundOverrideColor: Int? = null
 
     init {
@@ -72,7 +65,7 @@ class RoundedTagBarView @JvmOverloads constructor(
         applyTopBarStyle(force = true)
         val horizontalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_horizontal)
         val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_vertical)
-        setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+        setPadding(0, 0, 0, 0)
         addView(
             recyclerView,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -98,11 +91,9 @@ class RoundedTagBarView @JvmOverloads constructor(
         styleSignature = signature
         // 始终透明背景，不使用 TopBarConfig 的颜色/透明度作为栏背景
         background = null
-        val horizontalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_horizontal)
-        val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_vertical)
-        setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
-        // 选中项用强调色半透明填充，未选中项纯文字；文字颜色逻辑与首页排行榜多分类 Tab 一致
-        adapter.selectedBackgroundColor = ColorUtils.setAlphaComponent(context.accentColor, SELECTED_BG_ALPHA)
+        setPadding(0, 0, 0, 0)
+        // Match homepage source tabs: text emphasis and a bottom indicator.
+        adapter.selectedBackgroundColor = android.graphics.Color.TRANSPARENT
         adapter.selectedTextColor = context.accentColor
         adapter.normalTextColor = resolveUnselectedTextColor(context)
         adapter.notifyDataSetChanged()
@@ -243,9 +234,8 @@ class RoundedTagBarView @JvmOverloads constructor(
         override fun onBindViewHolder(holder: TagViewHolder, position: Int) {
             val item = items[position]
             val selected = position == selectedIndex
-            val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_recycler_padding_vertical)
-            val horizontalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_item_padding_horizontal)
-            holder.textView.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+            val horizontalPadding = (16 * resources.displayMetrics.density).toInt()
+            holder.textView.setPadding(horizontalPadding, 0, horizontalPadding, 0)
             holder.textView.setTextColor(
                 ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
@@ -256,7 +246,7 @@ class RoundedTagBarView @JvmOverloads constructor(
             holder.textView.typeface = holder.textView.context.uiTypeface()
             holder.textView.alpha = item.alpha
             holder.textView.isSelected = selected
-            // 选中为整圆角胶囊（半透明强调色填充），未选中无背景仅保留无边框水波纹反馈
+            // Match homepage source tabs: selected text and a bottom indicator.
             holder.textView.background = if (selected) {
                 buildSelectedItemBackground()
             } else {
@@ -282,18 +272,22 @@ class RoundedTagBarView @JvmOverloads constructor(
     }
 
     /**
-     * 选中标签背景：整圆角胶囊（半径为标签高度一半，左右两侧呈半圆），
-     * 强调色半透明填充 + 强调色描边。
+     * Homepage-style underline indicator beneath the selected label.
      */
-    private fun buildSelectedItemBackground(): GradientDrawable {
-        val cornerRadius =
-            resources.getDimensionPixelSize(R.dimen.bookshelf_tag_item_corner_radius_selected).toFloat()
-        val strokeWidth = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_item_stroke_width)
-        return GradientDrawable().apply {
+    private fun buildSelectedItemBackground(): Drawable {
+        val density = resources.displayMetrics.density
+        val background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setCornerRadius(cornerRadius)
-            setColor(adapter.selectedBackgroundColor)
-            setStroke(strokeWidth, ColorUtils.setAlphaComponent(context.accentColor, SELECTED_STROKE_ALPHA))
+            setColor(android.graphics.Color.TRANSPARENT)
+        }
+        val indicator = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(context.accentColor)
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(background, indicator)).apply {
+            setLayerGravity(1, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
+            setLayerWidth(1, (44 * density).toInt())
+            setLayerHeight(1, (2 * density).toInt())
         }
     }
 

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="video_episode_order_ascending">Ascending</string>
+    <string name="video_episode_order_descending">Descending</string>
+    <string name="video_episode_total_count">%1$d episodes</string>
+</resources>

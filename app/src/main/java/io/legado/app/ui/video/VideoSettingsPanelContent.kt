@@ -77,6 +77,12 @@ fun VideoSettingsPanelContent(
     onSkip: (Long) -> Unit,
     onRatio: () -> Unit,
     onAudioTrack: () -> Unit,
+    onMirror: () -> Unit,
+    onSleepTimer: () -> Unit,
+    onIntroSkip: () -> Unit,
+    onOutroSkip: () -> Unit,
+    onScreenshot: () -> Unit,
+    onVideoQuality: () -> Unit,
     onCopyUrl: () -> Unit,
     onFloatWindow: () -> Unit,
     onOtherPlayer: () -> Unit,
@@ -94,6 +100,11 @@ fun VideoSettingsPanelContent(
     var startFull by remember { mutableStateOf(VideoPlay.startFull) }
     var fullBottomProgress by remember { mutableStateOf(VideoPlay.fullBottomProgressBar) }
     var muteOnStart by remember { mutableStateOf(VideoPlay.muteOnStart) }
+    var mirrorOnStart by remember { mutableStateOf(VideoPlay.mirrorOnStart) }
+    var sleepTimerMinutes by remember { mutableStateOf(VideoPlay.sleepTimerMinutes) }
+    var introSkipSeconds by remember(host) { mutableStateOf(VideoPlay.introSkipSeconds) }
+    var outroSkipSeconds by remember(host) { mutableStateOf(VideoPlay.outroSkipSeconds) }
+    var videoQuality by remember { mutableStateOf(VideoPlay.videoQuality) }
     // add-dlna-cast：投屏设置（初值读自 VideoPlay，变更即写回）
     var dlnaCastEnabled by remember { mutableStateOf(VideoPlay.dlnaCastEnabled) }
     var dlnaForceProxy by remember { mutableStateOf(VideoPlay.dlnaForceProxy) }
@@ -163,7 +174,7 @@ fun VideoSettingsPanelContent(
 
         // ====== 布局模式（video-player-dual-layout，双宿主可见：全局=默认值，播放页=即时切换） ======
         SettingsCard(title = stringResource(R.string.video_layout_mode)) {
-            SettingsClickRow(
+            if (host == PanelHost.PLAYER_PAGE) SettingsClickRow(
                 icon = null,
                 title = stringResource(R.string.video_layout_mode),
                 value = if (layoutMode == 1) {
@@ -197,6 +208,35 @@ fun VideoSettingsPanelContent(
             ) {
                 PanelButton(stringResource(R.string.video_ratio)) { onRatio() }
                 PanelButton(stringResource(R.string.video_audio_track)) { onAudioTrack() }
+            }
+            SettingsToggleRow(
+                icon = null,
+                title = stringResource(R.string.video_mirror),
+                subtitle = stringResource(R.string.video_mirror_summary),
+                checked = mirrorOnStart,
+                onCheckedChange = {
+                    mirrorOnStart = it
+                    VideoPlay.mirrorOnStart = it
+                    onMirror()
+                }
+            )
+            if (host == PanelHost.PLAYER_PAGE) RowDivider(palette.divider)
+            if (host == PanelHost.PLAYER_PAGE) SettingsClickRow(
+                icon = null,
+                title = stringResource(R.string.video_sleep_timer),
+                value = sleepTimerLabel(sleepTimerMinutes),
+                onClick = { selection = PanelSelection.SleepTimer }
+            )
+            RowDivider(palette.divider)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                PanelButton(stringResource(R.string.video_intro_skip)) { onIntroSkip() }
+                PanelButton(stringResource(R.string.video_outro_skip)) { onOutroSkip() }
+                PanelButton(stringResource(R.string.video_screenshot)) { onScreenshot() }
             }
         }
 
@@ -344,6 +384,18 @@ fun VideoSettingsPanelContent(
                 }
             )
             RowDivider(palette.divider)
+            SettingsToggleRow(
+                icon = null,
+                title = stringResource(R.string.video_mirror),
+                subtitle = stringResource(R.string.video_mirror_summary),
+                checked = mirrorOnStart,
+                onCheckedChange = {
+                    mirrorOnStart = it
+                    VideoPlay.mirrorOnStart = it
+                    onMirror()
+                }
+            )
+            RowDivider(palette.divider)
             SettingsClickRow(
                 icon = null,
                 title = stringResource(R.string.press_speed),
@@ -364,6 +416,35 @@ fun VideoSettingsPanelContent(
                 title = stringResource(R.string.video_skip_time),
                 value = stringResource(R.string.video_seconds_format, skipTime),
                 onClick = { selection = PanelSelection.SkipTime }
+            )
+            if (host == PanelHost.PLAYER_PAGE) RowDivider(palette.divider)
+            if (host == PanelHost.PLAYER_PAGE) SettingsClickRow(
+                icon = null,
+                title = stringResource(R.string.video_intro_skip_time),
+                value = if (introSkipSeconds > 0) {
+                    stringResource(R.string.video_seconds_format, introSkipSeconds)
+                } else {
+                    stringResource(R.string.video_off)
+                },
+                onClick = { selection = PanelSelection.IntroSkipTime }
+            )
+            if (host == PanelHost.PLAYER_PAGE) RowDivider(palette.divider)
+            if (host == PanelHost.PLAYER_PAGE) SettingsClickRow(
+                icon = null,
+                title = stringResource(R.string.video_outro_skip_time),
+                value = if (outroSkipSeconds > 0) {
+                    stringResource(R.string.video_seconds_format, outroSkipSeconds)
+                } else {
+                    stringResource(R.string.video_off)
+                },
+                onClick = { selection = PanelSelection.OutroSkipTime }
+            )
+            if (host == PanelHost.PLAYER_PAGE) RowDivider(palette.divider)
+            SettingsClickRow(
+                icon = null,
+                title = stringResource(R.string.video_quality),
+                value = qualityLabel(videoQuality),
+                onClick = { selection = PanelSelection.VideoQuality }
             )
             RowDivider(palette.divider)
             SettingsToggleRow(
@@ -738,6 +819,78 @@ fun VideoSettingsPanelContent(
                 onDismiss = { selection = null }
             )
         }
+        PanelSelection.SleepTimer -> {
+            val values = intArrayOf(0, 15, 30, 60, 90, -1)
+            val options = values.map { sleepTimerLabel(it) }
+            val index = values.indexOf(sleepTimerMinutes).coerceAtLeast(0)
+            SingleChoiceDialog(
+                title = stringResource(R.string.video_sleep_timer),
+                options = options,
+                selectedIndex = index,
+                onSelect = {
+                    sleepTimerMinutes = values[it]
+                    VideoPlay.sleepTimerMinutes = values[it]
+                    onSleepTimer()
+                    selection = null
+                },
+                onDismiss = { selection = null }
+            )
+        }
+        PanelSelection.IntroSkipTime -> if (host == PanelHost.PLAYER_PAGE) {
+            val values = intArrayOf(0, 10, 30, 60, 90, 120)
+            val options = values.map {
+                if (it == 0) stringResource(R.string.video_off)
+                else stringResource(R.string.video_seconds_format, it)
+            }
+            val index = values.indexOf(introSkipSeconds).coerceAtLeast(0)
+            SingleChoiceDialog(
+                title = stringResource(R.string.video_intro_skip_time),
+                options = options,
+                selectedIndex = index,
+                onSelect = {
+                    introSkipSeconds = values[it]
+                    VideoPlay.introSkipSeconds = values[it]
+                    selection = null
+                },
+                onDismiss = { selection = null }
+            )
+        }
+        PanelSelection.OutroSkipTime -> if (host == PanelHost.PLAYER_PAGE) {
+            val values = intArrayOf(0, 10, 30, 60, 90, 120)
+            val options = values.map {
+                if (it == 0) stringResource(R.string.video_off)
+                else stringResource(R.string.video_seconds_format, it)
+            }
+            val index = values.indexOf(outroSkipSeconds).coerceAtLeast(0)
+            SingleChoiceDialog(
+                title = stringResource(R.string.video_outro_skip_time),
+                options = options,
+                selectedIndex = index,
+                onSelect = {
+                    outroSkipSeconds = values[it]
+                    VideoPlay.outroSkipSeconds = values[it]
+                    selection = null
+                },
+                onDismiss = { selection = null }
+            )
+        }
+        PanelSelection.VideoQuality -> {
+            val values = intArrayOf(0, 1, 2, 3, 4)
+            val options = values.map { qualityLabel(it) }
+            val index = values.indexOf(videoQuality).coerceAtLeast(0)
+            SingleChoiceDialog(
+                title = stringResource(R.string.video_quality),
+                options = options,
+                selectedIndex = index,
+                onSelect = {
+                    videoQuality = values[it]
+                    VideoPlay.videoQuality = values[it]
+                    onVideoQuality()
+                    selection = null
+                },
+                onDismiss = { selection = null }
+            )
+        }
         null -> Unit
     }
 }
@@ -770,7 +923,7 @@ private fun PanelButton(text: String, onClick: () -> Unit) {
 }
 
 /** 下拉选择类型 */
-private enum class PanelSelection { LayoutMode, SkipTime, CacheSize, PlayerType, SeekSensitivity, EnhancePreset, EnhanceSharpen, EnhanceDenoise, BufferStrategy }
+private enum class PanelSelection { LayoutMode, SkipTime, CacheSize, PlayerType, SeekSensitivity, EnhancePreset, EnhanceSharpen, EnhanceDenoise, BufferStrategy, SleepTimer, IntroSkipTime, OutroSkipTime, VideoQuality }
 
 /** 播放器类型标签（Phase 2：已收敛为 自动/内置 两档，原 WebView 项删除） */
 @Composable
@@ -849,4 +1002,22 @@ private fun bufferStrategyLabel(strategy: Int): String = when (strategy) {
     2 -> stringResource(R.string.player_buffer_strategy_balanced)
     3 -> stringResource(R.string.player_buffer_strategy_conservative)
     else -> stringResource(R.string.player_buffer_strategy_auto)
+}
+
+/** R3：定时关闭标签（0=关闭，-1=播放完毕，其余为分钟数） */
+@Composable
+private fun sleepTimerLabel(minutes: Int): String = when (minutes) {
+    0 -> stringResource(R.string.video_sleep_timer_off)
+    -1 -> stringResource(R.string.video_sleep_timer_until_end)
+    else -> stringResource(R.string.video_sleep_timer_set, minutes)
+}
+
+/** R3：清晰度标签（0=自动，1=1080p，2=720p，3=480p，4=360p） */
+@Composable
+private fun qualityLabel(quality: Int): String = when (quality) {
+    1 -> stringResource(R.string.video_quality_1080p)
+    2 -> stringResource(R.string.video_quality_720p)
+    3 -> stringResource(R.string.video_quality_480p)
+    4 -> stringResource(R.string.video_quality_360p)
+    else -> stringResource(R.string.video_quality_auto)
 }

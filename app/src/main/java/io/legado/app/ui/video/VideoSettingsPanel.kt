@@ -75,14 +75,25 @@ class VideoSettingsPanel : BottomSheetDialogFragment() {
                 LegadoTheme {
                     VideoSettingsPanelContent(
                         videoUrl = VideoPlay.videoUrl,
-                        description = VideoPlay.rssStar?.toRssArticle()?.description
-                            ?: VideoPlay.rssRecord?.toRssArticle()?.description,
+                        description = VideoPlay.rssArticles?.getOrNull(VideoPlay.rssArticleIndex)?.description
+                            ?.takeIf { it.isNotBlank() }
+                            ?: VideoPlay.videoDescription?.takeIf { it.isNotBlank() }
+                            ?: VideoPlay.rssStar?.toRssArticle()?.description
+                                ?.takeIf { it.isNotBlank() }
+                            ?: VideoPlay.rssRecord?.toRssArticle()?.description
+                                ?.takeIf { it.isNotBlank() },
                         showLogin = !VideoPlay.source?.loginUrl.isNullOrBlank(),
                         debugLog = debugLog,
                         pressSpeedSummary = getString(R.string.press_speed_summary, pressSpeedDisplay),
                         onSkip = ::skipVideo,
                         onRatio = { playerView?.showRatioDialogPublic() },
                         onAudioTrack = { playerView?.showAudioTrackDialogPublic() },
+                        onMirror = { playerView?.toggleMirror() },
+                        onSleepTimer = { playerView?.setSleepTimer(VideoPlay.sleepTimerMinutes) },
+                        onIntroSkip = { playerView?.skipIntro() },
+                        onOutroSkip = { playerView?.skipOutro() },
+                        onScreenshot = { playerView?.screenshot() },
+                        onVideoQuality = { playerView?.setVideoQuality(VideoPlay.videoQuality) },
                         onCopyUrl = ::copyVideoUrl,
                         onFloatWindow = {
                             callback?.onFloatWindow()

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rule_video_playline">Playline name (relative to each chapter)</string>
+</resources>

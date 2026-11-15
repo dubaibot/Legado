@@ -7,6 +7,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.repository.debug.FlowLogRecorder
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -147,7 +148,7 @@ object BookInfo {
         Debug.log(bookSource.bookSourceUrl, "┌获取作者")
         val originalAuthor = book.author
         BookHelp.formatBookAuthor(analyzeRule.getString(infoRule.author)).let {
-            if (it.isNotEmpty() && (mCanReName || book.author.isEmpty())) {
+            if (it.isNotEmpty() && (book.isVideo || mCanReName || book.author.isEmpty())) {
                 book.author = it
             }
             Debug.log(bookSource.bookSourceUrl, "└${it}")

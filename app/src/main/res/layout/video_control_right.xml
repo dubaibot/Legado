@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/control_right"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:gravity="center"
+    android:paddingEnd="12dp"
+    android:orientation="vertical"
+    android:visibility="gone"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:visibility="visible">
+
+    <ImageView
+        android:id="@+id/right_lock"
+        style="@style/VideoControlCircle"
+        android:layout_marginBottom="12dp"
+        android:contentDescription="锁屏"
+        android:src="@drawable/unlock" />
+
+    <ImageView
+        android:id="@+id/right_rotate"
+        style="@style/VideoControlCircle"
+        android:contentDescription="旋转屏幕"
+        android:src="@drawable/ic_rotate_right" />
+
+</LinearLayout>

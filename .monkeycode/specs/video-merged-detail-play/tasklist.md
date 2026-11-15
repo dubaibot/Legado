@@ -1,0 +1,131 @@
+# FongMi 播放器移植实施计划
+
+> 策略：保留 GSY 内核，移植 FongMi 控制栏布局与交互，合并播放器与详情同页。
+> 优先修复 R3 功能实现质量与合并页详情区显示效果。
+
+- [x] 1. 修复 R3 功能实现质量
+  - [x] 1.1 修复定时关闭全屏同步
+    - 将 sleepTimerRunnable 逻辑改为基于 VideoPlay 持久化状态重建：全屏切换后新实例 onPrepared 时根据 VideoPlay.sleepTimerMinutes 重新 setupSleepTimer()
+    - 修复 clearSleepTimer：确保定时器移除后状态一致，避免定时器残留
+    - 确保定时关闭为"播放完毕"模式时，onCompletion 正确触发提示且不重复
+  - [x] 1.2 修复片头/片尾跳过全屏同步
+    - 将 introSkipped/outroSkipped 标记改为基于 VideoPlay 持久化（新增 introSkipped/outroSkipped 字段），换集时重置，全屏切换时不重置
+    - 修复 onPrepared 中 resetSkipFlags 的调用时机：仅换集时重置，全屏切换不重置
+    - 确保 checkIntroOutroSkip 在全屏新实例中通过 setGSYVideoProgressListener 正确注册
+  - [x] 1.3 修复镜像翻转全屏同步
+    - 确保全屏新实例 onSurfaceAvailable 时 applyMirror() 正确执行
+    - 修复 startWindowFullscreen 中新实例的镜像状态同步，确保 isMirrored 从 VideoPlay.mirrorOnStart 正确恢复
+    - 在控制栏添加镜像切换入口（绑定 toggleMirror）
+  - [x] 1.4 修复清晰度切换同步
+    - 确保全屏新实例 onPrepared 时重新应用 VideoPlay.videoQuality
+    - 确保控制栏清晰度按钮在全屏/竖屏两套布局中均可点击
+    - 修复 setVideoQuality 在非自适应流（直接 MP4）时的降级提示
+  - [x] 1.5 修复截图功能
+    - 确保全屏/竖屏两套布局中截图入口均可用
+    - 修复截图在 GSY 全屏切换后新实例的 taskShotPic 调用
+    - 优化截图保存路径与相册目录命名
+  - [x] 1.6 确保 R3 功能控制栏入口完整
+    - 在控制栏中完整绑定：定时关闭、片头跳过、片尾跳过、镜像、截图、清晰度 按钮
+    - 确保每个功能在全屏和竖屏两套控制栏布局中均有入口
+    - 修复按钮显隐逻辑：仅在配置了跳过时间时显示片头/片尾按钮
+
+- [x] 2. 改进合并页详情区显示效果
+  - [x] 2.1 丰富封面右侧元信息
+    - 在封面右侧新增：备注（remark）、站源（site）、其他信息（年份/地区/类型）、导演、演员 等元信息 TextView
+    - 适配 Book 数据模型：从 book.info 提取年份/地区/类型/导演/演员字段
+    - 适配 RssSource 数据模型：从 rss 源信息提取元数据
+    - 空字段自动隐藏（参考 FongMi setText 的 GONE 逻辑）
+  - [x] 2.2 改进线路选择器显示效果
+    - 重做线路选择器样式：参考 FongMi chips 样式，选中时实心主题色背景+白色文字，未选中时半透明背景+白色文字
+    - 新增 item_video_route 布局（线路 chip），替换 item_video_chapter 复用
+    - 线路横向滚动，选中项自动滚动到可见区域
+  - [x] 2.3 改进选集列表显示效果
+    - 重做选集样式：参考 FongMi chips 样式，选中时实心主题色背景+白色文字，未选中时半透明背景+白色文字
+    - 新增 item_video_episode 布局（选集 chip），替换 item_video_chapter_vertical
+    - 选集横向滚动（chips 风格），集数较多时支持横向滚动而非网格分页
+    - 保留当前集高亮 + 已观看标记
+  - [x] 2.4 改进详情区整体布局
+    - 参考 FongMi activity_video.xml 详情区结构：名称 → 备注 → 站源 → 其他信息 → 导演 → 演员 → 线路区 → 选集区 → 简介区
+    - 优化间距与字号，对齐 FongMi 的视觉风格
+    - 简介支持 HTML 富文本渲染与点击展开/收起
+
+- [x] 3. 创建 FongMi 风格控制栏布局文件
+  - [x] 3.1 创建 `video_control_vod.xml`（控制栏主布局）
+    - 参考 FongMi `view_control_vod.xml`，创建 RelativeLayout 控制栏
+    - 包含 top（标题/尺寸 + 投屏/信息/收藏/设置）、center（上一首/播放/下一首）、right（返回/锁定/旋转）、bottom（解析/进度条/全屏/功能按钮行）
+    - 适配当前项目的主题色（ThemeStore.accentColor）与 drawable 资源
+  - [x] 3.2 创建 `video_widget_vod.xml`（浮动控件层）
+    - 参考 FongMi `view_widget_vod.xml`，创建 FrameLayout 浮动控件
+    - 包含 error（错误提示）、progress（加载进度+流量）、seek（拖动时间显示）、speed（倍速图标）、bright（亮度调节）、volume（音量调节）、preview（缩略图预览）
+  - [x] 3.3 创建 `video_control_right.xml`（右侧竖排控件）
+    - 参考 FongMi `view_control_right.xml`，创建 back/lock/rotate 竖排 ImageView
+  - [x] 3.4 创建 `video_control_vod_action.xml`（底部功能按钮行）
+    - 参考 FongMi `view_control_vod_action.xml`，创建 HorizontalScrollView 内的功能按钮
+    - 包含：播放器切换/解码/倍速/缩放/刷新/循环/字幕/音轨/视频轨/片头/片尾/选集
+    - 适配当前项目已有功能，R3 功能按钮（定时关闭/镜像/截图/清晰度）一并加入
+  - [x] 3.5 修改 `video_layout_controller.xml` 与 `video_layout_controller_full.xml`
+    - 将底部控制栏改为 FongMi 风格结构：进度条+时间在上、动作按钮行在下
+    - 添加右侧竖排控制栏 include 与浮动控件 include
+    - 全屏布局添加顶部信息按钮（iv_info）与居中播放按钮（start）
+
+- [ ] 4. 重写 VideoPlayer.kt 控制栏逻辑
+  - [x] 4.1 替换控制栏布局引用
+    - 修改 `getLayoutId()`，保持 `video_layout_controller.xml` / `video_layout_controller_full.xml` 引用（布局内容已改为 FongMi 风格）
+    - 移除 GSY 原始控制栏的引用，改为使用新控制栏视图
+  - [x] 4.2 实现控制栏显隐与自动隐藏
+    - 移植 FongMi `showControl()` / `hideControl()` 逻辑：根据全屏/锁定/播放状态控制各控件可见性
+    - 实现自动隐藏定时器：触摸后延迟隐藏控制栏
+    - 适配 GSY 播放器状态回调驱动控制栏更新
+    - 覆盖 `onClickUiToggle` 同步管理右侧竖排控制栏与浮动 widget 容器显隐
+    - 更新 `changeUiToClear`/`changeUiToPlayingBufferingClear` 同步管理 FongMi 风格控件
+    - 更新 `setGsyControlVisibility` 同步管理 widget_container 显隐
+  - [x] 4.3 实现控制栏交互绑定
+    - 绑定 top 栏：标题/尺寸显示、投屏/信息/收藏/设置按钮
+    - 绑定 center：播放/暂停/上一首/下一首
+    - 绑定 right：返回/锁定/旋转
+    - 绑定 bottom：进度条拖动、全屏切换、功能按钮（含 R3 功能按钮）
+    - 绑定 widget：错误显示、加载进度、拖动时间、倍速/亮度/音量手势
+  - [x] 4.4 实现手势交互
+    - 移植 FongMi 手势：单点切换控制栏显隐、双击播放/暂停、长按倍速、滑动亮度/音量/进度
+    - 适配 GSY 的 GestureDetector，与 FongMi 控制栏联动
+    - 覆盖 `showVolumeDialog`/`dismissVolumeDialog`/`showBrightnessDialog`/`dismissBrightnessDialog` 显示 FongMi 风格 widget
+    - 覆盖 `touchSurfaceMove` 显示 seek widget，`touchSurfaceUp` 隐藏 seek/speed widget
+    - 覆盖 `hideAllWidget` 隐藏所有 FongMi 风格 widget
+
+- [x] 5. 重写合并播放页布局
+  - [x] 5.1 改造 `activity_video_player.xml` 为 FongMi 合并布局
+    - 当前布局已具备 FongMi 合并布局结构：播放器 FrameLayout 固定顶部 + Tab栏 + 详情滚动区
+    - 播放器内 VideoPlayer 已使用 GSY 内核 + FongMi 控制栏布局（阶段3成果）
+    - 详情区已使用阶段2改进的布局结构（封面/标题/简介/线路/选集 chips）
+    - 无需额外布局改造，现有结构已对齐 FongMi `activity_video.xml` 视觉风格
+  - [x] 5.2 适配全屏切换布局
+    - 全屏时播放器 FrameLayout 由 GSY `startWindowFullscreen` 创建全屏实例
+    - 退出全屏时恢复播放器高度，`toggleFullScreen()` 已正确隐藏/显示 Tab 栏与内容区
+    - 状态栏 inset 留白由 `applyRootSystemBarInset` 处理（全屏清除，非全屏恢复）
+
+- [x] 6. 改造 VideoPlayerActivity 控制栏与页面逻辑
+  - [x] 6.1 适配 VideoPlayer 控制栏接口
+    - `VideoPlayerActivity` 中 `playerView` 控制栏引用无需改动，FongMi 控件由 `setGsyControlVisibility` 统一管理
+    - `setGsyControlVisibility` 调用已兼容 FongMi 控制栏（阶段4.2 更新）
+    - 设置面板 `VideoSettingsPanel` 与控制栏联动保持不变
+  - [x] 6.2 适配合并页详情区交互
+    - 现有详情数据加载（initSource/目录加载/线路/集数）逻辑保持不变
+    - 详情区滚动与播放器联动由 Tab 栏切换驱动，无需额外适配
+    - 选集/切线路时播放器无缝切换逻辑保持不变
+  - [x] 6.3 适配全屏与布局切换
+    - 现有 `toggleFullscreen()` / `switchLayoutMode()` 逻辑无需改动
+    - 全屏时控制栏布局切换由 GSY 内部处理（全屏/竖屏两套布局）
+    - 退出全屏后详情区恢复由 `toggleFullScreen()` 处理
+
+- [x] 7. 编译验证
+  - [x] 7.1 运行 Kotlin 编译检查
+    - 执行 `./gradlew :app:compileAppDebugKotlin`，后台终端执行，CPU 300%、内存 70%、超时 3600s
+    - 修复所有编译错误（布局引用、类型不匹配、缺失方法）
+    - 编译结果：BUILD SUCCESSFUL in 6m 21s，49 actionable tasks: 2 executed, 47 up-to-date
+  - [x] 7.2 修复布局资源缺失
+    - 检查新增的 drawable 资源是否全部就位
+    - 修复字符串资源缺失
+    - 修复样式/主题资源引用
+
+- [x] 8. 检查点 - 确保编译通过
+  - `compileAppDebugKotlin` BUILD SUCCESSFUL，全部改动编译通过

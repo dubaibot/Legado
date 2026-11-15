@@ -80,6 +80,12 @@ fun Context.startActivityForBook(
     // video-merged-detail-play：视频书源统一合并布局（详情+播放同页）
     if (cls == VideoPlayerActivity::class.java) {
         intent.putExtra(PreferKey.layoutModeOverride, 1)
+        book.getVariable("videoSourceId")?.takeIf { it.isNotBlank() }?.let { sourceId ->
+            intent.removeExtra("bookUrl")
+            intent.putExtra("pyPluginId", sourceId)
+            intent.putExtra("pyVideoItemId", book.getVariable("videoItemId"))
+            intent.putExtra("videoTitle", book.name)
+        }
     }
     intent.apply(configIntent)
     startActivity(intent)

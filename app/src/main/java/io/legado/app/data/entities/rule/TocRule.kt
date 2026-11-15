@@ -16,7 +16,8 @@ data class TocRule(
     var isVip: String? = null,
     var isPay: String? = null,
     var updateTime: String? = null,
-    var nextTocUrl: String? = null
+    var nextTocUrl: String? = null,
+    var playline: String? = null
 ) : Parcelable {
 
     companion object {

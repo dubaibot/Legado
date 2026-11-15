@@ -17,6 +17,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
@@ -47,6 +48,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
 
 class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     val bookData = MutableLiveData<Book>()
@@ -58,6 +60,54 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     private var changeSourceCoroutine: Coroutine<*>? = null
     val waitDialogData = MutableLiveData<Boolean>()
     val actionLive = MutableLiveData<String>()
+    val authorOtherWorksData = MutableLiveData<AuthorOtherWorksState>(AuthorOtherWorksState.Idle)
+
+    fun searchAuthorOtherWorks() {
+        val book = bookData.value ?: return
+        val source = bookSource ?: run {
+            authorOtherWorksData.value = AuthorOtherWorksState.Error(context.getString(R.string.error_no_source))
+            return
+        }
+        val author = book.getRealAuthor().trim()
+        if (author.isBlank()) {
+            authorOtherWorksData.value = AuthorOtherWorksState.Empty
+            return
+        }
+        authorOtherWorksData.value = AuthorOtherWorksState.Loading
+        viewModelScope.launch(IO) {
+            runCatching {
+                WebBook.searchBookAwait(source, author, 1, filter = { _, resultAuthor, _ ->
+                    resultAuthor.trim() == author
+                }, shouldBreak = { it >= 30 }).asSequence()
+                    .onEach { it.releaseHtmlData() }
+                    .filter { it.name.trim() != book.name.trim() }
+                    .distinctBy { "${it.name.trim()}-${it.author.trim()}" }
+                    .toList()
+            }.onSuccess { books ->
+                authorOtherWorksData.postValue(
+                    if (books.isEmpty()) AuthorOtherWorksState.Empty else AuthorOtherWorksState.Success(books)
+                )
+            }.onFailure { error ->
+                authorOtherWorksData.postValue(
+                    AuthorOtherWorksState.Error(error.localizedMessage ?: error.javaClass.simpleName)
+                )
+            }
+        }
+    }
+
+    fun searchAuthorOtherWorksIfIdle() {
+        if (authorOtherWorksData.value is AuthorOtherWorksState.Idle) {
+            searchAuthorOtherWorks()
+        }
+    }
+
+    sealed class AuthorOtherWorksState {
+        data object Idle : AuthorOtherWorksState()
+        data object Loading : AuthorOtherWorksState()
+        data object Empty : AuthorOtherWorksState()
+        data class Success(val books: List<SearchBook>) : AuthorOtherWorksState()
+        data class Error(val message: String) : AuthorOtherWorksState()
+    }
 
     fun initData(intent: Intent) {
         execute {

@@ -418,6 +418,7 @@ class BookSourceEditActivity :
             add(EditEntity("isVip", tr.isVip, R.string.rule_is_vip))
             add(EditEntity("isPay", tr.isPay, R.string.rule_is_pay))
             add(EditEntity("nextTocUrl", tr.nextTocUrl, R.string.rule_next_toc_url))
+            add(EditEntity("playline", tr.playline, R.string.rule_video_playline))
         }
         // 正文页
         val cr = bs.getContentRule()
@@ -606,6 +607,7 @@ class BookSourceEditActivity :
                     viewModel.ruleComplete(it.value, tocRule.chapterList, 2)
 
                 "formatJs" -> tocRule.formatJs = it.value
+                "playline" -> tocRule.playline = viewModel.ruleComplete(it.value, tocRule.chapterList)
                 "isVolume" -> tocRule.isVolume = it.value
                 "updateTime" -> tocRule.updateTime = it.value
                 "isVip" -> tocRule.isVip = it.value

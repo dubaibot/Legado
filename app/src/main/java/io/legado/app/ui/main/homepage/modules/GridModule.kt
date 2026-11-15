@@ -53,7 +53,7 @@ fun GridModule(
         for (row in rows) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 for (item in row) {
                     val book = item.book
@@ -72,7 +72,7 @@ fun GridModule(
                                 coverUrl = book.coverUrl,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(5f / 7f),
+                                    .aspectRatio(3f / 4f),
                                 cornerRadius = 4.dp,
                                 identity = book.bookUrl
                             )
@@ -131,6 +131,16 @@ fun GridModule(
                                 minLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (book.author.isNotBlank()) {
+                            Text(
+                                text = book.author,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp),
                             )
                         }
                     }

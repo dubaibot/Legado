@@ -16,7 +16,7 @@ class ChapterAdapter(
     private var chapters: List<BookChapter>,
     private var selectedPosition: Int = -1,
     private val isVolume: Boolean = false,
-    private val chapterLayoutRes: Int = R.layout.item_video_chapter,
+    private val chapterLayoutRes: Int = R.layout.item_video_episode,
     private val onChapterClick: (BookChapter, Int) -> Unit
 ) : RecyclerView.Adapter<ChapterAdapter.ChapterViewHolder>() {
 
@@ -31,6 +31,9 @@ class ChapterAdapter(
         }
         val view = LayoutInflater.from(parent.context)
             .inflate(resourceId, parent, false)
+        if (!isVolume && (parent as? RecyclerView)?.layoutManager is androidx.recyclerview.widget.GridLayoutManager) {
+            view.layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+        }
         return ChapterViewHolder(view)
     }
 
@@ -57,7 +60,7 @@ class ChapterAdapter(
     @SuppressLint("NotifyDataSetChanged")
     fun updateData(newToc: List<BookChapter>?) {
         this.chapters = newToc ?: return
-        notifyDataSetChanged() //全量更新
+        notifyDataSetChanged()
     }
 
     inner class ChapterViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -65,26 +68,31 @@ class ChapterAdapter(
 
         fun bind(chapter: BookChapter, isSelected: Boolean) {
             tvChapterName.text = chapter.title
-            // video-player-image-enhance 样式专项：章节列表为播放页悬浮控件，对齐悬浮层例外体系（同 RssEpisodeAdapter）
-            if (isSelected) {
-                tvChapterName.setTextColor(accentColor)
-                val accent = accentColor
-                tvChapterName.background = GradientDrawable().apply {
-                    cornerRadius = 12f * itemView.resources.displayMetrics.density
-                    setColor(Color.argb(0x33, Color.red(accent), Color.green(accent), Color.blue(accent)))
+            if (isVolume) {
+                // 卷选择器：保持 CardView 样式，编程式设置选中高亮
+                if (isSelected) {
+                    tvChapterName.setTextColor(accentColor)
+                    val accent = accentColor
+                    tvChapterName.background = GradientDrawable().apply {
+                        cornerRadius = 12f * itemView.resources.displayMetrics.density
+                        setColor(Color.argb(0x33, Color.red(accent), Color.green(accent), Color.blue(accent)))
+                    }
+                } else {
+                    tvChapterName.setTextColor(Color.WHITE)
+                    tvChapterName.setBackgroundResource(R.drawable.bg_overlay_button)
                 }
             } else {
-                tvChapterName.setTextColor(Color.WHITE)
-                tvChapterName.setBackgroundResource(R.drawable.bg_overlay_button)
+                // 选集：chips 样式，由 bg_video_chip 状态列表 drawable 自动处理
+                itemView.isSelected = isSelected
             }
             itemView.setOnClickListener {
                 val previousPosition = selectedPosition
                 selectedPosition = bindingAdapterPosition
                 if (previousPosition >= 0) {
-                    notifyItemChanged(previousPosition) //更新之前的
+                    notifyItemChanged(previousPosition)
                 }
                 if (selectedPosition >= 0) {
-                    notifyItemChanged(selectedPosition) //更新当前选中的
+                    notifyItemChanged(selectedPosition)
                 }
                 onChapterClick(chapter, selectedPosition)
             }

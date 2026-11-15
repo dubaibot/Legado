@@ -17,7 +17,7 @@
     <io.legado.app.ui.widget.RoundedTagBarView
         android:id="@+id/tag_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="36dp"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@+id/title_bar" />
 

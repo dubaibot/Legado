@@ -40,6 +40,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
@@ -79,6 +80,7 @@ class VideoPlayService : BaseService() {
     }
     private val playerView by lazy { floatingView.findViewById<FloatingPlayer>(R.id.floatingPlayerView) }
     private var isNew = true
+    private var layoutModeOverride = -1
     private var upNotificationJob: Coroutine<*>? = null
     private var animator: SpringAnimation? = null
     private var cover: Bitmap =
@@ -205,6 +207,7 @@ class VideoPlayService : BaseService() {
             return super.onStartCommand(intent, flags, startId)
         }
         isNew = intent.getBooleanExtra("isNew", true)
+        layoutModeOverride = intent.getIntExtra(PreferKey.layoutModeOverride, -1).takeIf { it in 0..1 } ?: -1
         if (isNew) {
             intent.getStringExtra("videoUrl")?.let {
                 VideoPlay.videoUrl = it
@@ -530,6 +533,9 @@ class VideoPlayService : BaseService() {
         val fullscreenIntent = Intent(this, VideoPlayerActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("isNew", false)
+            if (layoutModeOverride in 0..1) {
+                putExtra(PreferKey.layoutModeOverride, layoutModeOverride)
+            }
         }
         startActivity(fullscreenIntent)
         playerView.needDestroy = false

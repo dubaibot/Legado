@@ -6,6 +6,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <!-- add-dlna-cast AD-05 兜底②：投屏中状态条（面板关闭后仍可见，点击回到投屏面板） -->
@@ -88,11 +89,11 @@
 
             </FrameLayout>
 
-            <!-- Tab 标签栏：简介 / 推荐 / 换源 + 弹幕开关 / 收藏 -->
+            <!-- Tab 标签栏：简介 / 推荐 / 换源 + 弹幕 / 下载 / 悬浮窗 -->
             <LinearLayout
                 android:id="@+id/tab_bar"
                 android:layout_width="match_parent"
-                android:layout_height="44dp"
+                android:layout_height="48dp"
                 android:background="@color/background_card"
                 android:elevation="2dp"
                 android:gravity="center_vertical"
@@ -102,12 +103,13 @@
 
                 <TextView
                     android:id="@+id/tab_intro"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
                     android:text="@string/tab_intro"
                     android:textColor="@color/primary"
                     android:textSize="@dimen/text_15sp"
@@ -115,40 +117,55 @@
 
                 <TextView
                     android:id="@+id/tab_recommend"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
                     android:text="@string/tab_recommend"
                     android:textColor="@color/tv_text_summary"
                     android:textSize="@dimen/text_15sp" />
 
                 <TextView
                     android:id="@+id/tab_source"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
                     android:text="@string/tab_source"
                     android:textColor="@color/tv_text_summary"
                     android:textSize="@dimen/text_15sp" />
 
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1dp"
-                    android:layout_weight="1" />
+                <ImageButton
+                    android:id="@+id/btn_tab_danmaku"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/video_danmaku_off"
+                    android:src="@drawable/ic_danmaku"
+                    app:tint="@color/primaryText" />
 
                 <ImageButton
-                    android:id="@+id/btn_favorite"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:id="@+id/btn_tab_download"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="@android:color/transparent"
-                    android:contentDescription="@string/favorite"
-                    android:src="@drawable/ic_star_border"
+                    android:contentDescription="@string/action_download"
+                    android:src="@drawable/ic_download_line"
+                    app:tint="@color/primaryText" />
+
+                <ImageButton
+                    android:id="@+id/btn_tab_float"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/float_window"
+                    android:src="@drawable/ic_float_window"
                     app:tint="@color/primaryText" />
 
             </LinearLayout>
@@ -205,10 +222,10 @@
                                     android:layout_height="wrap_content"
                                     android:ellipsize="end"
                                     android:includeFontPadding="false"
-                                    android:maxLines="2"
+                                    android:maxLines="1"
                                     android:text="@string/book_name"
                                     android:textColor="@color/primaryText"
-                                    android:textSize="@dimen/text_18sp"
+                                    android:textSize="@dimen/text_14sp"
                                     android:textStyle="bold" />
 
                                 <TextView
@@ -220,7 +237,73 @@
                                     android:includeFontPadding="false"
                                     android:maxLines="1"
                                     android:textColor="@color/tv_text_summary"
-                                    android:textSize="@dimen/text_12sp"
+                                    android:textSize="@dimen/text_14sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:id="@+id/tv_remark"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_14sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:id="@+id/tv_site"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_14sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:id="@+id/tv_other"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_14sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:id="@+id/tv_director"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:ellipsize="end"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_14sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:id="@+id/tv_actor"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="2"
+                                    android:ellipsize="end"
+                                    android:textColor="@color/tv_text_summary"
+                                    android:textSize="@dimen/text_14sp"
+                                    android:textStyle="bold"
                                     android:visibility="gone" />
 
                                 <LinearLayout
@@ -228,10 +311,11 @@
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
                                     android:gravity="center_vertical"
-                                    android:orientation="horizontal">
+                                    android:orientation="horizontal"
+                                    android:visibility="gone">
 
                                     <TextView
-                                        android:id="@+id/tv_author"
+                                    android:id="@+id/tv_author"
                                         android:layout_width="0dp"
                                         android:layout_height="wrap_content"
                                         android:layout_weight="1"
@@ -240,30 +324,64 @@
                                         android:maxLines="1"
                                         android:text="@string/author"
                                         android:textColor="@color/tv_text_summary"
-                                        android:textSize="@dimen/text_12sp" />
+                                        android:textSize="@dimen/text_14sp"
+                                        android:visibility="gone" />
                                 </LinearLayout>
 
-                                <androidx.core.widget.NestedScrollView
-                                    android:id="@+id/scroll_view_r"
-                                    android:layout_width="match_parent"
+                                <androidx.appcompat.widget.AppCompatButton
+                                    android:id="@+id/btn_favorite"
+                                    android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:layout_marginTop="8dp"
-                                    android:scrollbars="none">
-                                    <FrameLayout
-                                        android:id="@+id/tv_intro_container"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content" />
-                                </androidx.core.widget.NestedScrollView>
+                                    android:minHeight="0dp"
+                                    android:minWidth="0dp"
+                                    android:background="@drawable/bg_video_shelf"
+                                    android:clickable="true"
+                                    android:focusable="true"
+                                    android:gravity="center"
+                                    android:includeFontPadding="false"
+                                    android:paddingHorizontal="14dp"
+                                    android:paddingVertical="0dp"
+                                    android:layout_marginTop="32sp"
+                                    android:text="@string/nb_file_add_shelf"
+                                    android:textAllCaps="false"
+                                    android:textColor="@android:color/black"
+                                    android:textSize="@dimen/text_13sp"
+                                    app:backgroundTint="@null" />
 
                             </LinearLayout>
 
                         </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tv_intro_label"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginHorizontal="16dp"
+                            android:layout_marginTop="12dp"
+                            android:text="@string/tab_intro"
+                            android:textColor="@color/primaryText"
+                            android:textSize="@dimen/text_14sp"
+                            android:textStyle="bold" />
+
+                        <androidx.core.widget.NestedScrollView
+                            android:id="@+id/scroll_view_r"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginHorizontal="12dp"
+                            android:scrollbars="none">
+                            <FrameLayout
+                                android:id="@+id/tv_intro_container"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content" />
+                        </androidx.core.widget.NestedScrollView>
 
                         <!-- 线路选择区 -->
                         <LinearLayout
                             android:id="@+id/chapters_container"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:clipChildren="false"
+                            android:clipToPadding="false"
                             android:orientation="vertical">
 
                             <!-- 线路区块标题 -->
@@ -284,6 +402,7 @@
                                 android:id="@+id/volumes"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:clipChildren="false"
                                 android:clipToPadding="false"
                                 android:orientation="horizontal"
                                 android:paddingStart="12dp"
@@ -314,6 +433,19 @@
                                     android:visibility="gone" />
 
                                 <TextView
+                                    android:id="@+id/btn_episode_sort"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="48dp"
+                                    android:background="?attr/selectableItemBackgroundBorderless"
+                                    android:clickable="true"
+                                    android:focusable="true"
+                                    android:gravity="center"
+                                    android:paddingHorizontal="12dp"
+                                    android:text="@string/video_episode_order_ascending"
+                                    android:textColor="@color/primary"
+                                    android:textSize="@dimen/text_12sp" />
+
+                                <TextView
                                     android:id="@+id/btn_view_all"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
@@ -327,16 +459,21 @@
                                     android:visibility="gone" />
                             </LinearLayout>
 
-                            <!-- 选集：网格列表 -->
+                            <!-- 四列选集网格 -->
                             <androidx.recyclerview.widget.RecyclerView
                                 android:id="@+id/chapters"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:clipChildren="false"
                                 android:clipToPadding="false"
                                 android:nestedScrollingEnabled="false"
+                                android:orientation="vertical"
+                                android:paddingStart="12dp"
                                 android:paddingTop="2dp"
+                                android:paddingEnd="12dp"
                                 android:paddingBottom="12dp"
-                                app:layoutManager="androidx.recyclerview.widget.GridLayoutManager" />
+                                app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
+                                app:spanCount="4" />
 
                         </LinearLayout>
 
