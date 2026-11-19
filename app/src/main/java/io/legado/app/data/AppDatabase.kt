@@ -33,6 +33,7 @@ import io.legado.app.data.dao.TxtTocRuleDao
 import io.legado.app.data.dao.AutoTaskRuleDao
 import io.legado.app.data.dao.DownloadTaskDao
 import io.legado.app.data.dao.PlayHistoryDao
+import io.legado.app.data.dao.ShortDramaInteractionDao
 import io.legado.app.data.dao.SceneBookmarkDao
 import io.legado.app.data.dao.UrlRecordDao
 import io.legado.app.data.dao.SourceRecycleBinDao
@@ -86,6 +87,7 @@ import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.data.entities.TtsEngineRuntimeEntity
 import io.legado.app.data.entities.TtsVoiceEntity
 import io.legado.app.data.entities.PlayHistory
+import io.legado.app.data.entities.ShortDramaInteraction
 import io.legado.app.data.entities.DownloadTaskEntity
 import io.legado.app.data.entities.SceneBookmark
 import io.legado.app.data.entities.UrlRecord
@@ -113,7 +115,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 98,
+    version = 99,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -132,7 +134,7 @@ val appDb by lazy {
         AgentMemory::class, AgentToolResultArtifact::class,
         AgentToolExecutionIntent::class, AgentToolReceiptAcknowledgement::class,
         HomepageModule::class, HomepageCustomSet::class,
-        TtsVoiceEntity::class, TtsEngineRuntimeEntity::class],
+        TtsVoiceEntity::class, TtsEngineRuntimeEntity::class, ShortDramaInteraction::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -183,7 +185,8 @@ val appDb by lazy {
         AutoMigration(from = 88, to = 89),
         AutoMigration(from = 89, to = 90),
         AutoMigration(from = 90, to = 96),
-        AutoMigration(from = 97, to = 98)
+        AutoMigration(from = 97, to = 98),
+        AutoMigration(from = 98, to = 99)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -211,6 +214,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val serverDao: ServerDao
     abstract val autoTaskRuleDao: AutoTaskRuleDao
     abstract val playHistoryDao: PlayHistoryDao
+    abstract val shortDramaInteractionDao: ShortDramaInteractionDao
     abstract val downloadTaskDao: DownloadTaskDao
     abstract val sceneBookmarkDao: SceneBookmarkDao
     abstract val urlRecordDao: UrlRecordDao

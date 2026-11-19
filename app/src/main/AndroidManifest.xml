@@ -269,6 +269,11 @@
         <activity
             android:name=".ui.book.search.SearchActivity"
             android:launchMode="standard" />
+        <!-- 短剧源选择 -->
+        <activity
+            android:name=".ui.main.drama.ShortDramaSourceActivity"
+            android:exported="false"
+            android:launchMode="standard" />
         <!-- 关于界面 -->
         <activity
             android:name=".ui.about.AboutActivity"

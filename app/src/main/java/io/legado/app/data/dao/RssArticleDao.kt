@@ -48,6 +48,18 @@ interface RssArticleDao {
     )
     suspend fun getListByOriginSort(origin: String, sort: String): List<RssArticle>
 
+    // 短剧候选：直接取该源已缓存的最新文章，不触发网络刷新。
+    // read 为非空字段，必须经 left join 补全，否则 KSP 校验不通过。
+    @Query(
+        """select t1.link, t1.sort, t1.origin, t1.`order`, t1.title, t1.image,
+            t1.`group`, t1.pubDate, t1.type, t1.durPos, ifNull(t2.read, 0) as read
+        from rssArticles as t1 left join rssReadRecords as t2
+        on t1.link = t2.record
+        where t1.origin = :origin
+        order by `order` desc limit :limit"""
+    )
+    suspend fun getLatestByOrigin(origin: String, limit: Int): List<RssArticle>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(vararg rssArticle: RssArticle)
 
