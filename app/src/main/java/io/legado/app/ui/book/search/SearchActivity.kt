@@ -50,7 +50,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     override val viewModel by viewModels<SearchViewModel>()
     private val hotViewModel by viewModels<SearchHotViewModel>()
     private val unifiedViewModel by viewModels<UnifiedSearchViewModel>()
-    private var showSources by mutableStateOf(false)
     private var query by mutableStateOf("")
     private var books by mutableStateOf<List<SearchBook>>(emptyList(), neverEqualPolicy())
     private var history by mutableStateOf<List<SearchKeyword>>(emptyList())
@@ -80,66 +79,45 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             setContent {
                 LegadoTheme {
                     val type = unifiedViewModel.type
-                    val currentSources = unifiedViewModel.sources.filter { it.type == type }
-                    val selectedKey = if (type == SearchContentType.BOOK) {
-                        if (scope.contains("::")) scope.substringAfter("::") else ""
-                    } else unifiedViewModel.sourceKey
-                    val scopeName = if (type == SearchContentType.BOOK) {
-                        scope.substringBefore("::").ifEmpty { "全部启用源" }
-                    } else if (selectedKey.isEmpty()) "全部启用源"
-                    else currentSources.firstOrNull { it.key == selectedKey }?.name ?: "所选源不可用"
                     val typeBar: @Composable () -> Unit = {
-                        SearchTypeBar(type, scopeName, { selectSearchType(it) }) { showSources = true }
+                        SearchTypeBar(type) { selectSearchType(it) }
                     }
-                    if (type != SearchContentType.BOOK) {
-                        UnifiedSearchScreen(query, { query = it }, unifiedViewModel,
-                            onSearch = { submit() }, onResult = ::openResult, typeBar = typeBar)
-                    } else {
-                        BookSearchScreen(
-                            query = query, onQueryChange = { query = it },
-                            books = books, history = history, groups = groups, scope = scope,
-                            searching = searching, hasMore = hasMore, submitted = submitted,
-                            preferences = preferences, hotViewModel = hotViewModel,
-                            onSearch = { submit() },
-                            onScope = { viewModel.searchScope.update(it) },
-                            onPreferences = {
-                                val repeatSearch = preferences.precision != it.precision ||
-                                    preferences.hideNoCover != it.hideNoCover ||
-                                    preferences.status != it.status || preferences.minWords != it.minWords
-                                preferences = it
-                                it.save(this@SearchActivity)
-                                if (repeatSearch && submitted) submit(viewModel.searchKey)
-                            },
-                            onHistory = { query = it; submit() },
-                            onDeleteHistory = viewModel::deleteHistory,
-                            onClearHistory = viewModel::clearHistory,
-                            onBook = ::showBookInfo, isInBookshelf = ::isInBookshelf,
-                            onManageSources = { startActivity<BookSourceActivity>() },
-                            onLog = { showDialogFragment(AppLogDialog()) },
-                            onRefresh = {
-                                hotViewModel.refresh()
-                                if (submitted) submit(viewModel.searchKey)
-                            },
-                            onLoadMore = ::loadMore,
-                            onStopSearch = {
-                                hasMore = false
-                                viewModel.hasMore = false
-                                viewModel.stop()
-                            },
-                            typeBar = typeBar,
-                        )
-                    }
-                    if (showSources) SearchSourceDialog(type, currentSources, selectedKey,
-                        unifiedViewModel.loadingSources, unifiedViewModel.errors,
-                        onSelect = { source ->
-                            showSources = false
-                            if (type == SearchContentType.BOOK) {
-                                viewModel.searchScope.update(source?.bookScope.orEmpty())
-                            } else {
-                                unifiedViewModel.selectSource(source?.key.orEmpty())
-                                if (query.isNotBlank()) submit()
-                            }
-                        }, onDismiss = { showSources = false })
+                    BookSearchScreen(
+                        query = query, onQueryChange = { query = it },
+                        books = books, history = history, groups = groups, scope = scope,
+                        searching = searching, hasMore = hasMore, submitted = submitted,
+                        preferences = preferences, hotViewModel = hotViewModel,
+                        onSearch = { submit() },
+                        onScope = { viewModel.searchScope.update(it) },
+                        onPreferences = {
+                            val repeatSearch = preferences.precision != it.precision ||
+                                preferences.hideNoCover != it.hideNoCover ||
+                                preferences.status != it.status || preferences.minWords != it.minWords
+                            preferences = it
+                            it.save(this@SearchActivity)
+                            if (repeatSearch && submitted) submit(viewModel.searchKey)
+                        },
+                        onHistory = { query = it; submit() },
+                        onDeleteHistory = viewModel::deleteHistory,
+                        onClearHistory = viewModel::clearHistory,
+                        onBook = ::showBookInfo, isInBookshelf = ::isInBookshelf,
+                        onManageSources = { startActivity<BookSourceActivity>() },
+                        onLog = { showDialogFragment(AppLogDialog()) },
+                        onRefresh = {
+                            hotViewModel.refresh()
+                            if (submitted) submit(viewModel.searchKey)
+                        },
+                        onLoadMore = ::loadMore,
+                        onStopSearch = {
+                            hasMore = false
+                            viewModel.hasMore = false
+                            viewModel.stop()
+                        },
+                        type = type,
+                        unifiedModel = unifiedViewModel,
+                        onUnifiedResult = ::openResult,
+                        typeBar = typeBar,
+                    )
                 }
             }
         }, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))

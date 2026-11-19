@@ -76,6 +76,8 @@ import kotlinx.coroutines.withContext
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
+private const val ALL_TAB = "ALL"
+
 class SourceManageActivity : BaseComposeActivity() {
 
     private enum class SourceTab(val labelRes: Int) {
@@ -172,7 +174,22 @@ class SourceManageActivity : BaseComposeActivity() {
         }
     }
 
-    private fun assignGroup(tab: SourceTab, rows: List<SourceRow>, group: String?) = runOperation {
+    private fun assignGroup(tab: SourceTab?, rows: List<SourceRow>, group: String?) = runOperation {
+        val targets = tab?.let { listOf(it) } ?: SourceTab.entries.toList()
+        targets.forEach { target ->
+            val targetRows = rows.filter { it.tab() == target }
+            if (targetRows.isNotEmpty()) assignGroupFor(target, targetRows, group)
+        }
+    }
+
+    private fun SourceRow.tab(): SourceTab = when {
+        bookUrl != null -> SourceTab.BOOK
+        rssUrl != null -> SourceTab.RSS
+        homeSource?.type == SourceType.PY.name -> SourceTab.PY
+        else -> SourceTab.TVBOX
+    }
+
+    private fun assignGroupFor(tab: SourceTab, rows: List<SourceRow>, group: String?) {
         when (tab) {
             SourceTab.BOOK -> rows.forEach { row ->
                 val source = appDb.bookSourceDao.getBookSource(row.bookUrl.orEmpty())
@@ -245,7 +262,12 @@ class SourceManageActivity : BaseComposeActivity() {
         persistOrder(tab, current)
     }
 
-    private fun removeGroup(tab: SourceTab, group: String) = runOperation {
+    private fun removeGroup(tab: SourceTab?, group: String) = runOperation {
+        val targets = tab?.let { listOf(it) } ?: SourceTab.entries.toList()
+        targets.forEach { removeGroupFor(it, group) }
+    }
+
+    private fun removeGroupFor(tab: SourceTab, group: String) {
         when (tab) {
             SourceTab.BOOK -> appDb.bookSourceDao.getByGroup(group).forEach { source ->
                 source.bookSourceGroup = source.bookSourceGroup.groups().filterNot { it == group }.joinToString(",")
@@ -270,7 +292,8 @@ class SourceManageActivity : BaseComposeActivity() {
 
     @Composable
     override fun ComposeContent() {
-        var selectedTabName by rememberSaveable { mutableStateOf(SourceTab.BOOK.name) }
+        var selectedTabName by rememberSaveable { mutableStateOf(ALL_TAB) }
+        var allSelectedGroup by rememberSaveable { mutableStateOf("全部") }
         var bookSelectedGroup by rememberSaveable { mutableStateOf("全部") }
         var rssSelectedGroup by rememberSaveable { mutableStateOf("全部") }
         var pySelectedGroup by rememberSaveable { mutableStateOf("全部") }
@@ -283,12 +306,13 @@ class SourceManageActivity : BaseComposeActivity() {
         var query by rememberSaveable { mutableStateOf("") }
         var newGroup by rememberSaveable { mutableStateOf("") }
         var detailSource by remember { mutableStateOf<SourceRow?>(null) }
-        val selectedTab = SourceTab.valueOf(selectedTabName)
+        val selectedTab = selectedTabName.takeIf { it != ALL_TAB }?.let { SourceTab.valueOf(it) }
         val selectedGroup = when (selectedTab) {
             SourceTab.BOOK -> bookSelectedGroup
             SourceTab.RSS -> rssSelectedGroup
             SourceTab.PY -> pySelectedGroup
             SourceTab.TVBOX -> tvboxSelectedGroup
+            null -> allSelectedGroup
         }
         fun updateSelectedGroup(value: String) {
             when (selectedTab) {
@@ -296,12 +320,19 @@ class SourceManageActivity : BaseComposeActivity() {
                 SourceTab.RSS -> rssSelectedGroup = value
                 SourceTab.PY -> pySelectedGroup = value
                 SourceTab.TVBOX -> tvboxSelectedGroup = value
+                null -> allSelectedGroup = value
             }
         }
         val availableGroups = when (selectedTab) {
             SourceTab.BOOK -> bookGroups
             SourceTab.RSS -> rssGroups
-            SourceTab.PY, SourceTab.TVBOX -> homeGroups[selectedTab]?.names.orEmpty()
+            SourceTab.PY -> homeGroups[SourceTab.PY]?.names.orEmpty()
+            SourceTab.TVBOX -> homeGroups[SourceTab.TVBOX]?.names.orEmpty()
+            null -> (
+                bookGroups + rssGroups +
+                    homeGroups[SourceTab.PY]?.names.orEmpty() +
+                    homeGroups[SourceTab.TVBOX]?.names.orEmpty()
+                ).distinct()
         }
         val groups = listOf("全部", "未分组") + availableGroups.filterNot { it == "未分组" }
         val visibleSelectedGroup = selectedGroup.takeIf { it in groups } ?: "全部"
@@ -373,7 +404,7 @@ class SourceManageActivity : BaseComposeActivity() {
         ) { _ ->
             Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 ChoiceBar(
-                    items = SourceTab.entries.map { it.name to stringResource(it.labelRes) },
+                    items = listOf(ALL_TAB to "全部") + SourceTab.entries.map { it.name to stringResource(it.labelRes) },
                     selected = selectedTabName,
                     onSelected = {
                         if (!groupOperationBusy) {
@@ -396,14 +427,18 @@ class SourceManageActivity : BaseComposeActivity() {
                     val listState = rememberLazyListState()
                     var dragRows by remember(rows) { mutableStateOf(rows) }
                     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
-                        dragRows = dragRows.toMutableList().apply {
-                            val fromIndex = from.index.coerceIn(indices)
-                            val toIndex = to.index.coerceIn(indices)
-                            add(toIndex, removeAt(fromIndex))
+                        if (selectedTab != null) {
+                            dragRows = dragRows.toMutableList().apply {
+                                val fromIndex = from.index.coerceIn(indices)
+                                val toIndex = to.index.coerceIn(indices)
+                                add(toIndex, removeAt(fromIndex))
+                            }
                         }
                     }
                     LaunchedEffect(reorderState.isAnyItemDragging) {
-                        if (!reorderState.isAnyItemDragging && dragRows.map { it.key } != rows.map { it.key }) {
+                        if (selectedTab != null && !reorderState.isAnyItemDragging &&
+                            dragRows.map { it.key } != rows.map { it.key }
+                        ) {
                             persistOrder(selectedTab, dragRows)
                         }
                     }
@@ -413,7 +448,7 @@ class SourceManageActivity : BaseComposeActivity() {
                                 var menuExpanded by remember(row.key) { mutableStateOf(false) }
                                 Row(
                                     Modifier.fillMaxWidth().zIndex(if (dragging) 1f else 0f)
-                                        .longPressDraggableHandle()
+                                        .then(if (selectedTab != null) Modifier.longPressDraggableHandle() else Modifier)
                                         .padding(horizontal = 16.dp, vertical = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -485,14 +520,16 @@ class SourceManageActivity : BaseComposeActivity() {
                                             )
                                         }
                                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                                            DropdownMenuItem(text = { Text("置顶") }, onClick = {
-                                                menuExpanded = false
-                                                moveRow(selectedTab, row.key, true)
-                                            })
-                                            DropdownMenuItem(text = { Text("置底") }, onClick = {
-                                                menuExpanded = false
-                                                moveRow(selectedTab, row.key, false)
-                                            })
+                                            if (selectedTab != null) {
+                                                DropdownMenuItem(text = { Text("置顶") }, onClick = {
+                                                    menuExpanded = false
+                                                    moveRow(selectedTab, row.key, true)
+                                                })
+                                                DropdownMenuItem(text = { Text("置底") }, onClick = {
+                                                    menuExpanded = false
+                                                    moveRow(selectedTab, row.key, false)
+                                                })
+                                            }
                                             if (row.bookUrl != null || row.rssUrl != null) {
                                                 DropdownMenuItem(text = { Text("删除", color = MaterialTheme.colorScheme.error) }, onClick = {
                                                     menuExpanded = false
@@ -591,7 +628,7 @@ class SourceManageActivity : BaseComposeActivity() {
         }
     }
 
-    private fun sourceRows(tab: SourceTab): List<SourceRow> = when (tab) {
+    private fun sourceRows(tab: SourceTab?): List<SourceRow> = when (tab) {
         SourceTab.BOOK -> books.map { source ->
             SourceRow(
                 key = "book:${source.bookSourceUrl}",
@@ -625,6 +662,7 @@ class SourceManageActivity : BaseComposeActivity() {
                 homeSource = source,
             )
         }
+        null -> SourceTab.entries.flatMap { sourceRows(it) }
     }
 
     private fun String?.groups(): List<String> =

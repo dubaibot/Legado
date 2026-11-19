@@ -103,6 +103,7 @@ import io.legado.app.ui.widget.components.AppBookCover
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun DiscoverScreen(
@@ -191,7 +192,7 @@ fun DiscoverScreen(
                         AndroidView(
                             factory = { context ->
                                 android.widget.ImageView(context).apply {
-                                    setImageResource(io.legado.app.R.drawable.ic_bottom_person)
+                                    setImageResource(io.legado.app.R.drawable.ic_login_person_bold)
                                     contentDescription = "登录"
                                 }
                             },
@@ -254,8 +255,9 @@ fun DiscoverScreen(
         )
 
         key(selected?.key) {
+            val sourceScope = selected?.key.orEmpty()
             when (selected?.type) {
-                DiscoverSourceType.BOOK -> BookContent(bookViewModel, bottomPaddingPx, scrollToTopRequest, scrollPositionCache, onBookTapped)
+                DiscoverSourceType.BOOK -> BookContent(bookViewModel, bottomPaddingPx, scrollToTopRequest, scrollPositionCache, sourceScope, onBookTapped)
                 DiscoverSourceType.RSS -> {
                     if (!selected.startHtml.isNullOrBlank()) {
                         val html = rssViewModel.startHtml
@@ -272,7 +274,7 @@ fun DiscoverScreen(
                             )
                         }
                     } else {
-                        RssContent(rssViewModel, bottomPaddingPx, scrollToTopRequest, scrollPositionCache, onArticleTapped)
+                        RssContent(rssViewModel, bottomPaddingPx, scrollToTopRequest, scrollPositionCache, sourceScope, onArticleTapped)
                     }
                 }
                 DiscoverSourceType.HOME -> {
@@ -280,7 +282,7 @@ fun DiscoverScreen(
                         val html = pyViewModel.htmlContent
                         if (html == null) LoadingBox("页面加载中…") else HtmlWebView(html)
                     } else {
-                        HomeContent(pyViewModel, bottomPaddingPx, scrollToTopRequest, scrollPositionCache)
+                        HomeContent(pyViewModel, bottomPaddingPx, scrollToTopRequest, scrollPositionCache, sourceScope)
                     }
                 }
                 null -> EmptyBox("暂无可用源\n点击设置，导入书源、订阅源或首页源")
@@ -487,52 +489,62 @@ private fun SourcePickerDialog(
     }
 }
 
+/**
+ * 切回分类后恢复缓存位置。
+ *
+ * 分类切换会重建网格并从第一页重新加载，缓存下标可能暂时超过已加载条目数。
+ * 此时先把网格滚到已加载末尾，借助自动翻页继续加载，直到目标下标可达再精确定位。
+ */
+@Composable
+private fun RestoreCategoryScroll(
+    categoryKey: String?,
+    gridState: LazyGridState,
+    scrollPositionCache: Map<String, Int>,
+    state: () -> Pair<Int, String?>,
+) {
+    LaunchedEffect(categoryKey) {
+        val target = categoryKey ?: return@LaunchedEffect
+        val cached = scrollPositionCache[target] ?: return@LaunchedEffect
+        if (cached <= 0) return@LaunchedEffect
+        repeat(8) {
+            val (count, error) = state()
+            if (error != null) return@LaunchedEffect
+            if (count > cached) {
+                gridState.scrollToItem(cached)
+                return@LaunchedEffect
+            }
+            if (count > 0) gridState.scrollToItem(count - 1)
+            withTimeoutOrNull(8_000L) {
+                snapshotFlow(state).first { (c, e) -> e != null || c > count }
+            } ?: return@LaunchedEffect
+        }
+    }
+}
+
 @Composable
 private fun BookContent(
     viewModel: DiscoverBookViewModel,
     bottomPaddingPx: Int,
     scrollToTopRequest: Int,
     scrollPositionCache: MutableMap<String, Int>,
+    sourceScope: String,
     onBookTapped: (SearchBook) -> Unit,
 ) {
     val categories = viewModel.categories
     val selectedCategory = viewModel.selectedCategory
-    val categoryKey = selectedCategory?.let { "book:$it" }
+    val categoryKey = selectedCategory?.let { "book:$sourceScope:$it" }
     // 滚动状态按分类键创建：切换分类时拿到全新状态从顶部开始，避免沿用上一分类的滚动位置
     val gridState = remember(categoryKey) { LazyGridState() }
     var endReached by remember(selectedCategory) { mutableStateOf(false) }
     LaunchedEffect(scrollToTopRequest) { gridState.scrollToItem(0) }
-    var restorePending by remember { mutableStateOf<String?>(null) }
-    // 切换分类后挂起恢复：旧分类位置在滚动时持续记录，数据就位后再恢复新分类的缓存位置
-    LaunchedEffect(categoryKey) {
-        restorePending = categoryKey
-    }
-    // 滚动时记录当前分类位置；恢复进行中不记录，避免用待恢复的内容污染缓存
-    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset, categoryKey) {
-        if (restorePending != null) return@LaunchedEffect
-        val key = categoryKey ?: return@LaunchedEffect
-        // 列表为空或布局仍是上一分类内容时不记录，避免把旧分类位置写进当前分类缓存
-        if (viewModel.books.isEmpty()) return@LaunchedEffect
-        if (gridState.layoutInfo.totalItemsCount != viewModel.books.size) return@LaunchedEffect
-        scrollPositionCache[key] = gridState.firstVisibleItemIndex
-    }
-    // 数据就位后恢复分类缓存位置
-    LaunchedEffect(viewModel, categoryKey, restorePending) {
-        val target = restorePending ?: return@LaunchedEffect
-        var awaitingData = true
-        snapshotFlow { viewModel.books.size to viewModel.error }.collect { (count, error) ->
-            if (awaitingData) {
-                awaitingData = false
-                if (count == 0) {
-                    // 加载失败时放弃恢复，避免永久抑制位置记录
-                    if (error != null) restorePending = null
-                    return@collect
-                }
-            }
-            val cached = scrollPositionCache[target]
-            restorePending = null
-            cached?.takeIf { count > it }?.let { gridState.scrollToItem(it) }
+    // 离开分类的瞬间网格会被重建，只有此刻还能读到旧分类的准确下标，因此在这里记录
+    DisposableEffect(categoryKey) {
+        onDispose {
+            categoryKey?.let { scrollPositionCache[it] = gridState.firstVisibleItemIndex }
         }
+    }
+    RestoreCategoryScroll(categoryKey, gridState, scrollPositionCache) {
+        viewModel.books.size to viewModel.error
     }
     LaunchedEffect(viewModel, selectedCategory) {
         snapshotFlow {
@@ -583,25 +595,25 @@ private fun BookContent(
                                     loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
                                     drawAuthorOverlay = false,
                                 )
-                                book.latestChapterTitle?.takeIf { it.isNotBlank() }?.let { chapter ->
+                                book.author?.takeIf { it.isNotBlank() }?.let { author ->
                                     Box(
-                                        Modifier.align(Alignment.TopEnd).fillMaxWidth()
+                                        Modifier.align(Alignment.TopStart).fillMaxWidth()
                                             .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.78f), Color.Transparent)))
                                             .padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 18.dp),
-                                        contentAlignment = Alignment.CenterEnd,
+                                        contentAlignment = Alignment.CenterStart,
                                     ) {
-                                        Text(chapter, color = Color.White, style = MaterialTheme.typography.labelSmall,
+                                        Text(author, color = Color.White, style = MaterialTheme.typography.labelSmall,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
-                                book.author?.takeIf { it.isNotBlank() }?.let { author ->
+                                book.latestChapterTitle?.takeIf { it.isNotBlank() }?.let { chapter ->
                                     Box(
                                         Modifier.align(Alignment.BottomEnd).fillMaxWidth()
                                             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))))
                                             .padding(start = 6.dp, end = 6.dp, top = 18.dp, bottom = 5.dp),
                                         contentAlignment = Alignment.CenterEnd,
                                     ) {
-                                        Text(author, color = Color.White, style = MaterialTheme.typography.labelSmall,
+                                        Text(chapter, color = Color.White, style = MaterialTheme.typography.labelSmall,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
@@ -629,6 +641,7 @@ private fun RssContent(
     bottomPaddingPx: Int,
     scrollToTopRequest: Int,
     scrollPositionCache: MutableMap<String, Int>,
+    sourceScope: String,
     onArticleTapped: (RssArticle, String, List<RssArticle>, Pair<String, String>?, String?, Int) -> Unit,
 ) {
     val selectedCategory = viewModel.selectedCategory
@@ -640,42 +653,19 @@ private fun RssContent(
     val articles = currentArticles.ifEmpty {
         if (viewModel.isLoading || viewModel.error != null) retainedArticles else emptyList()
     }
-    val categoryKey = selectedCategory?.let { "rss:$it" }
+    val categoryKey = selectedCategory?.let { "rss:$sourceScope:$it" }
     // 滚动状态按分类键创建：切换分类时拿到全新状态从顶部开始，避免沿用上一分类的滚动位置
     val gridState = remember(categoryKey) { LazyGridState() }
     var endReached by remember(selectedCategory) { mutableStateOf(false) }
     LaunchedEffect(scrollToTopRequest) { gridState.scrollToItem(0) }
-    var restorePending by remember { mutableStateOf<String?>(null) }
-    // 切换分类后挂起恢复：旧分类位置在滚动时持续记录，数据就位后再恢复新分类的缓存位置
-    LaunchedEffect(categoryKey) {
-        restorePending = categoryKey
-    }
-    // 滚动时记录当前分类位置；恢复进行中不记录，避免用待恢复的内容污染缓存
-    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset, categoryKey) {
-        if (restorePending != null) return@LaunchedEffect
-        val key = categoryKey ?: return@LaunchedEffect
-        // 列表为空或布局仍是上一分类内容时不记录，避免把旧分类位置写进当前分类缓存
-        if (articles.isEmpty()) return@LaunchedEffect
-        if (gridState.layoutInfo.totalItemsCount != articles.size) return@LaunchedEffect
-        scrollPositionCache[key] = gridState.firstVisibleItemIndex
-    }
-    // 数据就位后恢复分类缓存位置
-    LaunchedEffect(viewModel, categoryKey, restorePending) {
-        val target = restorePending ?: return@LaunchedEffect
-        var awaitingData = true
-        snapshotFlow { viewModel.articles.size to viewModel.error }.collect { (count, error) ->
-            if (awaitingData) {
-                awaitingData = false
-                if (count == 0) {
-                    // 加载失败时放弃恢复，避免永久抑制位置记录
-                    if (error != null) restorePending = null
-                    return@collect
-                }
-            }
-            val cached = scrollPositionCache[target]
-            restorePending = null
-            cached?.takeIf { count > it }?.let { gridState.scrollToItem(it) }
+    // 离开分类的瞬间网格会被重建，只有此刻还能读到旧分类的准确下标，因此在这里记录
+    DisposableEffect(categoryKey) {
+        onDispose {
+            categoryKey?.let { scrollPositionCache[it] = gridState.firstVisibleItemIndex }
         }
+    }
+    RestoreCategoryScroll(categoryKey, gridState, scrollPositionCache) {
+        viewModel.articles.size to viewModel.error
     }
     LaunchedEffect(viewModel, selectedCategory) {
         snapshotFlow {
@@ -737,9 +727,9 @@ private fun RssContent(
                                 }
                                 article.pubDate?.takeIf { it.isNotBlank() }?.let { published ->
                                     Box(
-                                        Modifier.align(Alignment.TopEnd).fillMaxWidth()
-                                            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.78f), Color.Transparent)))
-                                            .padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 18.dp),
+                                        Modifier.align(Alignment.BottomEnd).fillMaxWidth()
+                                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))))
+                                            .padding(start = 6.dp, end = 6.dp, top = 18.dp, bottom = 5.dp),
                                         contentAlignment = Alignment.CenterEnd,
                                     ) {
                                         Text(published, color = Color.White, style = MaterialTheme.typography.labelSmall,
@@ -773,11 +763,12 @@ private fun HomeContent(
     bottomPaddingPx: Int,
     scrollToTopRequest: Int,
     scrollPositionCache: MutableMap<String, Int>,
+    sourceScope: String,
 ) {
     val homeData = viewModel.homeData
     val categories = listOf("推荐" to "") + homeData?.categories.orEmpty().map { it.name to it.id }
     val selected = categories.find { it.second == viewModel.selectedCategoryId }
-    val categoryKey = "home:${viewModel.selectedCategoryId}"
+    val categoryKey = "home:$sourceScope:${viewModel.selectedCategoryId}"
     val videos = (viewModel.categoryData?.videos ?: homeData?.videos.orEmpty()).distinctBy { it.id }
     // 滚动状态按分类键创建：切换分类时拿到全新状态从顶部开始，避免沿用上一分类的滚动位置
     val gridState = remember(categoryKey) { LazyGridState() }
@@ -786,38 +777,16 @@ private fun HomeContent(
     }
     var retryRequest by remember { mutableIntStateOf(0) }
     LaunchedEffect(scrollToTopRequest) { gridState.scrollToItem(0) }
-    var restorePending by remember { mutableStateOf<String?>(null) }
-    // 切换分类后挂起恢复：旧分类位置在滚动时持续记录，数据就位后再恢复新分类的缓存位置
-    LaunchedEffect(categoryKey) {
-        restorePending = categoryKey
-    }
-    // 滚动时记录当前分类位置；恢复进行中不记录，避免用待恢复的内容污染缓存
-    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset, categoryKey) {
-        if (restorePending != null) return@LaunchedEffect
-        // 列表为空或布局仍是上一分类内容时不记录，避免把旧分类位置写进当前分类缓存
-        if (videos.isEmpty()) return@LaunchedEffect
-        if (gridState.layoutInfo.totalItemsCount != videos.size) return@LaunchedEffect
-        scrollPositionCache[categoryKey] = gridState.firstVisibleItemIndex
-    }
-    // 数据就位后恢复分类缓存位置
-    LaunchedEffect(viewModel, categoryKey, restorePending) {
-        val target = restorePending ?: return@LaunchedEffect
-        var awaitingData = true
-        snapshotFlow {
-            (viewModel.categoryData?.videos?.size ?: viewModel.homeData?.videos?.size ?: 0) to viewModel.homeError
-        }.collect { (count, error) ->
-            if (awaitingData) {
-                awaitingData = false
-                if (count == 0) {
-                    // 加载失败时放弃恢复，避免永久抑制位置记录
-                    if (error != null) restorePending = null
-                    return@collect
-                }
+    // 离开分类的瞬间网格会被重建，只有此刻还能读到旧分类的准确下标，因此在这里记录
+    DisposableEffect(categoryKey) {
+        onDispose {
+            if (categoryKey.isNotEmpty()) {
+                scrollPositionCache[categoryKey] = gridState.firstVisibleItemIndex
             }
-            val cached = scrollPositionCache[target]
-            restorePending = null
-            cached?.takeIf { count > it }?.let { gridState.scrollToItem(it) }
         }
+    }
+    RestoreCategoryScroll(categoryKey.ifEmpty { null }, gridState, scrollPositionCache) {
+        videos.size to viewModel.homeError
     }
     LaunchedEffect(viewModel, viewModel.selectedSourceId, viewModel.selectedCategoryId, viewModel.selectedFilters) {
         snapshotFlow {

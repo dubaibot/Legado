@@ -11,8 +11,10 @@ import io.legado.app.data.entities.RssSource
 import io.legado.app.data.video.SourceType
 import io.legado.app.data.video.VideoItem
 import io.legado.app.data.video.VideoSourceRegistry
+import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.rss.Rss
+import io.legado.app.utils.splitNotBlank
 import io.legado.app.ui.main.homepage.HomeSourceManagementStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -26,8 +28,9 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
-enum class SearchContentType(val title: String) {
-    BOOK("书源"), RSS("RSS"), PY("PY"), TVBOX("TVBOX")
+enum class SearchContentType(val title: String, val tabLabel: String = title) {
+    ALL("ALL", "ALL"),
+    BOOK("书源", "BOOK"), RSS("RSS"), PY("PY"), TVBOX("TVBOX")
 }
 
 data class UnifiedSearchSource(
@@ -35,6 +38,7 @@ data class UnifiedSearchSource(
     val name: String,
     val type: SearchContentType,
     val bookScope: String? = null,
+    val groups: List<String> = emptyList(),
     val rss: RssSource? = null,
     val video: VideoSourceRegistry.SourceInfo? = null,
 )
@@ -57,6 +61,8 @@ class UnifiedSearchViewModel : ViewModel() {
     var sources by mutableStateOf<List<UnifiedSearchSource>>(emptyList())
         private set
     var sourceKey by mutableStateOf("")
+        private set
+    var group by mutableStateOf("")
         private set
     var results by mutableStateOf<List<UnifiedSearchResult>>(emptyList())
         private set
@@ -84,6 +90,7 @@ class UnifiedSearchViewModel : ViewModel() {
         stop()
         type = value
         sourceKey = ""
+        group = ""
         results = emptyList()
         errors = emptyMap()
         submitted = false
@@ -101,6 +108,17 @@ class UnifiedSearchViewModel : ViewModel() {
         stopped = false
     }
 
+    fun selectGroup(value: String) {
+        if (group == value) return
+        stop()
+        group = value
+        sourceKey = ""
+        results = emptyList()
+        errors = emptyMap()
+        submitted = false
+        stopped = false
+    }
+
     fun stop() {
         ++version
         request?.cancel()
@@ -112,6 +130,10 @@ class UnifiedSearchViewModel : ViewModel() {
 
     fun refreshSources() = start(if (submitted && !stopped) keyword else null)
 
+    fun searchableSources(type: SearchContentType): List<UnifiedSearchSource> =
+        if (type == SearchContentType.ALL) sources.filter { it.type != SearchContentType.BOOK }
+        else sources.filter { it.type == type }
+
     fun search(key: String) {
         key.trim().takeIf(String::isNotEmpty)?.let { start(it) }
     }
@@ -121,6 +143,7 @@ class UnifiedSearchViewModel : ViewModel() {
         val token = version
         val requestedType = type
         val requestedSource = sourceKey
+        val requestedGroup = group
         errors = emptyMap()
         loadingSources = true
         loading = key != null && requestedType != SearchContentType.BOOK
@@ -148,20 +171,28 @@ class UnifiedSearchViewModel : ViewModel() {
                 provider("书源列表") {
                     appDb.bookSourceDao.allEnabledPart.filter { it.hasSearchUrl }.map {
                         UnifiedSearchSource(it.bookSourceUrl, it.bookSourceName, SearchContentType.BOOK,
-                            bookScope = SearchScope(it).toString())
+                            bookScope = SearchScope(it).toString(),
+                            groups = it.bookSourceGroup
+                                ?.splitNotBlank(AppPattern.splitGroupRegex).orEmpty().toList())
                     }
                 }
                 provider("RSS源列表") {
                     appDb.rssSourceDao.allEnabled.filter { !it.searchUrl.isNullOrBlank() }.map {
-                        UnifiedSearchSource(it.sourceUrl, it.sourceName, SearchContentType.RSS, rss = it)
+                        UnifiedSearchSource(it.sourceUrl, it.sourceName, SearchContentType.RSS,
+                            groups = it.sourceGroup
+                                ?.splitNotBlank(AppPattern.splitGroupRegex).orEmpty().toList(), rss = it)
                     }
                 }
                 provider("视频源列表") {
+                    val pyGroups = HomeSourceManagementStore.groups("PY").assignments
+                    val tvboxGroups = HomeSourceManagementStore.groups("TVBOX").assignments
                     HomeSourceManagementStore.sources().filter { it.enabled }.mapNotNull {
                         val videoType = SourceType.entries.firstOrNull { type -> type.name == it.type }
                             ?: return@mapNotNull null
+                        val group = if (videoType == SourceType.PY) pyGroups[it.key] else tvboxGroups[it.key]
                         UnifiedSearchSource(it.key, it.name,
                             if (videoType == SourceType.PY) SearchContentType.PY else SearchContentType.TVBOX,
+                            groups = listOfNotNull(group?.takeIf(String::isNotBlank)),
                             video = VideoSourceRegistry.SourceInfo(it.id, it.name, videoType, it.parentId))
                     }
                 }
@@ -169,17 +200,21 @@ class UnifiedSearchViewModel : ViewModel() {
                 if (token != version) return@launch
                 sources = catalog.distinctBy { it.type to it.key }
                 loadingSources = false
-                val available = sources.filter { it.type == requestedType }
+                val available = searchableSources(requestedType)
                 if (requestedSource.isNotEmpty() && available.none { it.key == requestedSource }) {
                     results = emptyList()
                     errors = errors + ("搜索范围" to "所选源已禁用、移除或不支持搜索，请重新选择")
                     return@launch
                 }
                 if (key == null || requestedType == SearchContentType.BOOK) return@launch
-                val selected = available.filter { requestedSource.isEmpty() || it.key == requestedSource }
+                val scoped = if (requestedGroup.isEmpty()) available
+                    else available.filter { requestedGroup in it.groups }
+                val selected = if (requestedSource.isEmpty()) scoped
+                    else available.filter { it.key == requestedSource }
                 total = selected.size
                 if (selected.isEmpty()) {
-                    errors = errors + ("搜索范围" to "当前类型没有已启用且支持搜索的源")
+                    errors = errors + ("搜索范围" to if (requestedGroup.isEmpty())
+                        "当前类型没有已启用且支持搜索的源" else "当前分组没有已启用且支持搜索的源")
                     return@launch
                 }
                 val permits = Semaphore(AppConfig.searchThreadCount.coerceIn(1, 32))

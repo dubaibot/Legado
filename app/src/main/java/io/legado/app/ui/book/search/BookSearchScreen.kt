@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -63,8 +64,17 @@ fun BookSearchScreen(
     onBook: (SearchBook) -> Unit, isInBookshelf: (SearchBook) -> Boolean,
     onManageSources: () -> Unit, onLog: () -> Unit,
     onRefresh: () -> Unit, onLoadMore: () -> Unit, onStopSearch: () -> Unit,
+    type: SearchContentType,
+    unifiedModel: UnifiedSearchViewModel,
+    onUnifiedResult: (UnifiedSearchResult) -> Unit,
     typeBar: @Composable () -> Unit = {},
 ) {
+    val isBook = type == SearchContentType.BOOK
+    val unifiedGroups = if (isBook) emptyList() else
+        unifiedModel.searchableSources(type).flatMap { it.groups }.distinct().sorted()
+    val unifiedSourceName = if (!isBook && unifiedModel.sourceKey.isNotEmpty())
+        unifiedModel.searchableSources(type).firstOrNull { it.key == unifiedModel.sourceKey }?.name
+    else null
     var menu by remember { mutableStateOf(false) }
     var dialog by rememberSaveable { mutableStateOf("") }
     var showRecommendations by rememberSaveable { mutableStateOf(false) }
@@ -140,33 +150,34 @@ fun BookSearchScreen(
                             }
                         }
                     }
-                    IconButton(onClick = { dialog = "groupList" }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.GridView, "分组列表")
-                    }
-                    Box {
-                        IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Default.MoreVert, "更多选项")
+                    if (isBook) {
+                        IconButton(onClick = { dialog = "groupList" }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Default.GridView, "分组列表")
                         }
-                        DropdownMenu(menu, { menu = false }) {
-                            listOf("书源管理", "推荐设置", "视图设置", "搜索日志")
-                                .forEachIndexed { index, title ->
-                                    DropdownMenuItem(text = { Text(title) },
-                                        onClick = {
-                                            menu = false
-                                            when (index) {
-                                                0 -> onManageSources()
-                                                1 -> dialog = "hot"
-                                                2 -> dialog = "cards"
-                                                3 -> onLog()
-                                            }
-                                        })
-                                }
+                        Box {
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.Default.MoreVert, "更多选项")
+                            }
+                            DropdownMenu(menu, { menu = false }) {
+                                listOf("书源管理", "推荐设置", "视图设置", "搜索日志")
+                                    .forEachIndexed { index, title ->
+                                        DropdownMenuItem(text = { Text(title) },
+                                            onClick = {
+                                                menu = false
+                                                when (index) {
+                                                    0 -> onManageSources()
+                                                    1 -> dialog = "hot"
+                                                    2 -> dialog = "cards"
+                                                    3 -> onLog()
+                                                }
+                                            })
+                                    }
+                            }
                         }
                     }
                 }
             }
         }
-        typeBar()
         PullToRefreshBox(isRefreshing = false,
             onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
             LazyVerticalGrid(columns = GridCells.Fixed(lanes), state = gridState,
@@ -189,10 +200,29 @@ fun BookSearchScreen(
                                 Text("高级筛选", style = MaterialTheme.typography.labelMedium)
                             }
                         }
-                        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.fillMaxWidth().padding(top = 6.dp)) { typeBar() }
+                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            SearchPill(scope.isEmpty(), "综合") { onScope(emptyList()) }
+                            if (!isBook) {
+                                SearchPill(unifiedModel.group.isEmpty() && unifiedSourceName == null, "全部") {
+                                    if (unifiedModel.sourceKey.isNotEmpty()) unifiedModel.selectSource("")
+                                    if (unifiedModel.group.isNotEmpty()) unifiedModel.selectGroup("")
+                                    if (query.isNotBlank()) onSearch()
+                                }
+                                unifiedSourceName?.let { name ->
+                                    SearchPill(true, name) {
+                                        if (query.isNotBlank()) onSearch()
+                                    }
+                                }
+                                unifiedGroups.forEach { group ->
+                                    SearchPill(unifiedModel.group == group, group) {
+                                        unifiedModel.selectGroup(group)
+                                        if (query.isNotBlank()) onSearch()
+                                    }
+                                }
+                            } else {
+                            SearchPill(scope.isEmpty(), "全部") { onScope(emptyList()) }
                             if (scope.contains("::")) {
                                 SearchPill(true, scope.substringBefore("::")) { onScope(emptyList()) }
                             }
@@ -206,10 +236,11 @@ fun BookSearchScreen(
                                     onScope(next)
                                 }
                             }
+                            }
+                        }
                         }
                         }
                     }
-                }
                 item(key = "history", span = { GridItemSpan(maxLineSpan) }) {
                     Column {
                         SectionHeading("搜索历史", "清空") { dialog = "clear" }
@@ -229,7 +260,7 @@ fun BookSearchScreen(
                         if (history.isEmpty()) Text("暂无搜索历史", style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                if (submitted) item(key = "resultsTitle", span = { GridItemSpan(maxLineSpan) }) {
+                if (isBook && submitted) item(key = "resultsTitle", span = { GridItemSpan(maxLineSpan) }) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("找到${visibleBooks.size}个搜索结果", style = MaterialTheme.typography.titleSmall)
                         if (searching) IconButton(onClick = { searchStopped = true; onStopSearch() }, modifier = Modifier.size(36.dp)) {
@@ -246,7 +277,7 @@ fun BookSearchScreen(
                     }
                 }
                 val hotLoading = hotViewModel.loading
-                if ((books.isEmpty() || showRecommendations) && hotViewModel.selections.isNotEmpty()) {
+                if (isBook && (books.isEmpty() || showRecommendations) && hotViewModel.selections.isNotEmpty()) {
                     item(key = "hotTitle", span = { GridItemSpan(maxLineSpan) }) {
                         Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -293,7 +324,7 @@ fun BookSearchScreen(
                         }
                     }
                 }
-                if (!showRecommendations) {
+                if (isBook && !showRecommendations) {
                 items(visibleBooks.size, key = { "result:$it:${visibleBooks[it].primaryStr()}" },
                     span = { GridItemSpan(lanes / columns) }) { index ->
                     val book = visibleBooks[index]
@@ -315,6 +346,57 @@ fun BookSearchScreen(
                     }
                 }
                 }
+                if (!isBook) {
+                    if (unifiedModel.loadingSources) {
+                        item(key = "unifiedLoading", span = { GridItemSpan(maxLineSpan) }) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
+                    }
+                    item(key = "unifiedTitle", span = { GridItemSpan(maxLineSpan) }) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${unifiedModel.results.size} 个结果", Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleSmall)
+                            if (unifiedModel.loading) {
+                                Text("${unifiedModel.completed}/${unifiedModel.total}",
+                                    style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = unifiedModel::stop) { Text("停止") }
+                            }
+                        }
+                    }
+                    items(unifiedModel.errors.entries.toList(), key = { "unifiedError:${it.key}" },
+                        span = { GridItemSpan(maxLineSpan) }) { entry ->
+                        Text(entry.value, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    items(unifiedModel.results,
+                        key = { "unifiedResult:${it.source.key.length}:${it.source.key}:${it.identity}" },
+                        span = { GridItemSpan(maxLineSpan) }) { result ->
+                        Row(Modifier.fillMaxWidth().clickable { onUnifiedResult(result) },
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AppBookCover(Modifier.width(64.dp).height(88.dp), name = result.title, author = null,
+                                coverPath = result.cover, galleryIdentity = result.source.key + result.identity,
+                                contentDescription = result.title, sourceOrigin = result.article?.origin)
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(result.title, style = MaterialTheme.typography.titleMedium, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis)
+                                Text(result.source.name, style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary)
+                                if (result.description.isNotBlank()) Text(result.description,
+                                    style = MaterialTheme.typography.bodySmall, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    item(key = "unifiedFooter", span = { GridItemSpan(maxLineSpan) }) {
+                        Text(when {
+                            unifiedModel.loading -> "正在搜索…"
+                            unifiedModel.stopped -> "搜索已停止"
+                            !unifiedModel.submitted -> "输入关键词，选择搜索类型和源"
+                            unifiedModel.results.isEmpty() -> "暂无搜索结果"
+                            else -> "已完成首屏搜索"
+                        }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                }
             }
         }
     }
@@ -331,7 +413,7 @@ fun BookSearchScreen(
             text = {
                 LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { SearchPill(scope.isEmpty(), "综合") { onScope(emptyList()) } }
+                    item { SearchPill(scope.isEmpty(), "全部") { onScope(emptyList()) } }
                     if (scope.contains("::")) item {
                         SearchPill(true, scope.substringBefore("::")) { onScope(emptyList()) }
                     }
@@ -362,10 +444,10 @@ fun BookSearchScreen(
 }
 
 @Composable
-private fun SearchPill(selected: Boolean, title: String, onClick: () -> Unit) {
+internal fun SearchPill(selected: Boolean, title: String, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = RoundedCornerShape(18.dp), shadowElevation = 1.dp,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = Color.Black) {
+        contentColor = if (selected) Color.White else Color.Black) {
         Text(title, Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
