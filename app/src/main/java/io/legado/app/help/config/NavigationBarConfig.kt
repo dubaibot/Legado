@@ -196,12 +196,11 @@ data class NavigationBarConfig(
             return "${file.absolutePath}|${file.lastModified()}|${file.length()}"
         }
 
-        /** 底栏导航项列表：首页、书架、发现、RSS、我的 */
+        /** 底栏导航项列表：书架、发现、短剧、我的 */
         val items = listOf(
-            NavItem("homepage", R.string.homepage, R.id.menu_homepage, R.drawable.ic_bottom_home),
             NavItem("bookshelf", R.string.bookshelf, R.id.menu_bookshelf, R.drawable.ic_bottom_books),
             NavItem("discovery", R.string.discovery, R.id.menu_discovery, R.drawable.ic_bottom_explore),
-            NavItem("rss", R.string.rss, R.id.menu_rss, R.drawable.ic_bottom_rss_feed),
+            NavItem("drama", R.string.drama, R.id.menu_drama, R.drawable.ic_bottom_drama),
             NavItem("my", R.string.my, R.id.menu_my_config, R.drawable.ic_bottom_person),
         )
 

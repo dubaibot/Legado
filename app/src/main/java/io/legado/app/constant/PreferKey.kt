@@ -58,6 +58,7 @@ object PreferKey {
     const val forceSoftwareParagraphBubble = "forceSoftwareParagraphBubble"
     const val enableReview = "enableReview"
     const val showRss = "showRss"
+    const val discoverSelectedSource = "discoverSelectedSource"
     const val bookshelfLayout = "bookshelfLayout"
     const val bookshelfSort = "bookshelfSort"
     const val bookExportFileName = "bookExportFileName"

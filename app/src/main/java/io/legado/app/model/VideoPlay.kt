@@ -15,6 +15,7 @@ import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import com.shuyu.gsyvideoplayer.video.base.GSYBaseVideoPlayer
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.SourceType
@@ -60,6 +61,7 @@ import io.legado.app.help.python.HomeBridge
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.localBook.LocalMediaDirectory
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.NetworkUtils
@@ -959,6 +961,12 @@ object VideoPlay : CoroutineScope by MainScope(){
     @Volatile
     var lastPlaybackErrorKind: PlaybackErrorKind? = null
 
+    // Resolve again on the main thread after asynchronous parsing or a window transfer.
+    internal fun resolvePlaybackPlayer(player: GSYBaseVideoPlayer): GSYBaseVideoPlayer {
+        val activity = CommonUtil.scanForActivity(player.context) as? io.legado.app.ui.video.VideoPlayerActivity
+        return activity?.currentPlaybackPlayer() ?: player.currentPlayer
+    }
+
     /**
      * 开始播放
      *
@@ -991,14 +999,14 @@ object VideoPlay : CoroutineScope by MainScope(){
         // 迟到回调 setUp 前必须校验 token，防止连续切换时旧回调覆盖当前播放会话
         val startPlayToken = currentSwitchToken
         AppLog.put("VideoPlay.startPlay called: singleUrl=$singleUrl, source=${source?.getKey()?.take(2)}, videoUrl=${videoUrl?.take(2)}, token=$startPlayToken, jarParse=$jarParse, headers=${playHeaders.size}")
-        if (source == null && !singleUrl) {
+        if (source == null && !singleUrl && book?.let(LocalMediaDirectory::isDirectory) != true) {
             AppLog.put("VideoPlay.startPlay early return: source=null and !singleUrl")
             return
         }
         danmakuStr = null
         danmakuFile = null
         resetDanmakuLoadKey()
-        val player = player.getCurrentPlayer()
+        val player = resolvePlaybackPlayer(player) as StandardGSYVideoPlayer
         if (singleUrl) {
             val mUrl = videoUrl ?: return
             // 4.8b（Z9）：singleUrl 直链即原始 URL，同步历史键
@@ -1008,12 +1016,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                 // 直播流不恢复历史位置（实时直播，恢复旧位置会闪退/黑屏）
                 val live = isLiveStreamAwait(mUrl)
                 // 重置起播位置：避免播放会话切换视频时残留上一个视频的 seekOnStart
-                player.seekOnStart = 0L
-                if (!live) {
-                    CacheManager.getLong(VIDEO_POS_NAME + mUrl)?.let {
-                        player.seekOnStart = it
-                    }
-                }
+                val resumePosition = if (live) 0L else CacheManager.getLong(VIDEO_POS_NAME + mUrl) ?: 0L
                 // P0-7：singleUrl 直连同样按书架身份判定（旧行为硬编码 true ⇒ 临时书被当成已入架）；
                 // 无 book 身份（纯 URL 直连/下载播放）时保持「已入架」，与既有 intent 缺省语义一致
                 inBookshelf = book?.let { resolveVideoBookshelfState(it) } ?: true
@@ -1067,6 +1070,8 @@ object VideoPlay : CoroutineScope by MainScope(){
                         AppLog.put("startPlay singleUrl: token expired, drop late callback")
                         return@withContext
                     }
+                    val player = resolvePlaybackPlayer(player)
+                    player.seekOnStart = resumePosition
                     player.mapHeadData = headMap
                     currentPlayHeaders = headMap
                     player.setUp(playUrl, cachePlay, File(appCtx.externalCache, "exoplayer"), videoTitle)
@@ -1127,6 +1132,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                                     AppLog.put("startPlay R5命中: token expired, drop late callback")
                                     return@withContext
                                 }
+                                val player = resolvePlaybackPlayer(player)
                                 player.mapHeadData = playAnalyzeUrl.headerMap
                                 currentPlayHeaders = playAnalyzeUrl.headerMap
                                 // Bug8 修复：统一解析播放器页面 URL
@@ -1186,6 +1192,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                                         AppLog.put("startPlay 视频URL分支: token expired, drop late callback")
                                         return@withContext
                                     }
+                                    val player = resolvePlaybackPlayer(player)
                                     player.mapHeadData = playAnalyzeUrl.headerMap
                                     currentPlayHeaders = playAnalyzeUrl.headerMap
                                     // Bug8 修复：统一解析播放器页面 URL
@@ -1215,6 +1222,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                                             AppLog.put("startPlay 正则兜底: token expired, drop late callback")
                                             return@withContext
                                         }
+                                        val player = resolvePlaybackPlayer(player)
                                         player.mapHeadData = playAnalyzeUrl.headerMap
                                         currentPlayHeaders = playAnalyzeUrl.headerMap
                                         val resolvedUrl = VideoUrlExtractor.resolvePlayerPageUrl(playAnalyzeUrl.url)
@@ -1364,6 +1372,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                                 AppLog.put("startPlay 单URL: token expired, drop late callback")
                                 return@withContext
                             }
+                            val player = resolvePlaybackPlayer(player)
                             player.mapHeadData = analyzeUrl.headerMap
                             currentPlayHeaders = analyzeUrl.headerMap
                             // Bug8 修复：统一解析播放器页面 URL
@@ -1653,10 +1662,40 @@ object VideoPlay : CoroutineScope by MainScope(){
             chapterInVolumeIndex = b.chapterInVolumeIndex
             durVolumeIndex = b.durVolumeIndex
             durChapterPos = b.durChapterPos
-            source = appDb.bookSourceDao.getBookSource(b.origin)
-            withContext(Main) {
-                SourceCallBack.callBackBook(SourceCallBack.START_READ, source as BookSource?, b, chapter)
+            source = if (LocalMediaDirectory.isDirectory(b)) null
+            else appDb.bookSourceDao.getBookSource(b.origin)
+            if (!LocalMediaDirectory.isDirectory(b)) {
+                withContext(Main) {
+                    SourceCallBack.callBackBook(SourceCallBack.START_READ, source as BookSource?, b, chapter)
+                }
             }
+        }
+        book?.takeIf(LocalMediaDirectory::isDirectory)?.let { localBook ->
+            // Rescan on opening so removed files and revoked grants fail at the local boundary.
+            val chapters = LocalMediaDirectory.chapters(localBook)
+            require(chapters.isNotEmpty()) { "当前目录没有可播放视频，请检查文件或重新授权" }
+            val previousUrl = toc?.getOrNull(localBook.chapterInVolumeIndex)
+                ?.takeIf { it.bookUrl == localBook.bookUrl }?.url
+            val restoredIndex = chapters.indexOfFirst { it.url == previousUrl }
+                .takeIf { it >= 0 } ?: localBook.chapterInVolumeIndex.coerceIn(0, chapters.lastIndex)
+            localBook.chapterInVolumeIndex = restoredIndex
+            localBook.durChapterIndex = restoredIndex
+            localBook.totalChapterNum = chapters.size
+            localBook.latestChapterTitle = chapters.last().title
+            localBook.durChapterTitle = chapters[restoredIndex].title
+            if (previousUrl != null && chapters[restoredIndex].url != previousUrl) {
+                localBook.durChapterPos = 0
+            }
+            appDb.runInTransaction {
+                appDb.bookChapterDao.delByBook(localBook.bookUrl)
+                appDb.bookChapterDao.insert(*chapters.toTypedArray())
+                appDb.bookDao.update(localBook)
+            }
+            toc = chapters
+            volumes.clear()
+            singleUrl = false
+            chapterInVolumeIndex = restoredIndex
+            durChapterPos = localBook.durChapterPos
         }
         // video-booksource-multiroute fix："未找到章节"根因修复——视频书源首次进入时
         // 目录可能尚未入库（发现页 VideoBookPreloader 只预加载前 12 项，且加载与点击存在竞态），
@@ -1742,7 +1781,8 @@ object VideoPlay : CoroutineScope by MainScope(){
             postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1))
             // video-booksource-align-rss AD-01：书源侧 VideoPlaybackQueue 接入删除（单页化后
             // 无扁平位映射/占位页需求），组件文件保留供订阅源多集分页改造后续用
-        } else if (bookSourceForRoutes.isVideoSource(bookForToc?.type)) {
+        } else if (bookSourceForRoutes.isVideoSource(bookForToc?.type) ||
+            bookForToc?.let(LocalMediaDirectory::isDirectory) == true) {
             // ui-batch-fix-0905：无卷书源回退——TOC 为扁平章节列表（无卷行）时映射整体跳过，
             // 导致沉浸式左下角集数选择器与详情抽屉空白（与订阅源体验不一致）。
             // 镜像 parseRssRoutes 扁平回退：全部章节包装为单线路"线路1"，
@@ -1765,7 +1805,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         // P0: singleUrl 模式（直接传 videoUrl 播放）不需要源，跳过 source == null 检查
         // 根因：adb am start 传 videoUrl 直接播放 m3u8 时，sourceKey 为 null 导致 source == null，
         //   initSource 返回 false → VideoPlayerActivity finish() 退出，无法测试播放
-        if (source == null && !singleUrl) {
+        if (source == null && !singleUrl && book?.let(LocalMediaDirectory::isDirectory) != true) {
             // V-004-P0-2: initSource 失败记录详细原因（不静默返回 false）
             // 根因：004 日志 18:48-19:16 期间 9 次 Activity 启动但播放器未初始化，
             //   initSource 返回 false 时无日志，无法定位失败原因
@@ -2172,6 +2212,39 @@ object VideoPlay : CoroutineScope by MainScope(){
      * L0 直链快速路径 / getContent → MPD 落盘 → 三层嗅探 → 头合并 → setUp 唯一实现见 Pipeline。
      */
     private fun startPlayBookChapter(player: GSYBaseVideoPlayer, book: Book, chapter: BookChapter) {
+        if (LocalMediaDirectory.isDirectory(book)) {
+            if (book.type and BookType.video == 0) {
+                postEvent(EventBus.VIDEO_PLAY_ERROR, "该本地目录已设置为图集")
+                return
+            }
+            val uri = Uri.parse(chapter.url)
+            if (uri.scheme != "content" && uri.scheme != "file") {
+                postEvent(EventBus.VIDEO_PLAY_ERROR, "无效的本地视频地址")
+                return
+            }
+            currentSwitchToken = switchTokenCounter.incrementAndGet()
+            SniffEngine.invalidate()
+            originalPlayUrl = chapter.url
+            videoUrl = chapter.url
+            resolvedChapterUrl = chapter.url
+            videoTitle = chapter.title
+            this.chapter = chapter
+            rssEpisodeIndex = chapterInVolumeIndex
+            currentPlayHeaders = emptyMap()
+            originalPlayUrl = chapter.url
+            danmakuStr = null
+            danmakuFile = null
+            resetDanmakuLoadKey()
+            hasPlayedSuccessfully = false
+            val localPlayer = resolvePlaybackPlayer(player)
+            localPlayer.seekOnStart = book.durChapterPos.coerceAtLeast(0).toLong()
+            localPlayer.mapHeadData = emptyMap()
+            // SAF URIs go straight to the player; no URL rules, HTTP cache or sniffing.
+            localPlayer.setUp(chapter.url, false, null, chapter.title)
+            if (autoPlay) localPlayer.startPlayLogic()
+            isLoading = false
+            return
+        }
         // 4.8b（Z9）：嗅探前捕获原始 URL（书源正文链接可重嗅），作为播放历史键
         originalPlayUrl = chapter.url
         videoTitle = chapter.title
@@ -2427,6 +2500,11 @@ object VideoPlay : CoroutineScope by MainScope(){
     fun playRssEpisode(player: GSYBaseVideoPlayer, episode: RssEpisode) {
         introSkipped = false
         outroSkipped = false
+        if (book?.let(LocalMediaDirectory::isDirectory) == true) {
+            val index = toc?.indexOfFirst { it.url == episode.url } ?: -1
+            if (index >= 0) playBookEpisode(player, index, episode)
+            return
+        }
         // py 源集数模式：source 为空，URL 需经 bridgePlay 解析后播放
         val pyPluginId = pyEpisodesPluginId
         if (pyPluginId != null && source == null) {
@@ -2526,7 +2604,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             var resolvedParse = -1
             val resolvedUrl = if (nonPySource != null) {
                 try {
-                    val playResult = nonPySource.play(episode.url)
+                    val playResult = nonPySource.play(episode.url, episode.flag)
                     resolvedHeaders = playResult.headers
                     resolvedParse = playResult.parse
                     playResult.url
@@ -2539,11 +2617,14 @@ object VideoPlay : CoroutineScope by MainScope(){
                 }
             } else {
                 val resolved = suspendCancellableCoroutine<String?> { cont ->
-                    HomeBridge.play(pluginId, episode.url) { cont.resume(it) }
+                    HomeBridge.play(pluginId, episode.url, flag = episode.flag) { cont.resume(it) }
                 }
-                try {
-                    JSONObject(resolved ?: "").optString("url", "")
-                } catch (e: Exception) { "" }
+                val playResult = io.legado.app.data.video.PyResultParser.parsePlay(
+                    resolved.orEmpty(), episode.url
+                )
+                resolvedHeaders = playResult.headers
+                resolvedParse = playResult.parse
+                playResult.url
             }
             if (resolvedUrl.isNotEmpty()) {
                 withContext(Main) {
@@ -2553,7 +2634,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                     }
                     videoUrl = resolvedUrl
                     singleUrl = true
-                    val stdPlayer = player as? StandardGSYVideoPlayer
+                    val stdPlayer = resolvePlaybackPlayer(player) as? StandardGSYVideoPlayer
                     if (stdPlayer != null) {
                         startPlay(stdPlayer, resolvedHeaders, resolvedParse)
                     }

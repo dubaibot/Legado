@@ -36,6 +36,7 @@ import io.legado.app.utils.isMainThread
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.stackTraceStr
+import java.util.concurrent.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -1087,6 +1088,9 @@ class AnalyzeRule(
                 // 恢复之前的规则类型，避免嵌套调用时信息串扰
                 currentRuleTypeThreadLocal.set(previousRuleType)
             }
+        } catch (e: CancellationException) {
+            // 协程取消（如切换分类取消加载）：按取消传播，不记为 JS 执行错误
+            throw e
         } catch (e: Exception) {
             if (isLoggingEnabled) {
                 val duration = System.currentTimeMillis() - startTime

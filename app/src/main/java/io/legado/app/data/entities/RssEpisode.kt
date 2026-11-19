@@ -19,5 +19,6 @@ data class RssEpisode(
     var title: String = "",
     var url: String = "",
     var duration: Long = 0,
-    var cover: String = ""
+    var cover: String = "",
+    var flag: String = ""
 ) : Parcelable

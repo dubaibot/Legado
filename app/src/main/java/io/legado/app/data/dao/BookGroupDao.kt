@@ -6,6 +6,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookGroup
@@ -25,15 +26,13 @@ interface BookGroupDao {
 
     @get:Query(
         """
-        with const as (SELECT sum(groupId) sumGroupId FROM book_groups where groupId > 0)
+        with const as (SELECT coalesce(sum(groupId), 0) sumGroupId FROM book_groups where groupId > 0)
         SELECT book_groups.* FROM book_groups join const 
         where show > 0 
         and (
             (groupId >= 0  and exists (select 1 from books where `group` & book_groups.groupId > 0))
-            or groupId = -1
+              or groupId in (-1, -3, -6, -7, -8, -9)
             or (groupId = -2 and exists (select 1 from books where type & ${BookType.local} > 0))
-            or (groupId = -3 and exists (select 1 from books where type & ${BookType.audio} > 0))
-            or (groupId = -6 and exists (select 1 from books where type & ${BookType.video} > 0))
             or (groupId = -11 and exists (select 1 from books where type & ${BookType.updateError} > 0))
             or (groupId = -4 
                 and exists (
@@ -61,7 +60,7 @@ interface BookGroupDao {
     @Query("SELECT * FROM book_groups where groupId >= 0 ORDER BY `order`")
     fun flowSelect(): Flow<List<BookGroup>>
 
-    @get:Query("SELECT sum(groupId) FROM book_groups where groupId >= 0")
+    @get:Query("SELECT coalesce(sum(groupId), 0) FROM book_groups where groupId >= 0")
     val idsSum: Long
 
     @get:Query("SELECT MAX(`order`) FROM book_groups where groupId >= 0")
@@ -84,6 +83,21 @@ interface BookGroupDao {
 
     @Update
     fun update(vararg bookGroup: BookGroup)
+
+    @Query("update book_groups set show = 0 where groupId in (-2, -4, -5, -11, -100)")
+    fun hideLegacyDefaults()
+
+    @Transaction
+    fun ensureDefaults(restoring: Boolean = false) {
+        val migrate = restoring || getByID(BookGroup.IdNovel) == null ||
+            getByID(BookGroup.IdManga) == null || getByID(BookGroup.IdOther) == null
+        BookGroup.defaults().forEach { default ->
+            val existing = getByID(default.groupId)
+            if (existing == null) insert(default)
+            else if (migrate) update(existing.copy(order = default.order))
+        }
+        if (migrate) hideLegacyDefaults()
+    }
 
     @Delete
     fun delete(vararg bookGroup: BookGroup)

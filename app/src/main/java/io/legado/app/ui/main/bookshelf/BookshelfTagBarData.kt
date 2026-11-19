@@ -9,6 +9,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.dao.BookTagInfo
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.BookGroupRules
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.book.BookTagManagement
 import io.legado.app.help.book.BookTagMatcher
@@ -196,40 +197,15 @@ internal fun List<String>.restoreTagSelection(tag: String?): Int {
 }
 
 /**
- * 按分组筛选书籍标签信息，逻辑与 [BookshelfTagManageViewModel.booksInGroup] 一致。
+ * 标签统计和管理使用相同的分组筛选。
  * 默认分组（负数 ID）基于 [BookType] 筛选，用户分组（正数 ID）基于 group 位掩码筛选。
  */
 internal fun filterBookshelfTagInfosByGroup(
     books: List<BookTagInfo>,
     groupId: Long,
-): List<BookTagInfo> = when (groupId) {
-    BookGroup.IdAll -> books
-    BookGroup.IdLocal -> books.filter { it.type and BookType.local > 0 }
-    BookGroup.IdAudio -> books.filter { it.type and BookType.audio > 0 }
-    BookGroup.IdVideo -> books.filter { it.type and BookType.video > 0 }
-    BookGroup.IdError -> books.filter { it.type and BookType.updateError > 0 }
-    else -> {
-        val userGroupMask = userGroupMask()
-        when (groupId) {
-            BookGroup.IdNetNone -> books.filter {
-                it.type and BookType.audio == 0 &&
-                    it.type and BookType.video == 0 &&
-                    it.type and BookType.local == 0 &&
-                    (it.group and userGroupMask) == 0L
-            }
-
-            BookGroup.IdLocalNone -> books.filter {
-                it.type and BookType.audio == 0 &&
-                    it.type and BookType.video == 0 &&
-                    it.type and BookType.local > 0 &&
-                    (it.group and userGroupMask) == 0L
-            }
-
-            else -> if (groupId > 0) {
-                books.filter { it.group and groupId > 0 }
-            } else {
-                emptyList()
-            }
-        }
-    }
+    userGroupMask: Long = if (groupId == BookGroup.IdNetNone || groupId == BookGroup.IdLocalNone) {
+        userGroupMask()
+    } else 0L,
+): List<BookTagInfo> = books.filter {
+    BookGroupRules.contains(groupId, it.type, it.group, userGroupMask)
 }

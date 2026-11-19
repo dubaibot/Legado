@@ -29,6 +29,7 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.SourceCallBack
 import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.localBook.LocalMediaDirectory
 import io.legado.app.model.webBook.PartialChapterList
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
@@ -128,10 +129,10 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return
         }
-        if (book.isLocal && !checkLocalBookFileExist(book)) {
+        if (book.isLocal && !LocalMediaDirectory.isDirectory(book) && !checkLocalBookFileExist(book)) {
             return
         }
-        if (ReadBook.chapterSize == 0 || book.isLocalModified()) {
+        if (LocalMediaDirectory.isDirectory(book) || ReadBook.chapterSize == 0 || book.isLocalModified()) {
             // 根据设置选择目录加载方式
             if (AppConfig.isTocPartialLoad && !book.isLocal) {
                 // 渐进加载：目录边加载边展示，加载到阅读位置即可进入正文
@@ -195,7 +196,13 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
 
     private fun checkLocalBookFileExist(book: Book): Boolean {
         try {
-            LocalBook.getBookInputStream(book)
+            if (io.legado.app.model.localBook.LocalMediaDirectory.isDirectory(book)) {
+                require(io.legado.app.model.localBook.LocalMediaDirectory.files(book).isNotEmpty()) {
+                    "目录内没有可读图片，请检查目录或重新授权"
+                }
+            } else {
+                LocalBook.getBookInputStream(book).use { }
+            }
             return true
         } catch (e: Throwable) {
             ReadBook.upMsg("打开本地书籍出错: ${e.localizedMessage}")

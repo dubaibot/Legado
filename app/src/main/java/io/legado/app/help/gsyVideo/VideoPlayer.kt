@@ -31,6 +31,7 @@ import com.shuyu.gsyvideoplayer.utils.CommonUtil
 import com.shuyu.gsyvideoplayer.utils.GSYVideoType
 import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import com.shuyu.gsyvideoplayer.video.base.GSYVideoPlayer
+import com.shuyu.gsyvideoplayer.video.base.GSYBaseVideoPlayer
 import androidx.core.graphics.ColorUtils
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -201,7 +202,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
     private fun updateSkipButtons() {
         introSkip?.apply {
             visibility = VISIBLE
-            setTextColor(if (VideoPlay.introSkipSeconds > 0) android.graphics.Color.YELLOW else android.graphics.Color.BLACK)
+            setTextColor(if (VideoPlay.introSkipSeconds > 0) android.graphics.Color.BLUE else android.graphics.Color.WHITE)
             contentDescription = context.getString(R.string.video_intro_skip_btn) +
                 if (VideoPlay.introSkipSeconds > 0) " " + context.getString(
                     R.string.video_seconds_format, VideoPlay.introSkipSeconds
@@ -210,7 +211,7 @@ class VideoPlayer: StandardGSYVideoPlayer {
         }
         outroSkip?.apply {
             visibility = VISIBLE
-            setTextColor(if (VideoPlay.outroSkipSeconds > 0) android.graphics.Color.YELLOW else android.graphics.Color.BLACK)
+            setTextColor(if (VideoPlay.outroSkipSeconds > 0) android.graphics.Color.BLUE else android.graphics.Color.WHITE)
             contentDescription = context.getString(R.string.video_outro_skip_btn) +
                 if (VideoPlay.outroSkipSeconds > 0) " " + context.getString(
                     R.string.video_seconds_format, VideoPlay.outroSkipSeconds
@@ -1063,11 +1064,11 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
     private fun initView() {
         isNeedLockFull = true //使用锁定按钮
-        setEnlargeImageRes(R.drawable.ic_player_fullscreen_bold)
+        setEnlargeImageRes(R.drawable.ic_player_fullscreen_normal)
         setShrinkImageRes(R.drawable.ic_player_fullscreen_exit_bold)
         mFullscreenButton?.setImageResource(
             if (mIfCurrentIsFullscreen) R.drawable.ic_player_fullscreen_exit_bold
-            else R.drawable.ic_player_fullscreen_bold
+            else R.drawable.ic_player_fullscreen_normal
         )
         playbackSpeed = findViewById(R.id.playback_speed)
         playbackSpeed?.text = "${playSpeed.takeIf { it > 0f } ?: 1.0f}X"
@@ -1587,6 +1588,12 @@ class VideoPlayer: StandardGSYVideoPlayer {
      * 处理播放器在全屏切换时，弹幕显示的逻辑
      * 需要格外注意的是，因为全屏和小屏，是切换了播放器，所以需要同步之间的弹幕状态
      */
+    override fun cloneParams(from: GSYBaseVideoPlayer, to: GSYBaseVideoPlayer) {
+        super.cloneParams(from, to)
+        // Keep pending history restoration when switching windows before preparation completes.
+        to.seekOnStart = from.seekOnStart
+    }
+
     override fun startWindowFullscreen(
         context: Context?,
         actionBar: Boolean,
@@ -1640,6 +1647,22 @@ class VideoPlayer: StandardGSYVideoPlayer {
                 resolveDanmakuShow()
                 releaseDanmaku(videoPlayer)
             }
+        }
+        (CommonUtil.scanForActivity(context) as? VideoPlayerActivity)?.onFullscreenRestored(this)
+    }
+
+    fun restoreFromWindowFullscreen() {
+        if (getFullWindowPlayer() != null) {
+            backToNormal()
+        }
+    }
+
+    override fun onBackFullscreen() {
+        val activity = CommonUtil.scanForActivity(context) as? VideoPlayerActivity
+        if (activity?.isFullScreen == true) {
+            activity.exitFullScreen()
+        } else {
+            super.onBackFullscreen()
         }
     }
 

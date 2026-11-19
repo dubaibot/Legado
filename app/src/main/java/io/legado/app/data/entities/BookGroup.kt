@@ -39,7 +39,17 @@ data class BookGroup(
         const val IdVideo = -6L
         const val IdNovel = -7L
         const val IdManga = -8L
+        const val IdOther = -9L
         const val IdError = -11L
+
+        fun defaults(): List<BookGroup> = listOf(
+            BookGroup(IdNovel, "小说", order = -10),
+            BookGroup(IdAudio, "音频", order = -9),
+            BookGroup(IdManga, "漫画", order = -8),
+            BookGroup(IdVideo, "视频", order = -7),
+            BookGroup(IdOther, "其它", order = -6),
+            BookGroup(IdAll, "全部", order = -5),
+        )
     }
 
     fun getManageName(context: Context): String {

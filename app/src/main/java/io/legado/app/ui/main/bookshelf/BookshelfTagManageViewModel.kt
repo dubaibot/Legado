@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
-import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.dao.BookTagInfo
@@ -51,15 +50,17 @@ class BookshelfTagManageViewModel(
         viewModelScope.launch {
             val data = withContext(Dispatchers.IO) {
                 val books = appDb.bookDao.allTagInfos
-                val groups = appDb.bookGroupDao.all
+                val allGroups = appDb.bookGroupDao.all
+                val groups = allGroups
+                    .filter { it.show }
                     .filter { it.groupId != BookGroup.IdRoot }
                     .sortedBy { it.order }
-                val userGroupMask = groups.asSequence()
+                val userGroupMask = allGroups.asSequence()
                     .filter { it.groupId > 0 }
                     .fold(0L) { acc, group -> acc or group.groupId }
                 // 分组删除后可能在配置里留下孤儿标签项：这里统一丢弃并写回，
                 // 否则它们只在书籍详情页的可选标签里出现，管理页却无法删除
-                val validGroupIds = groups.mapTo(HashSet()) { it.groupId }
+                val validGroupIds = allGroups.mapTo(HashSet()) { it.groupId }
                 val storedTagMap = AppConfig.bookshelfGroupTags
                 val configuredMap =
                     BookTagManagement.pruneUnknownGroups(storedTagMap, validGroupIds).toMutableMap()
@@ -68,7 +69,7 @@ class BookshelfTagManageViewModel(
                 val hiddenMap = BookTagManagement.pruneUnknownGroups(storedHiddenMap, validGroupIds)
                 var hiddenChanged = hiddenMap.size != storedHiddenMap.size
                 val result = groups.mapNotNull { group ->
-                    val groupBooks = booksInGroup(group, books, userGroupMask)
+                    val groupBooks = filterBookshelfTagInfosByGroup(books, group.groupId, userGroupMask)
                     val existingTags = groupBooks
                         .flatMap { BookTagHelper.parse(it.customTag) }
                     val configuredTags = configuredMap[group.groupId].orEmpty()
@@ -224,9 +225,9 @@ class BookshelfTagManageViewModel(
         )
     }
 
-    fun confirmRenameTag(tag: String) {
+    fun confirmRenameTag(groupId: Long, tag: String) {
         _uiState.value = _uiState.value.copy(
-            dialog = BookshelfTagDialogState.RenameTag(oldTag = tag),
+            dialog = BookshelfTagDialogState.RenameTag(groupId = groupId, oldTag = tag),
         )
     }
 
@@ -288,36 +289,36 @@ class BookshelfTagManageViewModel(
     /**
      * 执行标签重命名。
      *
-     * 标签以文本形式存在每本书的 customTag 中，所以改名必须**全局**生效：覆盖所有带旧标签的
-     * 书籍（不限当前分组）以及所有分组的标签配置（含隐藏列表）。只改当前分组会让其他分组
-     * 留下同名的空标签，观感就像"改名时新建了一个标签、旧标签没删掉"。
+     * 仅修改当前分组的书籍和配置；一本书的 customTag 由它所属的各分组共享。
      */
-    fun executeRenameTag(oldTag: String, newTag: String) {
+    fun executeRenameTag(groupId: Long, oldTag: String, newTag: String) {
+        val normalizedTag = BookTagHelper.parse(newTag).singleOrNull() ?: return
         dismissDialog()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 appDb.withTransaction {
-                    appDb.bookDao.allTagInfos.forEach { book ->
+                    filterBookshelfTagInfosByGroup(appDb.bookDao.allTagInfos, groupId).forEach { book ->
                         if (!BookTagHelper.has(book.customTag, oldTag)) return@forEach
                         val tags = BookTagHelper.parse(book.customTag).toMutableList()
                         val index = tags.indexOfFirst { it.equals(oldTag, ignoreCase = true) }
                         if (index < 0) return@forEach
-                        tags[index] = newTag
+                        tags[index] = normalizedTag
                         // 新名与已有标签冲突时去重，保证一本书里只留一个
                         val deduped = tags.distinctBy { it.lowercase(java.util.Locale.ROOT) }
                         appDb.bookDao.updateCustomTag(book.bookUrl, BookTagHelper.join(deduped))
                     }
                 }
-                // 所有分组的标签配置与隐藏标签同样改名，避免别处残留同名旧标签
-                AppConfig.bookshelfGroupTags = BookTagManagement.renameInGroups(
-                    AppConfig.bookshelfGroupTags,
+                val tagMap = AppConfig.bookshelfGroupTags
+                AppConfig.bookshelfGroupTags = tagMap + BookTagManagement.renameInGroups(
+                    tagMap.filterKeys { it == groupId },
                     oldTag,
-                    newTag,
+                    normalizedTag,
                 )
-                AppConfig.bookshelfHiddenTags = BookTagManagement.renameInHiddenGroups(
-                    AppConfig.bookshelfHiddenTags,
+                val hiddenMap = AppConfig.bookshelfHiddenTags
+                AppConfig.bookshelfHiddenTags = hiddenMap + BookTagManagement.renameInHiddenGroups(
+                    hiddenMap.filterKeys { it == groupId },
                     oldTag,
-                    newTag,
+                    normalizedTag,
                 )
             }
             postEvent(EventBus.BOOKSHELF_REFRESH, "")
@@ -355,33 +356,4 @@ class BookshelfTagManageViewModel(
         postEvent(EventBus.BOOKSHELF_REFRESH, "")
     }
 
-    @Suppress("FunctionName")
-    private fun booksInGroup(
-        group: BookGroup,
-        books: List<BookTagInfo>,
-        userGroupMask: Long,
-    ): List<BookTagInfo> = when (group.groupId) {
-        BookGroup.IdAll -> books
-        BookGroup.IdLocal -> books.filter { it.type and BookType.local > 0 }
-        BookGroup.IdAudio -> books.filter { it.type and BookType.audio > 0 }
-        BookGroup.IdVideo -> books.filter { it.type and BookType.video > 0 }
-        BookGroup.IdError -> books.filter { it.type and BookType.updateError > 0 }
-        BookGroup.IdNetNone -> books.filter {
-            it.type and BookType.audio == 0 &&
-                it.type and BookType.video == 0 &&
-                it.type and BookType.local == 0 &&
-                (it.group and userGroupMask) == 0L
-        }
-        BookGroup.IdLocalNone -> books.filter {
-            it.type and BookType.audio == 0 &&
-                it.type and BookType.video == 0 &&
-                it.type and BookType.local > 0 &&
-                (it.group and userGroupMask) == 0L
-        }
-        else -> if (group.groupId > 0) {
-            books.filter { it.group and group.groupId > 0 }
-        } else {
-            emptyList()
-        }
-    }
 }

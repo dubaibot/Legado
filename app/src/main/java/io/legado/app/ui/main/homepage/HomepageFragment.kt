@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.homepage
 
 import android.os.Bundle
+import android.content.Intent
 import android.provider.DocumentsContract
 import android.net.Uri
 import android.view.LayoutInflater
@@ -13,6 +14,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.MainActivity
@@ -39,6 +41,10 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
      * 导致切回首页时所有模块数据重新加载。
      */
     private val pyViewModel: PyHomepageViewModel by activityViewModels()
+
+    private val manageSources = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        pyViewModel.refreshSources()
+    }
 
     /** 底栏占用的底部高度（px），由 MainActivity 通知更新，用于 Compose 内容的底部 padding */
     private var bottomPaddingPx by mutableIntStateOf(0)
@@ -96,6 +102,9 @@ class HomepageFragment() : Fragment(), MainFragmentInterface {
                     PyHomepageScreen(
                         viewModel = pyViewModel,
                         bottomPaddingPx = bottomPaddingPx,
+                        onManageRequested = {
+                            manageSources.launch(Intent(requireContext(), HomeSourceManageActivity::class.java))
+                        },
                         onImportRequested = {
                             importDoc.launch {
                                 mode = HandleFileContract.FILE

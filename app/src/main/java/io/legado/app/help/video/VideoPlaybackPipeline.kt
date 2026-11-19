@@ -250,11 +250,12 @@ object VideoPlaybackPipeline {
                 // AD-08：setUp 前统一发一次 VIDEO_SUB_TITLE（标题单一权威，观察者经 displayEpisodeTitle 归一）
                 // R3 title 修复语义保留：TitleBar 显示文章标题（title 为 GSY setUp 内部标题=集名）
                 postEvent(EventBus.VIDEO_SUB_TITLE, ctx.displayTitle ?: ctx.title)
-                ctx.player.mapHeadData = merged
+                val player = VideoPlay.resolvePlaybackPlayer(ctx.player)
+                player.mapHeadData = merged
                 VideoPlay.currentPlayHeaders = merged
-                ctx.player.setUp(resolvedUrl, VideoPlay.cachePlay, File(appCtx.externalCache, "exoplayer"), ctx.title)
+                player.setUp(resolvedUrl, VideoPlay.cachePlay, File(appCtx.externalCache, "exoplayer"), ctx.title)
                 if (VideoPlay.autoPlay) {
-                    ctx.player.startPlayLogic()
+                    player.startPlayLogic()
                 }
                 ctx.onStarted?.invoke()
             }
@@ -287,16 +288,17 @@ object VideoPlaybackPipeline {
             )
             // AD-08：setUp 前统一发一次 VIDEO_SUB_TITLE（书源链从 0 到 1 是行为增强）
             postEvent(EventBus.VIDEO_SUB_TITLE, ctx.title)
-            ctx.player.mapHeadData = headers
             VideoPlay.currentPlayHeaders = headers
             val playUrl = if (resolvePageUrl) {
                 VideoUrlExtractor.resolvePlayerPageUrl(url)
             } else {
                 url
             }
-            ctx.player.setUp(playUrl, VideoPlay.cachePlay, File(appCtx.externalCache, "exoplayer"), ctx.title)
+            val player = VideoPlay.resolvePlaybackPlayer(ctx.player)
+            player.mapHeadData = headers
+            player.setUp(playUrl, VideoPlay.cachePlay, File(appCtx.externalCache, "exoplayer"), ctx.title)
             if (VideoPlay.autoPlay) {
-                ctx.player.startPlayLogic()
+                player.startPlayLogic()
             }
         }
     }

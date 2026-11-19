@@ -30,7 +30,11 @@ data class VideoItem(
 data class VideoCategory(
     val id: String,
     val name: String,
+    val filters: List<VideoFilter> = emptyList(),
 )
+
+data class VideoFilter(val key: String, val name: String, val values: List<VideoFilterValue>)
+data class VideoFilterValue(val name: String, val value: String)
 
 /** 分类视频列表结果 */
 data class CategoryResult(
@@ -44,6 +48,7 @@ data class PlayLine(
     val name: String,
     val url: String,
     val headers: Map<String, String> = emptyMap(),
+    val flag: String = "",
 )
 
 /** 视频详情 */
@@ -96,6 +101,8 @@ interface VideoSource {
     /** 分类页：返回某分类的视频列表 */
     suspend fun category(tid: String, pg: Int): CategoryResult
 
+    suspend fun category(tid: String, pg: Int, filters: Map<String, String>): CategoryResult = category(tid, pg)
+
     /** 搜索：返回匹配视频列表 */
     suspend fun search(keyword: String, pg: Int): List<VideoItem>
 
@@ -104,6 +111,8 @@ interface VideoSource {
 
     /** 播放：返回最终播放地址 */
     suspend fun play(url: String): PlayResult
+
+    suspend fun play(url: String, flag: String): PlayResult = play(url)
 
     /** 弹幕：返回弹幕列表（可选，源不支持时返回空） */
     suspend fun danmaku(videoId: String): DanmakuList

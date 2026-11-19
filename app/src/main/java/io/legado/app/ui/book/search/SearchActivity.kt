@@ -3,589 +3,333 @@ package io.legado.app.ui.book.search
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
-import android.view.View.GONE
-import android.view.View.VISIBLE
-import android.widget.TextView
+import android.view.ViewGroup
 import androidx.activity.viewModels
-import androidx.appcompat.widget.SearchView
-import androidx.core.os.bundleOf
-import androidx.core.view.isVisible
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.flexbox.FlexboxLayoutManager
-import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.databinding.ActivityBookSearchBinding
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.Selector
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.help.book.isVideo
 import io.legado.app.ui.book.info.BookInfoActivity
-import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
-import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.applyNavigationBarMargin
-import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
-import io.legado.app.utils.putPrefBoolean
-import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.ui.rss.read.ReadRss
+import io.legado.app.ui.theme.LegadoTheme
+import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.transaction
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
-import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
-import kotlin.math.abs
 
 class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
-    BookAdapter.CallBack,
-    HistoryKeyAdapter.CallBack,
-    SearchScopeDialog.Callback,
-    SearchAdapter.CallBack {
+    SearchScopeDialog.Callback, SearchAdapter.CallBack {
 
     override val binding by viewBinding(ActivityBookSearchBinding::inflate)
     override val viewModel by viewModels<SearchViewModel>()
-
-    private val adapter by lazy { SearchAdapter(this, this) }
-    private val bookAdapter by lazy {
-        BookAdapter(this, this).apply {
-            setHasStableIds(true)
-        }
-    }
-    private val historyKeyAdapter by lazy {
-        HistoryKeyAdapter(this, this).apply {
-            setHasStableIds(true)
-        }
-    }
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
-    private var menu: Menu? = null
-    private var groups: List<String>? = null
-    private var historyFlowJob: Job? = null
-    private var booksFlowJob: Job? = null
-    private var precisionSearchMenuItem: MenuItem? = null
-    private var isManualStopSearch = false
+    private val hotViewModel by viewModels<SearchHotViewModel>()
+    private val unifiedViewModel by viewModels<UnifiedSearchViewModel>()
+    private var showSources by mutableStateOf(false)
+    private var query by mutableStateOf("")
+    private var books by mutableStateOf<List<SearchBook>>(emptyList(), neverEqualPolicy())
+    private var history by mutableStateOf<List<SearchKeyword>>(emptyList())
+    private var groups by mutableStateOf<List<String>>(emptyList())
+    private var scope by mutableStateOf("")
+    private var searching by mutableStateOf(false)
+    private var hasMore by mutableStateOf(false)
+    private var submitted by mutableStateOf(false)
+    private var preferences by mutableStateOf(SearchPreferences())
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.llInputHelp.setBackgroundColor(backgroundColor)
-        initRecyclerView()
-        initSearchView()
-        initOtherView()
-        initData()
-        receiptIntent(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        receiptIntent(intent)
-    }
-
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.book_search, menu)
-        this.menu = menu
-        precisionSearchMenuItem = menu.findItem(R.id.menu_precision_search)
-        precisionSearchMenuItem?.isChecked = getPrefBoolean(PreferKey.precisionSearch)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.transaction {
-            menu.removeGroup(R.id.menu_group_1)
-            menu.removeGroup(R.id.menu_group_2)
-            var hasChecked = false
-            val searchScopeNames = viewModel.searchScope.displayNames
-            if (viewModel.searchScope.isSource()) {
-                menu.add(R.id.menu_group_1, Menu.NONE, Menu.NONE, searchScopeNames.first()).apply {
-                    isChecked = true
-                    hasChecked = true
-                }
-            }
-            val allSourceMenu =
-                menu.add(R.id.menu_group_2, R.id.menu_1, Menu.NONE, getString(R.string.all_source))
-                    .apply {
-                        if (searchScopeNames.isEmpty()) {
-                            isChecked = true
-                            hasChecked = true
-                        }
-                    }
-            groups?.forEach {
-                if (searchScopeNames.contains(it)) {
-                    menu.add(R.id.menu_group_1, Menu.NONE, Menu.NONE, it).apply {
-                        isChecked = true
-                        hasChecked = true
-                    }
-                } else {
-                    menu.add(R.id.menu_group_2, Menu.NONE, Menu.NONE, it)
-                }
-            }
-            if (!hasChecked) {
-                viewModel.searchScope.update("")
-                allSourceMenu.isChecked = true
-            }
-            menu.setGroupCheckable(R.id.menu_group_1, true, false)
-            menu.setGroupCheckable(R.id.menu_group_2, true, true)
+        preferences = SearchPreferences.read(this)
+        scope = viewModel.searchScope.toString()
+        query = savedInstanceState?.getString("composeQuery") ?: viewModel.searchKey
+        submitted = viewModel.searchKey.isNotBlank()
+        savedInstanceState?.getString("composeScope")?.let {
+            scope = it
+            viewModel.searchScope.update(it, save = false)
         }
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_precision_search -> {
-                putPrefBoolean(
-                    PreferKey.precisionSearch,
-                    !getPrefBoolean(PreferKey.precisionSearch)
-                )
-                precisionSearchMenuItem?.isChecked = getPrefBoolean(PreferKey.precisionSearch)
-                searchView.query?.toString()?.trim()?.let {
-                    searchView.setQuery(it, true)
-                }
-            }
-
-            R.id.menu_search_scope -> alertSearchScope()
-            R.id.menu_source_manage -> startActivity<BookSourceActivity>()
-            R.id.menu_log -> showDialogFragment(AppLogDialog())
-            R.id.menu_1 -> viewModel.searchScope.update("")
-            else -> {
-                if (item.groupId == R.id.menu_group_1) {
-                    viewModel.searchScope.remove(item.title.toString())
-                } else if (item.groupId == R.id.menu_group_2) {
-                    viewModel.searchScope.update(item.title.toString())
-                }
-            }
+        savedInstanceState?.getString("composeSearchType")?.let { name ->
+            SearchContentType.entries.firstOrNull { it.name == name }?.let(unifiedViewModel::selectType)
         }
-        return super.onCompatOptionsItemSelected(item)
-    }
-
-    private fun initSearchView() {
-        searchView.applyTint(primaryTextColor)
-        searchView.isSubmitButtonEnabled = true
-        searchView.queryHint = getString(R.string.search_book_key)
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String): Boolean {
-                searchView.clearFocus()
-                query.trim().let { searchKey ->
-                    isManualStopSearch = false
-                    viewModel.saveSearchKey(searchKey)
-                    viewModel.searchKey = ""
-                    viewModel.search(searchKey)
-                }
-                visibleInputHelp(false)
-                return true
-            }
-
-            override fun onQueryTextChange(newText: String): Boolean {
-                viewModel.stop()
-                binding.fbStartStop.invisible()
-                upHistory(newText.trim())
-                return false
-            }
-        })
-        searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
-            if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && adapter.isNotEmpty() && searchView.query.isNotBlank())) {
-                visibleInputHelp(false)
-            } else {
-                visibleInputHelp(true)
-            }
-        }
-        visibleInputHelp(true)
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.rvBookshelfSearch.setEdgeEffectColor(primaryColor)
-        binding.rvHistoryKey.setEdgeEffectColor(primaryColor)
-        binding.rvBookshelfSearch.layoutManager = FlexboxLayoutManager(this)
-        binding.rvBookshelfSearch.adapter = bookAdapter
-        binding.rvBookshelfSearch.applyNavigationBarMargin()
-        binding.rvHistoryKey.layoutManager = FlexboxLayoutManager(this)
-        binding.rvHistoryKey.adapter = historyKeyAdapter
-        binding.rvHistoryKey.applyNavigationBarMargin()
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.itemAnimator = null
-        binding.recyclerView.applyNavigationBarPadding()
-        adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
-            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                super.onItemRangeInserted(positionStart, itemCount)
-                if (positionStart == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
-
-            override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                super.onItemRangeMoved(fromPosition, toPosition, itemCount)
-                if (toPosition == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
-        })
-        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(recyclerView, dx, dy)
-                if (!recyclerView.canScrollVertically(1)) {
-                    val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-                    val lastPosition = layoutManager.findLastCompletelyVisibleItemPosition()
-                    if (lastPosition == RecyclerView.NO_POSITION) {
-                        return
+        savedInstanceState?.getString("composeSourceKey")?.let(unifiedViewModel::selectSource)
+        binding.root.removeAllViews()
+        binding.root.addView(ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                LegadoTheme {
+                    val type = unifiedViewModel.type
+                    val currentSources = unifiedViewModel.sources.filter { it.type == type }
+                    val selectedKey = if (type == SearchContentType.BOOK) {
+                        if (scope.contains("::")) scope.substringAfter("::") else ""
+                    } else unifiedViewModel.sourceKey
+                    val scopeName = if (type == SearchContentType.BOOK) {
+                        scope.substringBefore("::").ifEmpty { "全部启用源" }
+                    } else if (selectedKey.isEmpty()) "全部启用源"
+                    else currentSources.firstOrNull { it.key == selectedKey }?.name ?: "所选源不可用"
+                    val typeBar: @Composable () -> Unit = {
+                        SearchTypeBar(type, scopeName, { selectSearchType(it) }) { showSources = true }
                     }
-                    val lastView = layoutManager.findViewByPosition(lastPosition)
-                    if (lastView == null) {
-                        scrollToBottom()
-                        return
+                    if (type != SearchContentType.BOOK) {
+                        UnifiedSearchScreen(query, { query = it }, unifiedViewModel,
+                            onSearch = { submit() }, onResult = ::openResult, typeBar = typeBar)
+                    } else {
+                        BookSearchScreen(
+                            query = query, onQueryChange = { query = it },
+                            books = books, history = history, groups = groups, scope = scope,
+                            searching = searching, hasMore = hasMore, submitted = submitted,
+                            preferences = preferences, hotViewModel = hotViewModel,
+                            onSearch = { submit() },
+                            onScope = { viewModel.searchScope.update(it) },
+                            onPreferences = {
+                                val repeatSearch = preferences.precision != it.precision ||
+                                    preferences.hideNoCover != it.hideNoCover ||
+                                    preferences.status != it.status || preferences.minWords != it.minWords
+                                preferences = it
+                                it.save(this@SearchActivity)
+                                if (repeatSearch && submitted) submit(viewModel.searchKey)
+                            },
+                            onHistory = { query = it; submit() },
+                            onDeleteHistory = viewModel::deleteHistory,
+                            onClearHistory = viewModel::clearHistory,
+                            onBook = ::showBookInfo, isInBookshelf = ::isInBookshelf,
+                            onManageSources = { startActivity<BookSourceActivity>() },
+                            onLog = { showDialogFragment(AppLogDialog()) },
+                            onRefresh = {
+                                hotViewModel.refresh()
+                                if (submitted) submit(viewModel.searchKey)
+                            },
+                            onLoadMore = ::loadMore,
+                            onStopSearch = {
+                                hasMore = false
+                                viewModel.hasMore = false
+                                viewModel.stop()
+                            },
+                            typeBar = typeBar,
+                        )
                     }
-                    val bottom =
-                        abs(lastView.bottom - recyclerView.height) - recyclerView.paddingBottom
-                    if (bottom <= 1) {
-                        scrollToBottom()
-                    }
+                    if (showSources) SearchSourceDialog(type, currentSources, selectedKey,
+                        unifiedViewModel.loadingSources, unifiedViewModel.errors,
+                        onSelect = { source ->
+                            showSources = false
+                            if (type == SearchContentType.BOOK) {
+                                viewModel.searchScope.update(source?.bookScope.orEmpty())
+                            } else {
+                                unifiedViewModel.selectSource(source?.key.orEmpty())
+                                if (query.isNotBlank()) submit()
+                            }
+                        }, onDismiss = { showSources = false })
                 }
             }
-        })
-    }
-
-    private fun initOtherView() {
-        binding.fbStartStop.backgroundTintList =
-            Selector.colorBuild()
-                .setDefaultColor(accentColor)
-                .setPressedColor(ColorUtils.darkenColor(accentColor))
-                .create()
-        binding.fbStartStop.setOnClickListener {
-            if (viewModel.isSearchLiveData.value == true) {
-                isManualStopSearch = true
-                viewModel.stop()
-                binding.refreshProgressBar.isAutoLoading = false
-            } else {
-                viewModel.search("")
-            }
-        }
-        binding.fbStartStop.applyNavigationBarMargin(true)
-        binding.tvClearHistory.setOnClickListener { alertClearHistory() }
-    }
-
-    private fun initData() {
-        viewModel.searchScope.stateLiveData.observe(this) {
-            if (!binding.llInputHelp.isVisible) {
-                searchView.query?.toString()?.trim()?.let {
-                    searchView.setQuery(it, true)
-                }
-            }
-        }
+        }, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        viewModel.searchBookLiveData.observe(this) { books = it.toList() }
         viewModel.isSearchLiveData.observe(this) {
-            if (it) {
-                startSearch()
-            } else {
-                searchFinally()
-            }
+            searching = it
+            hasMore = viewModel.hasMore
         }
-        viewModel.searchBookLiveData.observe(this) {
-            adapter.setItems(it)
+        viewModel.searchFinishLiveData.observe(this) { hasMore = viewModel.hasMore }
+        viewModel.upAdapterLiveData.observe(this) { books = books.toList() }
+        viewModel.searchScope.stateLiveData.observe(this) {
+            val changed = scope != it
+            scope = it
+            if (changed && query.isNotBlank() && unifiedViewModel.type == SearchContentType.BOOK) submit()
         }
         lifecycleScope.launch {
-            appDb.bookSourceDao.flowEnabledGroups().collect {
-                groups = it
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { appDb.bookSourceDao.flowEnabledGroups().collect { groups = it } }
+                launch {
+                    appDb.searchKeywordDao.flowByTime().catch {
+                        AppLog.put("搜索历史加载失败", it)
+                    }.collect { history = it.take(20) }
+                }
             }
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                unifiedViewModel.refreshSources()
                 viewModel.resume()
-                try {
-                    awaitCancellation()
-                } finally {
-                    viewModel.pause()
-                }
+                try { awaitCancellation() } finally { viewModel.pause() }
             }
         }
-    }
-
-    /**
-     * 处理传入数据
-     */
-    private fun receiptIntent(intent: Intent? = null) {
-        val searchScope = intent?.getStringExtra("searchScope")
-        searchScope?.let {
-            viewModel.searchScope.update(searchScope, postValue = false, save = false)
-        }
-        val key = intent?.getStringExtra("key")
-        if (key.isNullOrBlank()) {
-            searchView.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)
-                .requestFocus()
-        } else {
-            searchView.setQuery(key, true)
+        if (savedInstanceState == null) {
+            receiptIntent(intent)
+        } else if (unifiedViewModel.type != SearchContentType.BOOK) {
+            if (!unifiedViewModel.submitted) {
+                savedInstanceState.getString("composeUnifiedKey")?.takeIf(String::isNotBlank)?.let { submit(it) }
+            }
+        } else if (!submitted) {
+            savedInstanceState.getString("composeSearchKey")?.takeIf(String::isNotBlank)?.let { submit(it) }
         }
     }
 
-    /**
-     * 滚动到底部事件
-     */
-    private fun scrollToBottom() {
-        if (isManualStopSearch) {
+    private fun submit(key: String = query) {
+        val value = key.trim()
+        if (value.isEmpty()) return
+        if (unifiedViewModel.type != SearchContentType.BOOK) {
+            viewModel.stop()
+            viewModel.saveSearchKey(value)
+            unifiedViewModel.search(value)
             return
         }
-        if (viewModel.isSearchLiveData.value == false
-            && viewModel.searchKey.isNotEmpty()
-            && viewModel.hasMore
-        ) {
-            viewModel.search("")
-        }
+        submitted = true
+        searching = true
+        hasMore = true
+        books = emptyList()
+        viewModel.saveSearchKey(value)
+        viewModel.search(value)
     }
 
-    /**
-     * 打开关闭输入帮助
-     */
-    private fun visibleInputHelp(visible: Boolean) {
-        if (visible) {
-            upHistory(searchView.query.toString())
-            binding.llInputHelp.visibility = VISIBLE
-        } else {
-            binding.llInputHelp.visibility = GONE
-        }
+    private fun loadMore() {
+        if (unifiedViewModel.type != SearchContentType.BOOK) return
+        if (searching || viewModel.isSearchLiveData.value == true || !hasMore ||
+            !viewModel.hasMore || viewModel.searchKey.isBlank()) return
+        searching = true
+        viewModel.search("")
     }
 
-    /**
-     * 更新搜索历史
-     */
-    private fun upHistory(key: String? = null) {
-        booksFlowJob?.cancel()
-        booksFlowJob = lifecycleScope.launch {
-            if (key.isNullOrBlank()) {
-                binding.tvBookShow.gone()
-                binding.rvBookshelfSearch.gone()
-            } else {
-                appDb.bookDao.flowSearch(key).conflate().collect {
-                    if (it.isEmpty()) {
-                        binding.tvBookShow.gone()
-                        binding.rvBookshelfSearch.gone()
-                    } else {
-                        binding.tvBookShow.visible()
-                        binding.rvBookshelfSearch.visible()
-                    }
-                    bookAdapter.setItems(it)
-                }
-            }
-        }
-        historyFlowJob?.cancel()
-        historyFlowJob = lifecycleScope.launch {
-            when {
-                key.isNullOrBlank() -> appDb.searchKeywordDao.flowByTime()
-                else -> appDb.searchKeywordDao.flowSearch(key)
-            }.catch {
-                AppLog.put("搜索界面获取搜索历史数据失败\n${it.localizedMessage}", it)
-            }.flowOn(IO).conflate().collect {
-                historyKeyAdapter.setItems(it)
-                if (it.isEmpty()) {
-                    binding.tvClearHistory.invisible()
-                } else {
-                    binding.tvClearHistory.visible()
-                }
-            }
-        }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("composeQuery", query)
+        outState.putString("composeScope", scope)
+        outState.putString("composeSearchKey", viewModel.searchKey)
+        outState.putString("composeSearchType", unifiedViewModel.type.name)
+        outState.putString("composeSourceKey", unifiedViewModel.sourceKey)
+        if (unifiedViewModel.submitted) outState.putString("composeUnifiedKey", unifiedViewModel.keyword)
+        super.onSaveInstanceState(outState)
     }
 
-    /**
-     * 开始搜索
-     */
-    private fun startSearch() {
-        binding.refreshProgressBar.visible()
-        binding.refreshProgressBar.isAutoLoading = true
-        binding.fbStartStop.setImageResource(R.drawable.ic_stop_black_24dp)
-        binding.fbStartStop.visible()
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        receiptIntent(intent)
     }
 
-    /**
-     * 搜索结束
-     */
-    private fun searchFinally() {
-        binding.refreshProgressBar.isAutoLoading = false
-        binding.refreshProgressBar.gone()
-        if (!isManualStopSearch && viewModel.hasMore) {
-            binding.fbStartStop.setImageResource(R.drawable.ic_play_24dp)
-        } else {
-            binding.fbStartStop.invisible()
+    private fun receiptIntent(intent: Intent) {
+        val requestedType = intent.getStringExtra("searchType")?.let { name ->
+            SearchContentType.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        }
+        selectSearchType(requestedType ?: SearchContentType.BOOK, search = false)
+        intent.getStringExtra("sourceKey")?.let {
+            unifiedViewModel.selectSource(it)
+            unifiedViewModel.refreshSources()
+        }
+        intent.getStringExtra("searchScope")?.let {
+            scope = it
+            viewModel.searchScope.update(it, save = false)
+        }
+        intent.getStringExtra("key")?.takeIf { it.isNotBlank() }?.let {
+            query = it
+            submit()
         }
     }
-
-    override fun observeLiveBus() {
-        viewModel.upAdapterLiveData.observe(this) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
-        }
-        viewModel.searchFinishLiveData.observe(this) { isEmpty ->
-            if (!isEmpty || viewModel.searchScope.isAll()) return@observe
-            alert("搜索结果为空") {
-                val precisionSearch = appCtx.getPrefBoolean(PreferKey.precisionSearch)
-                val displayScope = viewModel.searchScope.display
-                if (precisionSearch) {
-                    setMessage("${displayScope}分组搜索结果为空，是否关闭精准搜索？")
-                    yesButton {
-                        appCtx.putPrefBoolean(PreferKey.precisionSearch, false)
-                        precisionSearchMenuItem?.isChecked = false
-                        viewModel.searchKey = ""
-                        viewModel.search(searchView.query.toString())
-                    }
-                } else {
-                    setMessage("${displayScope}分组搜索结果为空，是否切换到全部分组？")
-                    yesButton {
-                        viewModel.searchScope.update("")
-                    }
-                }
-                noButton()
-            }
-        }
-    }
-
-    /**
-     * 显示书籍详情
-     */
-    override fun showBookInfo(book: SearchBook) {
-        // video-merged-detail-play：视频类书源搜索结果直进合并播放页（详情+播放同页）
-        if (book.type and BookType.video > 0) {
-            startActivity<VideoPlayerActivity> {
-                putExtra("bookUrl", book.bookUrl)
-                putExtra("inBookshelf", viewModel.isInBookShelf(book))
-                putExtra(PreferKey.layoutModeOverride, 1)
-            }
-            return
-        }
-        startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
-        }
-    }
-
-    /**
-     * 是否已经加入书架
-     */
-    override fun isInBookshelf(book: SearchBook): Boolean {
-        return viewModel.isInBookShelf(book)
-    }
-
-    /**
-     * 显示书籍详情
-     */
-    override fun showBookInfo(book: Book) {
-        // video-merged-detail-play：视频类书源（书架搜索）直进合并播放页（详情+播放同页）
-        if (book.isVideo) {
-            startActivity<VideoPlayerActivity> {
-                putExtra("bookUrl", book.bookUrl)
-                putExtra("inBookshelf", true)
-                putExtra(PreferKey.layoutModeOverride, 1)
-            }
-            return
-        }
-        startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
-        }
-    }
-
-    /**
-     * 点击历史关键字
-     */
-    override fun searchHistory(key: String) {
-        lifecycleScope.launch {
-            when {
-                searchView.query.toString() == key -> {
-                    searchView.setQuery(key, true)
-                }
-
-                withContext(IO) { appDb.bookDao.findByName(key).isEmpty() } -> {
-                    searchView.setQuery(key, true)
-                }
-
-                else -> {
-                    searchView.setQuery(key, false)
-                }
-            }
-        }
-    }
-
-    /**
-     * 删除搜索记录
-     */
-    override fun deleteHistory(searchKeyword: SearchKeyword) {
-        viewModel.deleteHistory(searchKeyword)
-    }
-
 
     override fun onSearchScopeOk(searchScope: SearchScope) {
         viewModel.searchScope.update(searchScope.toString())
     }
 
-    private fun alertSearchScope() {
-        showDialogFragment<SearchScopeDialog>()
-    }
+    override fun isInBookshelf(book: SearchBook) = viewModel.isInBookShelf(book)
 
-    private fun alertClearHistory() {
-        alert(R.string.draw) {
-            setMessage(R.string.sure_clear_search_history)
-            yesButton {
-                viewModel.clearHistory()
+    override fun showBookInfo(book: SearchBook) {
+        if (book.type and BookType.video > 0) {
+            lifecycleScope.launch {
+                val inBookshelf = withContext(Dispatchers.IO) {
+                    appDb.bookDao.getBook(book.bookUrl)?.isNotShelf == false
+                }
+                startActivity<VideoPlayerActivity> {
+                    putExtra("bookUrl", book.bookUrl)
+                    putExtra("inBookshelf", inBookshelf)
+                    putExtra(PreferKey.layoutModeOverride, 1)
+                }
             }
-            noButton()
-        }
-    }
-
-    override fun finish() {
-        if (searchView.hasFocus()) {
-            searchView.clearFocus()
             return
         }
-        super.finish()
+        startActivity<BookInfoActivity> {
+            putExtra("name", book.name)
+            putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
+        }
+    }
+
+    private fun selectSearchType(type: SearchContentType, search: Boolean = true) {
+        if (unifiedViewModel.type == type) return
+        viewModel.stop()
+        searching = false
+        unifiedViewModel.selectType(type)
+        if (search && query.isNotBlank()) submit() else unifiedViewModel.refreshSources()
+    }
+
+    private fun openResult(result: UnifiedSearchResult) {
+        result.video?.let { video ->
+            startActivity<VideoPlayerActivity> {
+                putExtra("videoTitle", video.title)
+                putExtra("pyPluginId", result.source.video?.id)
+                putExtra("pyVideoItemId", video.id.ifBlank { video.url })
+                putExtra(PreferKey.layoutModeOverride, 1)
+            }
+            return
+        }
+        result.article?.let { article ->
+            val articles = unifiedViewModel.results.filter { it.source.key == result.source.key }
+                .mapNotNull { it.article }
+            lifecycleScope.launch {
+                try {
+                    val current = withContext(Dispatchers.IO) {
+                        val source = appDb.rssSourceDao.getByKey(article.origin) ?: error("订阅源已移除")
+                        val current = article.copy(type = source.type)
+                        appDb.rssArticleDao.insert(current)
+                        current
+                    }
+                    ReadRss.readRss(this@SearchActivity, current,
+                        rssArticles = articles.map { it.copy(type = current.type) }, sortName = current.sort)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    toastOnUi(e.localizedMessage ?: "打开搜索结果失败")
+                }
+            }
+        }
     }
 
     companion object {
-
-        fun start(context: Context, key: String?, searchScope: String? = null) {
+        fun start(
+            context: Context,
+            key: String?,
+            searchScope: String? = null,
+            searchType: SearchContentType = SearchContentType.BOOK,
+            sourceKey: String? = null,
+        ) {
             context.startActivity<SearchActivity> {
                 putExtra("key", key)
                 putExtra("searchScope", searchScope)
+                putExtra("searchType", searchType.name)
+                putExtra("sourceKey", sourceKey)
             }
         }
 
-        fun start(context: Context, source: BookSource, key: String? = null) {
-            context.startActivity<SearchActivity> {
-                putExtra("key", key)
-                putExtra("searchScope", SearchScope(source).toString())
-            }
-        }
+        fun start(context: Context, source: BookSource, key: String? = null) =
+            start(context, key, SearchScope(source).toString())
 
-        fun start(context: Context, source: BookSourcePart, key: String? = null) {
-            context.startActivity<SearchActivity> {
-                putExtra("key", key)
-                putExtra("searchScope", SearchScope(source).toString())
-            }
-        }
-
+        fun start(context: Context, source: BookSourcePart, key: String? = null) =
+            start(context, key, SearchScope(source).toString())
     }
 }

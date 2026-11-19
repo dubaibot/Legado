@@ -101,6 +101,7 @@ class VideoFragment : Fragment() {
 
     /** 标记是否需要在 activatePlayer 后重新注册触摸监听 */
     private var needReRegisterTouchListener = true
+    private var controlsSuspended = false
 
     // ==================== 悬浮控件视图引用 ====================
 
@@ -252,7 +253,9 @@ class VideoFragment : Fragment() {
         pv.setVideoAllCallBack(object : GSYSampleCallBack() {
             override fun onPrepared(url: String?, vararg objects: Any?) {
                 super.onPrepared(url, *objects)
+                if (_playerView !== pv || !isActivated) return
                 pv.post {
+                    if (_playerView !== pv || !isActivated) return@post
                     val videoWidth = pv.currentVideoWidth
                     val videoHeight = pv.currentVideoHeight
                     if (videoWidth > 0 && videoHeight > 0) {
@@ -273,7 +276,7 @@ class VideoFragment : Fragment() {
                 // F1: 启动缓冲进度更新（GSY 不更新 secondaryProgress，需手动更新）
                 startBufferUpdate()
                 // F2: 控件显示 3 秒后自动隐藏（与 GSY 播放条行为一致）
-                if (currentState == PlayState.NORMAL) {
+                if (!controlsSuspended && currentState == PlayState.NORMAL) {
                     pv.setGsyControlVisibility(true)  // F2 修复：显示 GSY 原始控件 + 取消 GSY 的 dismissControlViewTimer，用我们的 scheduleAutoHide 统一管理
                     scheduleAutoHide()
                 }
@@ -288,7 +291,8 @@ class VideoFragment : Fragment() {
                         }
                         val history = PlayHistoryStore.load(articleUrl, videoUrl)
                         if (history != null && history.position > 10000) {
-                            pv.seekTo(history.position)
+                            if (_playerView !== pv || !isActivated || VideoPlay.historyKeyUrl != videoUrl) return@launch
+                            pv.getCurrentPlayer().seekTo(history.position)
                             val minutes = history.position / 60000
                             val seconds = (history.position % 60000) / 1000
                             appCtx.toastOnUi(getString(R.string.video_resume_from_format, minutes, seconds))
@@ -333,6 +337,7 @@ class VideoFragment : Fragment() {
 
     fun deactivatePlayer() {
         if (!isActivated) return
+        if (controlsSuspended) (activity as? VideoPlayerActivity)?.exitFullScreen()
         isActivated = false
         cancelAutoHide()  // F2: 停止自动隐藏
         stopBufferUpdate()  // F1: 停止缓冲进度更新
@@ -341,7 +346,9 @@ class VideoFragment : Fragment() {
     }
 
     fun releasePlayer() {
-        _playerView?.currentPlayer?.release()
+        // Adjacent pages share the Activity window lookup, but own only their local view.
+        if (controlsSuspended) (activity as? VideoPlayerActivity)?.exitFullScreen()
+        _playerView?.release()
     }
 
     /**
@@ -410,6 +417,7 @@ class VideoFragment : Fragment() {
      */
     private fun scheduleAutoHide(delay: Long = 3000L) {
         autoHideHandler.removeCallbacks(autoHideRunnable)
+        if (controlsSuspended) return
         autoHideHandler.postDelayed(autoHideRunnable, delay)
     }
 
@@ -435,6 +443,7 @@ class VideoFragment : Fragment() {
      */
     private fun startBufferUpdate() {
         stopBufferUpdate()
+        if (controlsSuspended) return
         // 健壮性：onPrepared 时 GSY 控制器布局可能才加载，重新获取引用
         if (bottomProgressbar == null) {
             bottomProgressbar = _playerView?.findViewById(R.id.bottom_progressbar)
@@ -473,50 +482,50 @@ class VideoFragment : Fragment() {
         bufferUpdateRunnable = null
     }
 
-    /**
-     * 4.4 + 4.7 + 4.8 全屏状态变化通知
-     *
-     * 由 Activity 的 toggleFullScreen() 调用。
-     * 进入全屏：Activity 旋转横屏 → Fragment 更新状态+布局
-     * 退出全屏：Activity 恢复竖屏 → Fragment 恢复状态+布局
-     */
+    /** Suspend the normal overlay while the GSY window owns fullscreen controls. */
     fun onFullScreenChanged(isFullScreen: Boolean) {
+        if (controlsSuspended == isFullScreen) return
+        controlsSuspended = isFullScreen
         if (isFullScreen) {
-            // 进入横屏全屏态
-            currentState = PlayState.FULLSCREEN
-            controlsVisibleInFullscreen = true
-            applyState(PlayState.FULLSCREEN)
-            // 4.8 横屏布局适配：全屏按钮始终可见（显示退出图标）
-            btnFullscreen?.visible()
-            updateFullscreenButtonIcon(true)
-            // B1+ 修复：全屏模式下显示悬浮返回按钮（titleBarNew 已被 gone() 隐藏）
-            btnBackOverlay?.visible()
-            // video-player-ux-fixes P4: 全屏态标题移到左上角（返回按钮右侧），左下角标题隐藏
-            //（线路/集数选择器仍在左下角容器内，不受影响）
-            tvTitleFullscreen?.visible()
-            tvVideoTitle?.gone()
-            // video-player-image-enhance A1.3: 全屏切换可能重建渲染视图，重新应用画质增强滤镜
-            _playerView?.let { ImageEnhanceController.apply(it) }
-            scheduleAutoHide()  // F2: 显示控件后 3 秒自动隐藏
+            cancelAutoHide()
+            stopBufferUpdate()
+            handleLongPressSpeedRelease()
+            isSeeking = false
+            isTwoFingerSwipe = false
+            isVerticalSwipe = false
+            val cancel = MotionEvent.obtain(0, 0, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+            gestureDetector?.onTouchEvent(cancel)
+            scaleGestureDetector?.onTouchEvent(cancel)
+            cancel.recycle()
+            routeMenuPopup?.dismiss()
+            getOverlayControls().forEach { it.animate().cancel() }
+            controlsLayer?.gone()
+            gestureGuideCard?.gone()
+            _playerView?.showOverlayTip()
+            _playerView?.findViewById<View>(R.id.surface_container)?.setOnTouchListener(null)
         } else {
-            // 退出横屏全屏态
             currentState = PlayState.NORMAL
             controlsVisibleInFullscreen = true
+            controlsLayer?.visible()
+            getOverlayControls().forEach {
+                it.animate().cancel()
+                it.alpha = 1f
+                it.translationY = 0f
+                it.visible()
+            }
             applyState(PlayState.NORMAL)
             updateFullscreenButtonIcon(false)
-            // B1+ 修复：退出全屏时隐藏悬浮返回按钮（titleBarNew 恢复显示提供返回按钮）
             btnBackOverlay?.gone()
-            // video-player-ux-fixes P4: 退出全屏恢复左下角标题，隐藏全屏态标题
             tvVideoTitle?.visible()
             tvTitleFullscreen?.gone()
-            // video-player-image-enhance A1.3: 退出全屏重新应用画质增强滤镜
             _playerView?.let { ImageEnhanceController.apply(it) }
-            // 恢复全屏按钮显示逻辑（仅横屏视频显示）
-            val pv = _playerView
-            if (pv != null && pv.currentVideoWidth > 0 && pv.currentVideoHeight > 0) {
-                updateFullscreenButtonVisibility(pv.currentVideoWidth, pv.currentVideoHeight)
+            needReRegisterTouchListener = true
+            reRegisterTouchListener()
+            updateDanmakuButtonState()
+            if (isActivated) {
+                startBufferUpdate()
+                scheduleAutoHide()
             }
-            scheduleAutoHide()  // F2: 显示控件后 3 秒自动隐藏
         }
     }
 
@@ -642,6 +651,7 @@ class VideoFragment : Fragment() {
      * 应用状态：控制控件显隐 + 动画
      */
     private fun applyState(state: PlayState) {
+        if (controlsSuspended) return
         when (state) {
             PlayState.PURE -> {
                 // 纯净播放态：隐藏所有控件（带淡出动画）
@@ -1035,6 +1045,7 @@ class VideoFragment : Fragment() {
     private fun initGestureDetector(rootView: View) {
         gestureDetector = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (controlsSuspended) return true
                 when (currentState) {
                     PlayState.PURE -> {
                         switchState(PlayState.NORMAL)
@@ -1067,6 +1078,7 @@ class VideoFragment : Fragment() {
             // 根因：R3 重构替换 surface_container OnTouchListener 后，GSY 内部 onLongPress 收不到事件。
             // 在 VideoFragment 的 GestureDetector 中重新实现，复用 VideoPlayer 的 setVideoSpeed/showOverlayTip。
             override fun onLongPress(e: MotionEvent) {
+                if (controlsSuspended) return
                 val pv = _playerView ?: return
                 if (pv.currentState == GSYVideoView.CURRENT_STATE_PLAYING) {
                     val speed = VideoPlay.longPressSpeed / 10.0f
@@ -1078,6 +1090,7 @@ class VideoFragment : Fragment() {
 
             // video-gesture-overhaul R4: 双击暂停/播放（根因同 R1，GSY 内部 onDoubleTap 失效）
             override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (controlsSuspended) return true
                 val pv = _playerView ?: return false
                 when (pv.currentState) {
                     GSYVideoView.CURRENT_STATE_PLAYING -> pv.onVideoPause()
@@ -1096,6 +1109,7 @@ class VideoFragment : Fragment() {
                 velocityX: Float,
                 velocityY: Float
             ): Boolean {
+                if (controlsSuspended) return true
                 if (VideoPlay.book != null && VideoPlay.rssArticles.isNullOrEmpty()) {
                     if (kotlin.math.abs(velocityY) > kotlin.math.abs(velocityX) &&
                         kotlin.math.abs(velocityY) > FLING_MIN_VELOCITY
@@ -1114,7 +1128,7 @@ class VideoFragment : Fragment() {
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScaleEnd(detector: ScaleGestureDetector) {
                     // 4.6 双指拉伸触发全屏（仅非全屏状态下触发）
-                    if (detector.scaleFactor > 1.2f && currentState != PlayState.FULLSCREEN) {
+                    if (!controlsSuspended && detector.scaleFactor > 1.2f && currentState != PlayState.FULLSCREEN) {
                         (activity as? VideoPlayerActivity)?.toggleFullScreen()
                     }
                 }
@@ -1501,6 +1515,7 @@ class VideoFragment : Fragment() {
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun reRegisterTouchListener() {
+        if (controlsSuspended) return
         if (!needReRegisterTouchListener) return
         needReRegisterTouchListener = false
         val pv = _playerView ?: return

@@ -97,6 +97,7 @@ fun PyHomepageScreen(
     viewModel: PyHomepageViewModel,
     bottomPaddingPx: Int = 0,
     onImportRequested: () -> Unit = {},
+    onManageRequested: () -> Unit = {},
 ) {
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showFavoritesDialog by remember { mutableStateOf(false) }
@@ -248,7 +249,7 @@ fun PyHomepageScreen(
                             text = { Text("管理") },
                             onClick = {
                                 showSettingsMenu = false
-                                viewModel.openManageDialog()
+                                onManageRequested()
                             },
                         )
                     }
@@ -443,10 +444,6 @@ fun PyHomepageScreen(
     }
     if (showGroupDialog) {
         GroupDialog(viewModel, sources, onDismiss = { showGroupDialog = false })
-    }
-    // ---- 源管理页（全屏） ----
-    if (viewModel.showManageDialog) {
-        ManageScreen(viewModel, sources, onDismiss = { viewModel.dismissManageDialog() })
     }
 }
 
@@ -658,7 +655,7 @@ private fun HomeContent(
     homeData: PyHomepageViewModel.HomeData,
     bottomPaddingPx: Int,
 ) {
-    key(viewModel.selectedCategoryId) {
+    key(viewModel.selectedCategoryId, viewModel.selectedFilters) {
         val listState = rememberLazyGridState()
 
         Column(modifier = Modifier.fillMaxSize()) {
@@ -681,6 +678,24 @@ private fun HomeContent(
                             name = cat.name,
                             selected = viewModel.selectedCategoryId == cat.id,
                             onClick = { viewModel.selectCategory(cat.id) },
+                        )
+                    }
+                }
+            }
+
+            homeData.categories.find { it.id == viewModel.selectedCategoryId }?.filters?.forEach { filter ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    filter.values.forEach { value ->
+                        CategoryChip(
+                            name = value.name,
+                            selected = viewModel.selectedFilters[filter.key] == value.value,
+                            onClick = { viewModel.selectFilter(filter.key, value.value) },
                         )
                     }
                 }

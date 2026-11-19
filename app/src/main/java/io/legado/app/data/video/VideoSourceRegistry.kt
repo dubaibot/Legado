@@ -1,11 +1,15 @@
 package io.legado.app.data.video
 
+import android.content.Context
+import com.google.gson.JsonObject
 import io.legado.app.help.python.HomeBridge
 import io.legado.app.help.python.PyLoader
 import io.legado.app.ui.main.homepage.HomeSourceStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import splitties.init.appCtx
 import kotlin.coroutines.resume
 import java.util.concurrent.ConcurrentHashMap
 
@@ -24,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * FongMi Config/TXT 展开后的源 ID 格式：
  * - Config: "configId:siteKey"
- * - TXT: "txtId:siteName"
+ * - TXT: "txtId:siteIndex"
  */
 object VideoSourceRegistry {
 
@@ -34,10 +38,20 @@ object VideoSourceRegistry {
         val name: String,
         val type: SourceType,
         val parentId: String = "",  // 父源 ID（Config/TXT 展开时使用）
+        val siteKey: String = if (parentId.isEmpty()) "" else id.removePrefix("$parentId:"),
     )
 
     /** 已创建的源实例缓存（避免重复读盘+创建） */
     private val instanceCache = ConcurrentHashMap<String, VideoSource>()
+
+    private val preferences get() = appCtx.getSharedPreferences("video_source_registry", Context.MODE_PRIVATE)
+
+    private fun hiddenKey(info: SourceInfo): String =
+        JSONArray(listOf(info.parentId, info.siteKey)).toString()
+
+    /** 墓碑按父配置和站点标识保存；TXT 使用名称及 API，重排后仍隐藏同一站点。 */
+    fun isSourceHidden(info: SourceInfo): Boolean = info.parentId.isNotEmpty() &&
+        hiddenKey(info) in preferences.getStringSet("hidden_sites", emptySet()).orEmpty()
 
     /** 清空所有缓存的源实例 */
     fun invalidateAll() {
@@ -51,7 +65,7 @@ object VideoSourceRegistry {
     }
 
     /** 列出全部可用视频源 */
-    fun listSources(): List<SourceInfo> {
+    fun listSources(includeHidden: Boolean = false): List<SourceInfo> {
         val sources = mutableListOf<SourceInfo>()
 
         // py 插件源
@@ -148,6 +162,7 @@ object VideoSourceRegistry {
                                     name = site.name,
                                     type = SourceType.JSON,
                                     parentId = meta.id,
+                                    siteKey = JSONArray(listOf(site.name, site.api)).toString(),
                                 )
                             )
                         }
@@ -174,7 +189,7 @@ object VideoSourceRegistry {
             }
         }
 
-        return sources
+        return if (includeHidden) sources else sources.filterNot(::isSourceHidden)
     }
 
     /** 按类型获取源信息 */
@@ -182,17 +197,29 @@ object VideoSourceRegistry {
 
     /** 创建 VideoSource 实例（py/json/txt/html），已缓存则直接返回 */
     fun createSource(info: SourceInfo): VideoSource? {
+        // 调用方可能持有删除前的摘要，先核对当前站点再读取实例缓存。
+        if (info.parentId.isNotEmpty() && getSourceInfo(info.id) == null) return null
         instanceCache[info.id]?.let { return it }
         val source = when (info.type) {
             SourceType.PY -> PyVideoSource(info.id, info.name)
             SourceType.JSON -> {
                 // FongMi Config 展开的源：读取原始 Config 后选择指定站点
-                val colonIdx = info.id.indexOf(':')
-                if (colonIdx > 0) {
-                    val parentId = info.id.substring(0, colonIdx)
-                    val configJson = HomeSourceStore.readVideoSource(parentId, "json")
+                if (info.parentId.isNotEmpty()) {
+                    val parent = HomeSourceStore.listVideoSources().find { it.id == info.parentId }
                         ?: return null
-                    JsonVideoSource(info.id, configJson)
+                    val content = HomeSourceStore.readVideoSource(parent.id, parent.type) ?: return null
+                    if (parent.type == "txt") {
+                        val index = info.id.removePrefix("${parent.id}:").toIntOrNull() ?: return null
+                        val site = FongMiTxtParser.parse(content).getOrNull(index) ?: return null
+                        val config = JsonObject().apply {
+                            addProperty("name", site.name)
+                            addProperty("type", "cms")
+                            addProperty("api", site.api)
+                        }
+                        JsonVideoSource(info.id, config.toString())
+                    } else {
+                        JsonVideoSource(info.id, content)
+                    }
                 } else {
                     val configJson = HomeSourceStore.readVideoSource(info.id, "json")
                         ?: return null
@@ -205,14 +232,11 @@ object VideoSourceRegistry {
                 TxtVideoSource(info.id, content)
             }
             SourceType.JAR -> {
-                val colonIdx = info.id.indexOf(':')
-                if (colonIdx > 0) {
+                if (info.parentId.isNotEmpty()) {
                     // FongMi Config 展开的 jar 源：父 Config + 站点 key
-                    val parentId = info.id.substring(0, colonIdx)
-                    val siteKey = info.id.substring(colonIdx + 1)
-                    val configJson = HomeSourceStore.readVideoSource(parentId, "json")
+                    val configJson = HomeSourceStore.readVideoSource(info.parentId, "json")
                         ?: return null
-                    val site = FongMiConfigParser.parse(configJson).find { it.key == siteKey }
+                    val site = FongMiConfigParser.parse(configJson).find { it.key == info.siteKey }
                         ?: return null
                     JarVideoSource(info.id, site.name, site.jar, site.api, site.ext)
                 } else {
@@ -224,7 +248,8 @@ object VideoSourceRegistry {
                     } catch (e: Exception) { null } ?: return null
                     val jar = root.get("jar")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
                     val api = root.get("api")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
-                    JarVideoSource(info.id, info.name, jar, api)
+                    val site = FongMiConfigParser.parse(configJson).firstOrNull()
+                    JarVideoSource(info.id, info.name, jar, api, site?.ext.orEmpty())
                 }
             }
             SourceType.HTML -> {
@@ -237,19 +262,28 @@ object VideoSourceRegistry {
         return source
     }
 
-    /** 删除任意类型源（py 走 PyLoader，json/txt/html 走 HomeSourceStore） */
+    /** 默认只删除指定源；展开站点写入墓碑，保留父配置与所有兄弟站点。 */
     fun deleteSource(id: String): Boolean {
         val info = getSourceInfo(id) ?: return false
-        // FongMi Config/TXT 展开的源：删除父源
+        return deleteSource(info)
+    }
+
+    /** 带摘要删除时核对站点身份，防止配置更新后误删同 ID 的其他条目。 */
+    @Synchronized
+    fun deleteSource(info: SourceInfo): Boolean {
+        val current = getSourceInfo(info.id) ?: return false
+        if (current.parentId != info.parentId || current.siteKey != info.siteKey || current.type != info.type) return false
+        val id = info.id
         if (info.parentId.isNotBlank()) {
-            invalidateSource(info.parentId)
-            return HomeSourceStore.deleteVideoSource(info.parentId)
+            val hidden = preferences.getStringSet("hidden_sites", emptySet()).orEmpty().toMutableSet()
+            hidden.add(hiddenKey(info))
+            if (!preferences.edit().putStringSet("hidden_sites", hidden).commit()) return false
+            invalidateSource(id)
+            return true
         }
         return when (info.type) {
             SourceType.PY -> try {
-                PyLoader.uninstall(id)
-                invalidateSource(id)
-                true
+                PyLoader.uninstall(id).also { if (it) invalidateSource(id) }
             } catch (e: Exception) {
                 false
             }
@@ -294,10 +328,10 @@ class PyVideoSource(
                 }
                 when (func) {
                     "home" -> HomeBridge.home(sourceId, onResult)
-                    "category" -> HomeBridge.category(sourceId, args[0], args[1].toIntOrNull() ?: 1, onResult)
+                    "category" -> HomeBridge.category(sourceId, args[0], args[1].toIntOrNull() ?: 1, onResult, args.getOrElse(2) { "{}" })
                     "search" -> HomeBridge.search(sourceId, args[0], onResult)
                     "detail" -> HomeBridge.detail(sourceId, args[0], onResult)
-                    "play" -> HomeBridge.play(sourceId, args[0], onResult)
+                    "play" -> HomeBridge.play(sourceId, args[0], flag = args.getOrElse(1) { "" }, onResult = onResult)
                     else -> onResult(null)
                 }
             }
@@ -322,9 +356,14 @@ class PyVideoSource(
     }
 
     override suspend fun category(tid: String, pg: Int): CategoryResult {
-        val key = "$tid|$pg"
+        return category(tid, pg, emptyMap())
+    }
+
+    override suspend fun category(tid: String, pg: Int, filters: Map<String, String>): CategoryResult {
+        val filtersJson = org.json.JSONObject(filters.toSortedMap()).toString()
+        val key = "$tid|$pg|$filtersJson"
         categoryCache[key]?.let { if (isValid(it)) return it.value }
-        val json = call("category", tid, pg.toString()) ?: return CategoryResult()
+        val json = call("category", tid, pg.toString(), filtersJson) ?: return CategoryResult()
         val result = PyResultParser.parseCategory(json, pg)
         if (result.videos.isEmpty() && json.contains("\"error\"")) {
             categoryCache.remove(key)
@@ -353,7 +392,11 @@ class PyVideoSource(
     }
 
     override suspend fun play(url: String): PlayResult {
-        val json = call("play", url) ?: return PlayResult(url)
+        return play(url, "")
+    }
+
+    override suspend fun play(url: String, flag: String): PlayResult {
+        val json = call("play", url, flag) ?: return PlayResult(url)
         return PyResultParser.parsePlay(json, url)
     }
 

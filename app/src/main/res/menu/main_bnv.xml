@@ -4,10 +4,6 @@
     tools:showIn="bottom_navigation_view">
 
     <item
-        android:id="@+id/menu_homepage"
-        android:icon="@drawable/ic_bottom_home"
-        android:title="@string/homepage" />
-    <item
         android:id="@+id/menu_bookshelf"
         android:icon="@drawable/ic_bottom_books"
         android:title="@string/bookshelf" />
@@ -16,9 +12,9 @@
         android:icon="@drawable/ic_bottom_explore"
         android:title="@string/discovery" />
     <item
-        android:id="@+id/menu_rss"
-        android:icon="@drawable/ic_bottom_rss_feed"
-        android:title="@string/rss" />
+        android:id="@+id/menu_drama"
+        android:icon="@drawable/ic_bottom_drama"
+        android:title="@string/drama" />
     <item
         android:id="@+id/menu_my_config"
         android:icon="@drawable/ic_bottom_person"

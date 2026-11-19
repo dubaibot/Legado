@@ -11,6 +11,7 @@ import androidx.room.Update
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.BookGroupRules
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isNotShelf
 import kotlinx.coroutines.flow.Flow
@@ -199,6 +200,7 @@ interface BookDao {
         BookGroup.IdAll -> flowAll()
         BookGroup.IdLocal -> flowLocal()
         BookGroup.IdAudio -> flowAudio()
+        BookGroup.IdNovel, BookGroup.IdManga, BookGroup.IdOther -> flowTypeGroup(groupId)
         BookGroup.IdNetNone -> flowNetNoGroup()
         BookGroup.IdLocalNone -> flowLocalNoGroup()
         BookGroup.IdVideo -> flowVideo()
@@ -221,6 +223,7 @@ interface BookDao {
         BookGroup.IdAll -> flowShelfAll()
         BookGroup.IdLocal -> flowShelfLocal()
         BookGroup.IdAudio -> flowShelfAudio()
+        BookGroup.IdNovel, BookGroup.IdManga, BookGroup.IdOther -> flowShelfTypeGroup(groupId)
         BookGroup.IdNetNone -> flowShelfNetNoGroup()
         BookGroup.IdLocalNone -> flowShelfLocalNoGroup()
         BookGroup.IdVideo -> flowShelfVideo()
@@ -246,12 +249,28 @@ interface BookDao {
         SELECT bookUrl, origin, originName, name, author, kind, customTag, intro, customIntro,
         coverUrl, customCoverUrl, wordCount, type, `group`, latestChapterTitle, latestChapterTime,
         lastCheckCount, totalChapterNum, durChapterTitle, durChapterIndex, durChapterPos, durChapterTime,
+        canUpdate, `order`, readConfig FROM books
+        WHERE (type & ${BookType.notShelf}) = 0
+        AND (${BookGroupRules.typeGroupSql}) = :groupId
+        ORDER BY durChapterTime DESC
+        """
+    )
+    fun flowShelfTypeGroup(groupId: Long): Flow<List<BookShelfDisplay>>
+
+    @Query("SELECT * FROM books WHERE (type & ${BookType.notShelf}) = 0 AND (${BookGroupRules.typeGroupSql}) = :groupId ORDER BY durChapterTime DESC")
+    fun flowTypeGroup(groupId: Long): Flow<List<Book>>
+
+    @Query(
+        """
+        SELECT bookUrl, origin, originName, name, author, kind, customTag, intro, customIntro,
+        coverUrl, customCoverUrl, wordCount, type, `group`, latestChapterTitle, latestChapterTime,
+        lastCheckCount, totalChapterNum, durChapterTitle, durChapterIndex, durChapterPos, durChapterTime,
         canUpdate, `order`, readConfig
         FROM books
         WHERE (type & ${BookType.notShelf}) = 0
         AND (type & ${BookType.text}) > 0
         AND (type & ${BookType.local}) = 0
-        AND ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
+        AND ((SELECT coalesce(sum(groupId), 0) FROM book_groups where groupId > 0) & `group`) = 0
         AND (select show from book_groups where groupId = ${BookGroup.IdNetNone}) != 1
         ORDER BY durChapterTime DESC
         """,
@@ -266,7 +285,7 @@ interface BookDao {
         canUpdate, `order`, readConfig
         FROM books
         WHERE (type & ${BookType.notShelf}) = 0
-        AND (type & ${BookType.audio}) > 0
+        AND (${BookGroupRules.typeGroupSql}) = ${BookGroup.IdAudio}
         ORDER BY durChapterTime DESC
         """,
     )
@@ -280,7 +299,7 @@ interface BookDao {
         canUpdate, `order`, readConfig
         FROM books
         WHERE (type & ${BookType.notShelf}) = 0
-        AND (type & ${BookType.video}) > 0
+        AND (${BookGroupRules.typeGroupSql}) = ${BookGroup.IdVideo}
         ORDER BY durChapterTime DESC
         """,
     )
@@ -311,7 +330,7 @@ interface BookDao {
         AND (type & ${BookType.audio}) = 0
         AND (type & ${BookType.local}) = 0
         AND (type & ${BookType.video}) = 0
-        AND ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
+        AND ((SELECT coalesce(sum(groupId), 0) FROM book_groups where groupId > 0) & `group`) = 0
         ORDER BY durChapterTime DESC
         """,
     )
@@ -326,7 +345,7 @@ interface BookDao {
         FROM books
         WHERE (type & ${BookType.notShelf}) = 0
         AND (type & ${BookType.local}) > 0
-        AND ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
+        AND ((SELECT coalesce(sum(groupId), 0) FROM book_groups where groupId > 0) & `group`) = 0
         ORDER BY durChapterTime DESC
         """,
     )
@@ -364,7 +383,7 @@ interface BookDao {
         """
         select * from books where type & ${BookType.text} > 0
         and type & ${BookType.local} = 0
-        and ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
+        and ((SELECT coalesce(sum(groupId), 0) FROM book_groups where groupId > 0) & `group`) = 0
         and (select show from book_groups where groupId = ${BookGroup.IdNetNone}) != 1
         """,
     )
@@ -373,10 +392,10 @@ interface BookDao {
     @Query("SELECT * FROM books order by durChapterTime desc")
     fun flowAll(): Flow<List<Book>>
 
-    @Query("SELECT * FROM books WHERE type & ${BookType.audio} > 0")
+    @Query("SELECT * FROM books WHERE (${BookGroupRules.typeGroupSql}) = ${BookGroup.IdAudio}")
     fun flowAudio(): Flow<List<Book>>
 
-    @Query("SELECT * FROM books WHERE type & ${BookType.video} > 0")
+    @Query("SELECT * FROM books WHERE (${BookGroupRules.typeGroupSql}) = ${BookGroup.IdVideo}")
     fun flowVideo(): Flow<List<Book>>
 
     @Query("SELECT * FROM books WHERE type & ${BookType.local} > 0")
@@ -385,7 +404,7 @@ interface BookDao {
     @Query(
         """
         select * from books where type & ${BookType.audio} = 0 and type & ${BookType.local} = 0 and type & ${BookType.video} = 0
-        and ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
+        and ((SELECT coalesce(sum(groupId), 0) FROM book_groups where groupId > 0) & `group`) = 0
         """,
     )
     fun flowNetNoGroup(): Flow<List<Book>>
@@ -393,7 +412,7 @@ interface BookDao {
     @Query(
         """
         select * from books where type & ${BookType.local} > 0
-        and ((SELECT sum(groupId) FROM book_groups where groupId > 0) & `group`) = 0
+        and ((SELECT coalesce(sum(groupId), 0) FROM book_groups where groupId > 0) & `group`) = 0
         """,
     )
     fun flowLocalNoGroup(): Flow<List<Book>>
@@ -444,7 +463,7 @@ interface BookDao {
     @Query("update books set origin = :newUrl where origin = :oldUrl")
     fun updateOrigin(oldUrl: String, newUrl: String): Int
 
-    @get:Query("select count(bookUrl) from books where (SELECT sum(groupId) FROM book_groups)")
+    @get:Query("select count(bookUrl) from books where (SELECT coalesce(sum(groupId), 0) FROM book_groups)")
     val noGroupSize: Int
 
     @get:Query("SELECT * FROM books where type & ${BookType.local} = 0")

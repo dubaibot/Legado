@@ -53,6 +53,7 @@ class PyHomepageViewModel : ViewModel() {
     data class Category(
         val id: String,
         val name: String,
+        val filters: List<io.legado.app.data.video.VideoFilter> = emptyList(),
     )
 
     /** 视频条目 */
@@ -144,7 +145,14 @@ class PyHomepageViewModel : ViewModel() {
     private val categoryCache = mutableMapOf<String, CategoryData>()
 
     /** 生成分类缓存键 */
-    private fun categoryCacheKey(pluginId: String, tid: String, pg: Int): String = "$pluginId|$tid|$pg"
+    private fun categoryCacheKey(pluginId: String, tid: String, pg: Int): String =
+        "$pluginId|$tid|$pg|${JSONObject(selectedFilters.toSortedMap())}"
+
+    var selectedFilters by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+
+    private var categoryRequestVersion = 0
+    private var homeRequestVersion = 0
 
     /** 当前选中分类 ID（空 = 首页推荐） */
     var selectedCategoryId by mutableStateOf("")
@@ -231,17 +239,24 @@ class PyHomepageViewModel : ViewModel() {
     /** 从磁盘重载源列表（导入/删除后调用） */
     fun refreshSources() {
         viewModelScope.launch(Dispatchers.IO) {
-            val pyList = PyLoader.listInstalled().map {
+            val pyList = PyLoader.listInstalled().filter {
+                HomeSourceManagementStore.isEnabled("PY:${it.meta.id}")
+            }.map {
                 HomeSource(it.meta.id, it.meta.name, "py", it.loaded)
             }
             // WebView HTML 页面（type=web）
-            val webList = HomeSourceStore.listHtml().map {
+            val webList = HomeSourceStore.listHtml().filter {
+                HomeSourceManagementStore.isEnabled("WEB:${it.id}")
+            }.map {
                 HomeSource(it.id, it.name, "web", true)
             }
             // JSON/TXT/HTML 配置源（统一 VideoSource 接口，FongMi Config 按站点展开）
             val videoSources = try {
                 VideoSourceRegistry.listSources()
-                    .filter { it.type != SourceType.PY }  // py 源已由 pyList 提供
+                    .filter {
+                        it.type != SourceType.PY &&
+                            HomeSourceManagementStore.isEnabled("${it.type.name}:${it.id}")
+                    }
                     .map {
                         HomeSource(
                             id = it.id,
@@ -289,7 +304,7 @@ class PyHomepageViewModel : ViewModel() {
                     // 只缓存非空结果（避免把"源未加载"缓存为空数据）
                     if (cats.isNotEmpty() || vids.isNotEmpty()) {
                         homeCache[source.id] = HomeData(
-                            categories = cats.map { Category(it.id, it.name) },
+                            categories = cats.map { Category(it.id, it.name, it.filters) },
                             videos = vids.map { VideoItem(it.id, it.title, it.pic, it.remarks) },
                         )
                     }
@@ -302,6 +317,8 @@ class PyHomepageViewModel : ViewModel() {
 
     /** 切换当前源（不清空缓存，切换回来直接命中） */
     fun selectSource(sourceId: String) {
+        homeRequestVersion++
+        categoryRequestVersion++
         selectedSourceId = sourceId
         AppConfig.pyHomePluginId = sourceId
         searchResults = ""
@@ -309,6 +326,7 @@ class PyHomepageViewModel : ViewModel() {
         homeData = null
         categoryData = null
         selectedCategoryId = ""
+        selectedFilters = emptyMap()
         currentPage = 1
         totalPages = 1
         isLoadingMore = false
@@ -400,6 +418,9 @@ class PyHomepageViewModel : ViewModel() {
 
     /** 加载首页数据（分类 + 推荐视频，统一走 VideoSource 接口） */
     fun loadHome(pluginId: String) {
+        val requestVersion = ++homeRequestVersion
+        categoryRequestVersion++
+        selectedFilters = emptyMap()
         homeData = null
         homeError = null
         categoryData = null
@@ -415,17 +436,20 @@ class PyHomepageViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val source = sourceFor(pluginId)
             if (source == null) {
-                withContext(Dispatchers.Main) { homeError = "源不存在" }
+                withContext(Dispatchers.Main) {
+                    if (requestVersion == homeRequestVersion) homeError = "源不存在"
+                }
                 return@launch
             }
             try {
                 val (cats, vids) = source.home()
                 withContext(Dispatchers.Main) {
+                    if (requestVersion != homeRequestVersion) return@withContext
                     if (cats.isEmpty() && vids.isEmpty()) {
                         homeError = "该源暂无数据，请检查网络或切换其他源"
                     } else {
                         val data = HomeData(
-                            categories = cats.map { Category(it.id, it.name) },
+                            categories = cats.map { Category(it.id, it.name, it.filters) },
                             videos = vids.map { VideoItem(it.id, it.title, it.pic, it.remarks) },
                         )
                         homeData = data
@@ -434,7 +458,7 @@ class PyHomepageViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    homeError = "${e.javaClass.simpleName}: ${e.message}"
+                    if (requestVersion == homeRequestVersion) homeError = "${e.javaClass.simpleName}: ${e.message}"
                 }
             }
         }
@@ -442,6 +466,7 @@ class PyHomepageViewModel : ViewModel() {
 
     /** 加载分类视频列表（统一走 VideoSource 接口） */
     fun loadCategory(pluginId: String, tid: String, pg: Int) {
+        val requestVersion = ++categoryRequestVersion
         selectedCategoryId = tid
         homeError = null
         currentPage = pg
@@ -450,6 +475,7 @@ class PyHomepageViewModel : ViewModel() {
         isLoadingMore = false
         // 缓存命中直接返回
         val cacheKey = categoryCacheKey(pluginId, tid, pg)
+        val filters = selectedFilters
         categoryCache[cacheKey]?.let { cached ->
             categoryData = cached
             currentPage = cached.page
@@ -459,12 +485,15 @@ class PyHomepageViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val source = sourceFor(pluginId)
             if (source == null) {
-                withContext(Dispatchers.Main) { homeError = "源不存在" }
+                withContext(Dispatchers.Main) {
+                    if (requestVersion == categoryRequestVersion) homeError = "源不存在"
+                }
                 return@launch
             }
             try {
-                val result = source.category(tid, pg)
+                val result = source.category(tid, pg, filters)
                 withContext(Dispatchers.Main) {
+                    if (requestVersion != categoryRequestVersion) return@withContext
                     val data = CategoryData(
                         result.page,
                         result.pageCount,
@@ -479,7 +508,9 @@ class PyHomepageViewModel : ViewModel() {
                     }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { homeError = e.message ?: "分类加载失败" }
+                withContext(Dispatchers.Main) {
+                    if (requestVersion == categoryRequestVersion) homeError = e.message ?: "分类加载失败"
+                }
             }
         }
     }
@@ -502,17 +533,22 @@ class PyHomepageViewModel : ViewModel() {
     fun loadMorePage() {
         if (isLoadingMore || currentPage >= totalPages || selectedCategoryId.isEmpty()) return
         isLoadingMore = true
+        val pluginId = selectedSourceId
+        val tid = selectedCategoryId
+        val filters = selectedFilters
+        val requestVersion = categoryRequestVersion
         viewModelScope.launch {
             try {
                 val nextPg = currentPage + 1
                 val cacheKey = categoryCacheKey(selectedSourceId, selectedCategoryId, nextPg)
                 val result = withContext(Dispatchers.IO) {
                     try {
-                        sourceFor(selectedSourceId)?.category(selectedCategoryId, nextPg)
+                        sourceFor(pluginId)?.category(tid, nextPg, filters)
                     } catch (e: Exception) {
                         null
                     }
                 }
+                if (requestVersion != categoryRequestVersion) return@launch
                 if (result != null && result.videos.isNotEmpty()) {
                     val existing = categoryData
                     if (existing != null) {
@@ -533,7 +569,7 @@ class PyHomepageViewModel : ViewModel() {
                     )
                 }
             } finally {
-                isLoadingMore = false
+                if (requestVersion == categoryRequestVersion) isLoadingMore = false
             }
         }
     }
@@ -541,7 +577,10 @@ class PyHomepageViewModel : ViewModel() {
     /** 选择分类标签 */
     fun selectCategory(tid: String) {
         if (tid == selectedCategoryId) return
+        selectedFilters = homeData?.categories?.find { it.id == tid }?.filters.orEmpty()
+            .associate { it.key to it.values.first().value }
         if (tid.isEmpty()) {
+            categoryRequestVersion++
             selectedCategoryId = ""
             categoryData = null
             currentPage = 1
@@ -550,6 +589,12 @@ class PyHomepageViewModel : ViewModel() {
         } else {
             loadCategory(selectedSourceId, tid, 1)
         }
+    }
+
+    fun selectFilter(key: String, value: String) {
+        if (selectedFilters[key] == value) return
+        selectedFilters = selectedFilters + (key to value)
+        loadCategory(selectedSourceId, selectedCategoryId, 1)
     }
 
     // ---- 导入 ----
@@ -693,7 +738,7 @@ class PyHomepageViewModel : ViewModel() {
 
     // ---- TVbox 订阅导入 ----
 
-    /** 从 TVbox 订阅 URL 导入：fetch JSON → FongMiConfigParser 解析 → 每个 CMS 站点存为 JSON 源 */
+    /** 从 TVbox 订阅 URL 导入：保留原始 Config，由 VideoSourceRegistry 按站点形态展开。 */
     fun importTvboxSource(url: String) {
         val trimmedUrl = url.trim()
         if (trimmedUrl.isBlank()) return
@@ -715,22 +760,22 @@ class PyHomepageViewModel : ViewModel() {
                     }
                     return@launch
                 }
-                var successCount = 0
-                sites.forEach { site ->
-                    if (site.api.isBlank()) return@forEach
-                    val sourceId = "tvbox_${site.key.ifBlank { System.currentTimeMillis().toString() }}"
-                    val configJson = org.json.JSONObject().apply {
-                        put("name", site.name)
-                        put("type", "cms")
-                        put("api", site.api)
-                        site.searchApi.takeIf { it.isNotBlank() }?.let { put("searchApi", it) }
-                        site.jar.takeIf { it.isNotBlank() }?.let { put("jar", it) }
-                        site.ext.takeIf { it.isNotBlank() }?.let { put("ext", it) }
-                    }.toString()
-                    val ok = HomeSourceStore.saveVideoSourceFromContent(
-                        sourceId, site.name, "json", configJson
+                val sourceId = "tvbox_${trimmedUrl.hashCode().toUInt().toString(16)}"
+                val rootName = try {
+                    org.json.JSONObject(content).optString("name", "TVBox订阅")
+                } catch (_: Exception) {
+                    "TVBox订阅"
+                }
+                val saved = HomeSourceStore.saveVideoSourceFromContent(
+                        sourceId,
+                        rootName,
+                        "json",
+                        content,
                     )
-                    if (ok) successCount++
+                if (!saved) throw IllegalStateException("订阅配置保存失败")
+                val successCount = sites.count {
+                    it.siteKind == io.legado.app.data.video.FongMiConfigParser.SiteKind.CMS ||
+                        (it.siteKind == io.legado.app.data.video.FongMiConfigParser.SiteKind.JAR_SPIDER && it.jar.isNotBlank())
                 }
                 // 保存订阅 URL 到偏好
                 val subs = loadTvboxSubscriptions()

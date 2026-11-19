@@ -30,6 +30,12 @@ class ExploreNewSourceAdapter(context: Context, private val callBack: CallBack) 
         item: BookSourcePart,
         payloads: MutableList<Any>
     ) {
+        binding.root.setPadding(
+            binding.root.paddingLeft,
+            if (holder.layoutPosition in 0..3) 0 else 16.dpToPx(),
+            binding.root.paddingRight,
+            binding.root.paddingBottom,
+        )
         val displayName = getDisplayName(item)
         binding.tvName.text = displayName
         val firstChar = displayName.firstOrNull()

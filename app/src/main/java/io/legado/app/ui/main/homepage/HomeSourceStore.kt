@@ -88,7 +88,6 @@ object HomeSourceStore {
     fun deleteHtml(pageId: String): Boolean {
         return try {
             File(pagesDir, pageId).deleteRecursively()
-            true
         } catch (e: Exception) {
             LogUtils.d(TAG, "deleteHtml failed: $pageId: ${e.message}")
             false
@@ -186,7 +185,6 @@ object HomeSourceStore {
     fun deleteVideoSource(sourceId: String): Boolean {
         return try {
             File(videoSourcesDir, sourceId).deleteRecursively()
-            true
         } catch (e: Exception) {
             LogUtils.d(TAG, "deleteVideoSource failed: $sourceId: ${e.message}")
             false

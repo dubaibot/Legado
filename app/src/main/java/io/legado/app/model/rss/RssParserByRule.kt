@@ -79,6 +79,19 @@ object RssParserByRule {
                 recorder.failed(RssExecutionStep.PARSE_LIST, "非标准RSS XML: ${e.message?.take(80)}")
                 throw NoStackTraceException("RSS源解析失败: $hint\n内容开头: ${trimmed.take(50).replace("\n", " ")}")
             }
+            val nextPageRule = rssSource.ruleNextPage
+            nextUrl = when {
+                nextPageRule.equals("PAGE", ignoreCase = true) || rssSource.autoNextPageEnabled(sortUrl) -> sortUrl
+                !nextPageRule.isNullOrBlank() -> {
+                    val nextRule = AnalyzeRule(ruleData, rssSource)
+                    nextRule.setCoroutineContext(currentCoroutineContext())
+                    nextRule.setContent(processedBody).setBaseUrl(listBaseUrl)
+                    nextRule.setRedirectUrl(redirectUrl)
+                    nextRule.getString(nextPageRule).takeIf { it.isNotBlank() }
+                        ?.let { NetworkUtils.getAbsoluteURL(listBaseUrl, it) }
+                }
+                else -> null
+            }
             if (result.first.isNotEmpty()) {
                 recorder.success(
                     RssExecutionStep.PARSE_LIST,
@@ -88,7 +101,7 @@ object RssParserByRule {
                 recorder.failed(RssExecutionStep.PARSE_LIST, "默认XML解析未获取到文章")
             }
             RssExecutionRecorder.endSession()
-            return result
+            return result.first to nextUrl
         } else {
             // 循环外的 analyzeRule 用于获取列表集合/下一页/规则拆分（串行执行，结果不可变，可安全共享）
             val analyzeRule = AnalyzeRule(ruleData, rssSource)

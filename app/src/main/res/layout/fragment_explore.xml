@@ -34,7 +34,7 @@
             android:paddingStart="12dp"
             android:paddingEnd="4dp"
             android:paddingTop="6dp"
-            android:paddingBottom="6dp" />
+            android:paddingBottom="2dp" />
 
     </HorizontalScrollView>
 

@@ -1181,7 +1181,7 @@ fun aiProviderForModel(model: AiModelConfig?): AiProviderConfig? {
                 val parsed = stored.split(",").filter { it.isNotBlank() }
                 if (parsed.isNotEmpty()) return parsed
             }
-            return listOf("bookshelf", "homepage", "explore", "rss", "my")
+            return listOf("bookshelf", "explore", "drama", "my")
         }
 
     val readAloudFloatingUi get() = appCtx.getPrefBoolean(PreferKey.readAloudFloatingUi, false)

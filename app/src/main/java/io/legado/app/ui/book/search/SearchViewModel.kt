@@ -18,6 +18,11 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
 import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -32,7 +37,11 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
     var searchKey: String = ""
     var hasMore = true
     private var searchID = 0L
+    private val searchMutex = Mutex()
+    private var searchVersion = 0L
     private val searchModel = SearchModel(viewModelScope, object : SearchModel.CallBack {
+
+        override fun useBookSearchMatching() = true
 
         override fun getSearchScope(): SearchScope {
             return searchScope
@@ -96,18 +105,23 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
      * 开始搜索
      */
     fun search(key: String) {
-        execute {
-            if ((searchKey == key) || key.isNotEmpty()) {
-                searchModel.cancelSearch()
-                searchID = System.currentTimeMillis()
-                searchBookLiveData.postValue(emptyList())
-                searchKey = key
-                hasMore = true
+        val version = if (key.isNotEmpty()) ++searchVersion else searchVersion
+        viewModelScope.launch {
+            searchMutex.withLock {
+                if (version != searchVersion) return@withLock
+                if (key.isNotEmpty()) {
+                    searchModel.cancelAndAwait()
+                    if (version != searchVersion) return@withLock
+                    searchID = maxOf(System.currentTimeMillis(), searchID + 1)
+                    searchBookLiveData.postValue(emptyList())
+                    searchKey = key
+                    hasMore = true
+                }
+                if (searchKey.isEmpty()) return@withLock
+                withContext(Dispatchers.IO) {
+                    searchModel.search(searchID, searchKey)
+                }
             }
-            if (searchKey.isEmpty()) {
-                return@execute
-            }
-            searchModel.search(searchID, searchKey)
         }
     }
 
@@ -115,6 +129,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
      * 停止搜索
      */
     fun stop() {
+        ++searchVersion
         searchModel.cancelSearch()
     }
 
@@ -136,6 +151,8 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
                 it.lastUseTime = System.currentTimeMillis()
                 appDb.searchKeywordDao.update(it)
             } ?: appDb.searchKeywordDao.insert(SearchKeyword(key, 1))
+            val excess = appDb.searchKeywordDao.all.sortedByDescending { it.lastUseTime }.drop(20)
+            if (excess.isNotEmpty()) appDb.searchKeywordDao.delete(*excess.toTypedArray())
         }
     }
 

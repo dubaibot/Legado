@@ -33,7 +33,7 @@ object ExploreQuickGroups {
         }
 
         groups.forEach { group ->
-            val tv = inflater.inflate(R.layout.item_quick_group, container, false) as TextView
+            val tv = inflater.inflate(R.layout.item_explore_quick_group, container, false) as TextView
             tv.text = group
             tv.isSelected = group == currentGroup
             tv.setOnClickListener { onClickGroup(group) }
@@ -41,7 +41,7 @@ object ExploreQuickGroups {
             container.addView(tv)
         }
 
-        val add = inflater.inflate(R.layout.item_quick_group, container, false) as TextView
+        val add = inflater.inflate(R.layout.item_explore_quick_group, container, false) as TextView
         add.text = "＋"
         add.setOnClickListener { onConfig() }
         container.addView(add)

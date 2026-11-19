@@ -111,8 +111,8 @@ object AppDimens {
     /** 书架列表左右内边距（对齐原 RecyclerView 的 8dp padding） */
     val shelfContentHorizontalPadding: Dp = 8.dp
 
-    /** 首个条目的额外上边距（对齐 View 侧 ItemDecoration 的首行补偿） */
-    val shelfFirstItemExtraTop: Dp = 8.dp
+    /** 标签栏与书架内容之间的顶部间距 */
+    val shelfFirstItemExtraTop: Dp = 2.dp
 
     /** 条目外边框粗细 */
     val shelfItemBorderWidth: Dp = 0.8.dp

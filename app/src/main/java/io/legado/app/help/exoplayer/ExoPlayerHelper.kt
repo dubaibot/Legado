@@ -416,7 +416,7 @@ object ExoPlayerHelper {
         // 若强制 video/mp4，Progressive 会用 Mp4Extractor 解析 ts 必然失败（铁证：用户实测
         // "下载后 ts 还是打开不了内置视频播放器"）。不设 mimeType 时 ExoPlayer 按容器自动
         // 嗅探（mp4/mpeg-ts/mkv...），mp4 与 ts 下载产物都能正常播放。
-        if (url.startsWith("file://")) {
+        if (url.startsWith("file://") || url.startsWith("content://")) {
             return SniffResult(
                 contentType = C.TYPE_OTHER,
                 mimeType = null,

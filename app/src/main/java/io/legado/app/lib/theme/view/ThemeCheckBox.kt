@@ -12,7 +12,7 @@ import io.legado.app.utils.applyTint
  * 在初始化时自动应用主题强调色着色，
  * 并提供 [setOnUserCheckedChangeListener] 以区分用户主动操作与程序触发的选中状态变更。
  */
-class ThemeCheckBox(context: Context, attrs: AttributeSet) : AppCompatCheckBox(context, attrs) {
+class ThemeCheckBox(context: Context, attrs: AttributeSet?) : AppCompatCheckBox(context, attrs) {
 
     private var isUserAction = false
 

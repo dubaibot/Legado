@@ -118,7 +118,10 @@ object LocalBook {
 
     @Throws(TocEmptyException::class)
     fun getChapterList(book: Book): ArrayList<BookChapter> {
+        val previousUrl = if (LocalMediaDirectory.isDirectory(book))
+            appDb.bookChapterDao.getChapterList(book.bookUrl).getOrNull(book.durChapterIndex)?.url else null
         val chapters = when {
+            LocalMediaDirectory.isDirectory(book) -> LocalMediaDirectory.chapters(book)
             book.isEpub -> {
                 EpubFile.getChapterList(book)
             }
@@ -143,6 +146,12 @@ object LocalBook {
             throw TocEmptyException(appCtx.getString(R.string.chapter_list_empty))
         }
         val list = ArrayList(LinkedHashSet(chapters))
+        if (LocalMediaDirectory.isDirectory(book)) {
+            val restoredIndex = list.indexOfFirst { it.url == previousUrl }.takeIf { it >= 0 }
+                ?: book.durChapterIndex.coerceIn(0, list.lastIndex)
+            if (previousUrl != null && list[restoredIndex].url != previousUrl) book.durChapterPos = 0
+            book.durChapterIndex = restoredIndex
+        }
         list.forEachIndexed { index, bookChapter ->
             bookChapter.index = index
             if (bookChapter.title.isEmpty()) {
@@ -172,6 +181,11 @@ object LocalBook {
     fun getContent(book: Book, chapter: BookChapter): String? {
         var content = try {
             when {
+                LocalMediaDirectory.isDirectory(book) -> {
+                    if (book.type and BookType.image != 0) {
+                        "<img src=\"${chapter.url}\">"
+                    } else chapter.url
+                }
                 book.isEpub -> {
                     EpubFile.getContent(book, chapter)
                 }
@@ -269,6 +283,18 @@ object LocalBook {
             appDb.bookChapterDao.delByBook(bookUrl)
         }
         return book
+    }
+
+    /** Read metadata for confirmation, without inserting or replacing a bookshelf entry. */
+    fun prepareImport(uri: Uri): Book {
+        val file = FileDoc.fromUri(uri, false)
+        if (file.size == 0L) throw EmptyFileException("Unexpected empty File")
+        val (name, author) = analyzeNameAuthor(file.name)
+        return Book(
+            type = BookType.text or BookType.local, bookUrl = file.toString(),
+            name = name, author = author, originName = file.name,
+            latestChapterTime = file.lastModified
+        ).also { upBookInfo(it) }
     }
 
     fun upBookInfo(book: Book) {

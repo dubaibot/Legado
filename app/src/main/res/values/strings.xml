@@ -71,6 +71,14 @@
     <string name="book_source">Book sources</string>
     <string name="book_source_manage">Sources management</string>
     <string name="book_source_manage_desc">Create/Import/Edit/Manage Book sources</string>
+    <string name="source_manage">Source Management</string>
+    <string name="py_source">Py</string>
+    <string name="tvbox_source">TVbox</string>
+    <string name="source_manage_book_desc">Manage book sources: search, filter, edit, import and export</string>
+    <string name="source_manage_rss_desc">Manage RSS sources: search, filter, edit, import and export</string>
+    <string name="source_manage_py_desc">Manage Python plugin sources for the homepage</string>
+    <string name="source_manage_tvbox_desc">Manage TVbox JSON/TXT/HTML video sources</string>
+    <string name="source_manage_enter">Enter Management</string>
     <string name="setting">Settings</string>
     <string name="theme_setting">Theme settings</string>
     <string name="theme_setting_s">Some settings related to interface or color</string>
@@ -493,6 +501,7 @@
     <string name="files_tree">Directory</string>
     <string name="intelligent_import">Intelligent import</string>
     <string name="discovery">Discovery</string>
+    <string name="drama">Drama</string>
     <string name="switch_display_style">Switch display styles</string>
     <string name="import_per">Import local books requires storage permission</string>
     <string name="night_theme">Night Theme</string>

@@ -104,6 +104,7 @@ fun AppBookCover(
     sourceOrigin: String? = null,
     cornerRadius: Dp = AppDimens.bookCoverCornerRadius,
     loadOnlyWifi: Boolean = false,
+    drawAuthorOverlay: Boolean = true,
 ) {
     val context = LocalContext.current
     // 图集取图是"库查询 + 文件读取"（顺序模式还要回写缓存）：必须按取图身份记忆。
@@ -186,7 +187,7 @@ fun AppBookCover(
             BookCoverTextOverlay(
                 name = name.orEmpty(),
                 author = author.orEmpty(),
-                drawAuthor = BookCover.drawBookAuthor,
+                drawAuthor = drawAuthorOverlay && BookCover.drawBookAuthor,
                 modifier = Modifier.fillMaxSize()
             )
         }

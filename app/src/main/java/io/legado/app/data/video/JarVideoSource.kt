@@ -83,48 +83,18 @@ class JarVideoSource(
         parseDetail(vod)
     }
 
-    override suspend fun play(url: String): PlayResult = withContext(Dispatchers.IO) {
+    override suspend fun play(url: String): PlayResult = play(url, "")
+
+    override suspend fun play(url: String, flag: String): PlayResult = withContext(Dispatchers.IO) {
         val rawJson = try {
-            spider.playerContent("", url, emptyList())
+            spider.playerContent(flag, url, emptyList())
         } catch (e: Exception) {
             throw IllegalStateException("jar spider playerContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
         }
         AppLog.putDebug("JarSource.play: raw jsonSize=${rawJson.length}")
-        val json = try {
-            JsonParser.parseString(rawJson).getAsJsonObject()
-        } catch (_: Exception) {
-            JsonObject()
-        }
-        var resultUrl = ""
-        val headers = mutableMapOf<String, String>()
-        // FongMi Spider 规范：playerContent 返回顶层 {"url":"...","header":"..."}；
-        // 部分爬虫兼容 {"playUrl":{"url":"...","header":"..."}} 或 {"playUrl":"..."} 两种形态
-        val playUrl = json.get("playUrl")
-        val playUrlObj = if (playUrl is JsonObject) playUrl else null
-        if (playUrlObj != null) {
-            resultUrl = str(playUrlObj, "url", "playUrl", "link")
-            parseHeaderString(str(playUrlObj, "header", "headers", "headerInfo"))
-                .let { headers.putAll(it) }
-        } else if (playUrl != null && playUrl.isJsonPrimitive) {
-            resultUrl = playUrl.asString
-        }
-        // 顶层 url 键（FongMi 通用形式，playUrl 缺失时兜底解析）
-        if (resultUrl.isBlank()) {
-            val topUrl = str(json, "url", "link", "video", "m3u8", "msg")
-            if (topUrl.isNotBlank()) {
-                resultUrl = topUrl.replace("[\\r\\n]+".toRegex(), "")
-                parseHeaderString(str(json, "header", "headers", "headerInfo"))
-                    .let { headers.putAll(it) }
-            }
-        }
-        if (resultUrl.isBlank()) resultUrl = url
-        // FongMi 协议 parse 字段：0=直链（含抖音 TOS 等无扩展名签名直链）、1=网页需嗅探；
-        // 兼容 int 与字符串两种 JSON 形态，缺失/非法时 -1（消费端按 URL 形状判定）
-        val parseFlag = json.get("parse")?.takeIf { it.isJsonPrimitive }?.let {
-            it.asString.trim().toIntOrNull() ?: -1
-        } ?: -1
-        AppLog.putDebug("JarSource.play: parse=$parseFlag, headerKeys=${headers.keys.joinToString(",")}")
-        PlayResult(url = resultUrl, headers = headers, parse = parseFlag)
+        val result = TvBoxResultParser.parsePlay(rawJson, url)
+        AppLog.putDebug("JarSource.play: parse=${result.parse}, headerKeys=${result.headers.keys.joinToString(",")}")
+        result
     }
 
     override suspend fun danmaku(videoId: String): DanmakuList = DanmakuList()
@@ -151,28 +121,12 @@ class JarVideoSource(
 
     /** 解析 MacCMS 详情（vod_play_from/vod_play_url 线路格式） */
     private fun parseDetail(vod: JsonObject): VideoDetail {
-        val lines = mutableListOf<PlayLine>()
-        val playFrom = str(vod, "vod_play_from", "play_from")
-        val playUrl = str(vod, "vod_play_url", "play_url")
-        val fromNames = playFrom.split("$$$").filter { it.isNotBlank() }
-        val urlGroups = playUrl.split("$$$").filter { it.isNotBlank() }
-        fromNames.forEachIndexed { idx, name ->
-            val group = urlGroups.getOrNull(idx) ?: return@forEachIndexed
-            group.split("#").filter { it.isNotBlank() }.forEach { ep ->
-                val parts = ep.split("$")
-                val epName = if (parts.size >= 2) parts[0] else "第${lines.size + 1}集"
-                val epUrl = parts.last()
-                if (epUrl.isNotBlank()) {
-                    lines.add(PlayLine(name = "$name·$epName", url = epUrl))
-                }
-            }
-        }
         return VideoDetail(
             id = str(vod, "vod_id", "id"),
             title = str(vod, "vod_name", "title", "name"),
             pic = str(vod, "vod_pic", "pic", "img", "cover"),
             desc = str(vod, "vod_content", "desc", "content", "description"),
-            playLines = lines,
+            playLines = TvBoxResultParser.parsePlayLines(vod),
         )
     }
 

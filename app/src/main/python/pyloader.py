@@ -42,6 +42,9 @@ def load_plugin(plugin_id, file_path):
     """按文件路径加载单个插件模块。"""
     module_name = "plugin_" + plugin_id
     try:
+        plugin_dir = os.path.dirname(os.path.abspath(file_path))
+        if plugin_dir not in sys.path:
+            sys.path.insert(0, plugin_dir)
         spec = importlib.util.spec_from_file_location(module_name, file_path)
         if spec is None or spec.loader is None:
             raise ImportError("Cannot load plugin: " + file_path)

@@ -9,11 +9,13 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.search.SearchScope
+import io.legado.app.ui.book.search.BookSearchQuery
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.mapParallelSafe
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -69,6 +71,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     }
 
     fun search(searchId: Long, key: String) {
+        if (searchId == mSearchId && searchJob?.isActive == true) return
         if (searchId != mSearchId) {
             if (key.isEmpty()) {
                 return
@@ -95,7 +98,11 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
     private fun startSearch() {
         val precision = appCtx.getPrefBoolean(PreferKey.precisionSearch)
+        val query = if (callBack.useBookSearchMatching()) BookSearchQuery.parse(searchKey) else null
+        val requestKey = query?.title ?: searchKey
         var hasMore = false
+        val pagesWithData = java.util.concurrent.atomic.AtomicBoolean(false)
+        val pageNumber = searchPage
         searchJob = scope.launch(searchPool!!) {
             flow {
                 for (bs in bookSourceParts) {
@@ -120,13 +127,15 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
                 val result = try {
                     withTimeout(30000L) {
-                        WebBook.searchBookAwait(
-                            source, searchKey, searchPage,
+                        val page = WebBook.searchBookAwait(
+                            source, requestKey, pageNumber,
                             filter = { name, author, kind ->
-                                !precision || name.contains(searchKey) ||
+                                query != null || (!precision || name.contains(searchKey) ||
                                         author.contains(searchKey) ||
-                                        kind?.contains(searchKey) == true
+                                        kind?.contains(searchKey) == true)
                             })
+                        if (page.isNotEmpty()) pagesWithData.set(true)
+                        if (query == null) page else page.filter { query.matches(it.name, it.author, precision) }
                     }
                 } catch (e: Throwable) {
                     record.status = SourceSearchRecord.Status.FAILED
@@ -153,7 +162,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
                 if (items.isNotEmpty()) {
                     appDb.searchBookDao.insert(*items.toTypedArray())
-                    mergeItems(items, precision)
+                    mergeItems(items, if (query != null) false else precision)
                 }
 
                 currentCoroutineContext().ensureActive()
@@ -163,9 +172,10 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 }
                 callBack.onSearchProgress(completed, bookSourceParts.size, searchBooks.size)
             }.onCompletion {
-                if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
+                if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), if (query == null) hasMore else pagesWithData.get())
             }.catch {
                 AppLog.put("书源搜索出错\n${it.localizedMessage}", it)
+                callBack.onSearchCancel(it)
             }.collect()
         }
     }
@@ -266,6 +276,11 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         callBack.onSearchCancel()
     }
 
+    suspend fun cancelAndAwait() {
+        searchJob?.cancelAndJoin()
+        close()
+    }
+
     fun close() {
         searchJob?.cancel()
         searchPool?.close()
@@ -275,6 +290,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     }
 
     interface CallBack {
+        fun useBookSearchMatching(): Boolean = false
         fun getSearchScope(): SearchScope
         fun onSearchStart()
         fun onSearchSuccess(searchBooks: List<SearchBook>)

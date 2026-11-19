@@ -276,6 +276,18 @@
             android:screenOrientation="behind" />
         <!-- 书源管理 -->
         <activity
+            android:name=".ui.main.homepage.HomeSourceManageActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.main.discovery.DiscoverHistoryActivity"
+            android:exported="false" />
+        <!-- 统一源管理入口 -->
+        <activity
+            android:name=".ui.main.discovery.SourceManageActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name=".ui.book.source.manage.BookSourceActivity"
             android:launchMode="singleTop"
             android:screenOrientation="behind" />

@@ -70,6 +70,14 @@
     <string name="book_source">书源</string>
     <string name="book_source_manage">书源管理</string>
     <string name="book_source_manage_desc">新建、导入、编辑或管理书源</string>
+    <string name="source_manage">源管理</string>
+    <string name="py_source">Py</string>
+    <string name="tvbox_source">TVbox</string>
+    <string name="source_manage_book_desc">管理书源：搜索、筛选、编辑、导入导出</string>
+    <string name="source_manage_rss_desc">管理订阅源：搜索、筛选、编辑、导入导出</string>
+    <string name="source_manage_py_desc">管理首页 Python 插件源</string>
+    <string name="source_manage_tvbox_desc">管理 TVbox JSON/TXT/HTML 视频源</string>
+    <string name="source_manage_enter">进入管理</string>
     <string name="setting">设置</string>
     <string name="theme_setting">主题设置</string>
     <string name="theme_setting_s">与界面/颜色相关的一些设置</string>
@@ -492,6 +500,7 @@
     <string name="files_tree">手机目录</string>
     <string name="intelligent_import">智能导入</string>
     <string name="discovery">发现</string>
+    <string name="drama">短剧</string>
     <string name="switch_display_style">切换显示样式</string>
     <string name="import_per">导入本地书籍需要存储权限</string>
     <string name="night_theme">夜间模式</string>

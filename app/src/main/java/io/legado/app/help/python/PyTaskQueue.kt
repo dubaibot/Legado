@@ -192,10 +192,11 @@ object PyTaskQueue {
             val result = module.callAttr(func, *args.toTypedArray())
             pluginEntry.callAttr("_to_json", result)?.toString()
         } catch (e: Exception) {
-            // TypeError fallback：参数不匹配时尝试单参数调用
-            if (args.isNotEmpty()) {
+            // Installed module functions may accept fewer arguments than the Spider bridge.
+            for (count in listOf(2, 1)) {
+                if (args.size <= count) continue
                 try {
-                    val result = module.callAttr(func, args[0])
+                    val result = module.callAttr(func, *args.take(count).toTypedArray())
                     return pluginEntry.callAttr("_to_json", result)?.toString()
                 } catch (e2: Exception) {
                     // fall through

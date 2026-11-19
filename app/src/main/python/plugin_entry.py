@@ -27,10 +27,12 @@ def call_func(module, func_name, args):
         result = func(*args)
         return _to_json(result), None
     except TypeError as e:
-        # 参数不匹配：尝试用第一个参数调用（单参数函数）
-        if len(args) >= 1:
+        # 参数不匹配：依次兼容双参数和单参数函数。
+        for count in (2, 1):
+            if len(args) <= count:
+                continue
             try:
-                result = func(args[0])
+                result = func(*args[:count])
                 return _to_json(result), None
             except Exception:
                 pass
@@ -53,10 +55,12 @@ def call_func_json(module, func_name, args):
         result = func(*args)
         return _to_json(result)
     except TypeError as e:
-        # 参数不匹配：尝试用第一个参数调用（单参数函数）
-        if len(args) >= 1:
+        # 参数不匹配：依次兼容双参数和单参数函数。
+        for count in (2, 1):
+            if len(args) <= count:
+                continue
             try:
-                result = func(args[0])
+                result = func(*args[:count])
                 return _to_json(result)
             except Exception:
                 pass
@@ -123,11 +127,15 @@ def call_spider_func(module, func_name, args):
 
     try:
         if func_name == "home":
-            raw = spider.homeContent("")
-            result = _normalize_home(raw)
+            try:
+                raw = _call_method(spider, "homeContent", [True], [])
+                result = _normalize_home(raw)
+            except Exception as e:
+                print("[call_spider_func] homeContent: " + str(e))
+                result = _normalize_home(None)
             # 调用 homeVideoContent 获取首页推荐视频（ElderTV 行为）
             try:
-                video_raw = spider.homeVideoContent()
+                video_raw = _call_method(spider, "homeVideoContent", [], None)
                 video_result = _normalize_home(video_raw)
                 if video_result.get("videos"):
                     result["videos"] = video_result["videos"]
@@ -136,19 +144,41 @@ def call_spider_func(module, func_name, args):
         elif func_name == "category":
             tid = str(args[0]) if args else ""
             pg = str(args[1]) if len(args) > 1 else "1"
-            raw = spider.categoryContent(tid, pg, "", "")
+            extend = _as_mapping(args[2]) if len(args) > 2 else {}
+            if not isinstance(extend, dict):
+                extend = {}
+            raw = _call_method(
+                spider,
+                "categoryContent",
+                [tid, pg, True, extend],
+                [tid, pg, extend],
+                [tid, pg],
+            )
             result = _normalize_category(raw)
         elif func_name == "search":
             keyword = str(args[0]) if args else ""
-            raw = spider.searchContent(keyword, False, "1")
+            raw = _call_method(
+                spider,
+                "searchContent",
+                [keyword, False, "1"],
+                [keyword, "1"],
+                [keyword],
+            )
             result = _normalize_search(raw)
         elif func_name == "detail":
             id_val = str(args[0]) if args else ""
-            raw = spider.detailContent([id_val])
+            raw = _call_method(spider, "detailContent", [[id_val]], [id_val])
             result = _normalize_detail(raw, id_val)
         elif func_name == "play":
             url = str(args[0]) if args else ""
-            raw = spider.playerContent("", url, [])
+            flag = str(args[1]) if len(args) > 1 else ""
+            raw = _call_method(
+                spider,
+                "playerContent",
+                [flag, url, []],
+                [flag, url],
+                [url],
+            )
             result = _normalize_play(raw)
         else:
             return json.dumps({"error": "Unsupported func: " + func_name})
@@ -158,11 +188,44 @@ def call_spider_func(module, func_name, args):
         return json.dumps({"error": func_name + ": " + str(e)})
 
 
+def _call_method(obj, name, *arg_options):
+    """Call a Spider method across common FongMi/hipy signatures."""
+    method = getattr(obj, name, None)
+    if not callable(method):
+        if arg_options and arg_options[-1] is None:
+            return None
+        raise AttributeError("Spider method not found: " + name)
+    last_error = None
+    for option in arg_options:
+        if option is None:
+            continue
+        try:
+            return method(*option)
+        except TypeError as error:
+            last_error = error
+    if last_error is not None:
+        raise last_error
+    return None
+
+
+def _as_mapping(raw):
+    """Decode a Spider result that may be a dict, list, or JSON string."""
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return raw
+    return raw
+
+
 def _normalize_video_item(v):
     """将 Spider 视频项（vod_id/vod_name/vod_pic/vod_remarks）归一化为 App 格式。"""
+    if not isinstance(v, dict):
+        return {"id": "", "title": str(v), "url": str(v)}
     return {
         "id": str(v.get("vod_id", v.get("id", ""))),
         "title": v.get("vod_name", v.get("title", "")),
+        "url": v.get("url", v.get("link", v.get("vod_id", v.get("id", "")))),
         "pic": v.get("vod_pic", v.get("pic", "")),
         "remarks": v.get("vod_remarks", v.get("remarks", "")),
     }
@@ -170,82 +233,105 @@ def _normalize_video_item(v):
 
 def _normalize_home(raw):
     """归一化 homeContent 输出：{class,list,filters} -> {categories,videos}。"""
+    raw = _as_mapping(raw)
+    if isinstance(raw, list):
+        return {"categories": [], "videos": [_normalize_video_item(v) for v in raw]}
     if not isinstance(raw, dict):
         return {"categories": [], "videos": []}
     cats = []
-    for c in raw.get("class", []):
-        cats.append({"id": str(c.get("type_id", "")), "name": c.get("type_name", "")})
-    vids = [_normalize_video_item(v) for v in raw.get("list", [])]
-    return {"categories": cats, "videos": vids}
+    for c in raw.get("class", raw.get("categories", [])) or []:
+        if isinstance(c, dict):
+            cats.append({
+                "id": str(c.get("type_id", c.get("id", c.get("tid", "")))),
+                "name": c.get("type_name", c.get("name", c.get("title", ""))),
+            })
+    vids = [_normalize_video_item(v) for v in (raw.get("list", raw.get("videos", [])) or [])]
+    result = {"categories": cats, "videos": vids}
+    if "filters" in raw:
+        result["filters"] = raw["filters"]
+    return result
 
 
 def _normalize_category(raw):
     """归一化 categoryContent 输出：{page,pagecount,list} -> {page,pagecount,videos}。"""
+    raw = _as_mapping(raw)
+    if isinstance(raw, list):
+        return {"page": 1, "pagecount": 1, "videos": [_normalize_video_item(v) for v in raw]}
     if not isinstance(raw, dict):
         return {"page": 1, "pagecount": 1, "videos": []}
     return {
-        "page": int(raw.get("page", 1) or 1),
-        "pagecount": int(raw.get("pagecount", 1) or 1),
-        "videos": [_normalize_video_item(v) for v in raw.get("list", [])],
+        "page": int(raw.get("page", raw.get("pg", 1)) or 1),
+        "pagecount": int(raw.get("pagecount", raw.get("page_count", 1)) or 1),
+        "videos": [_normalize_video_item(v) for v in (raw.get("list", raw.get("videos", [])) or [])],
     }
 
 
 def _normalize_search(raw):
     """归一化 searchContent 输出：{list,page,pagecount} -> [items]。"""
+    raw = _as_mapping(raw)
+    if isinstance(raw, list):
+        return [_normalize_video_item(v) for v in raw]
     if not isinstance(raw, dict):
         return []
-    items = []
-    for v in raw.get("list", []):
-        vid = str(v.get("vod_id", v.get("id", "")))
-        items.append({
-            "id": vid,
-            "title": v.get("vod_name", v.get("title", "")),
-            "url": v.get("url", v.get("link", "")),
-            "pic": v.get("vod_pic", v.get("pic", "")),
-        })
-    return items
+    return [_normalize_video_item(v) for v in (raw.get("list", raw.get("videos", [])) or [])]
 
 
 def _normalize_detail(raw, fallback_id):
     """归一化 detailContent 输出：{list:[detail]} -> {id,title,pic,desc,play_urls}。
 
-    play_urls 格式：[{"name","url"}]，由 CMS vod_play_from/vod_play_url 转换。
+    play_urls 格式：[{"name","url","flag"}]，保留 CMS 原始字段与嵌套线路。
     """
+    raw = _as_mapping(raw)
     detail = {}
     if isinstance(raw, dict) and isinstance(raw.get("list"), list) and raw["list"]:
         detail = raw["list"][0]
     elif isinstance(raw, dict):
-        detail = raw
+        detail = raw.get("video", raw.get("detail", raw))
     else:
         return {"id": fallback_id, "title": fallback_id, "pic": "", "desc": "", "play_urls": []}
 
     play_urls = []
     from_str = str(detail.get("vod_play_from", ""))
     url_str = str(detail.get("vod_play_url", ""))
-    from_names = [n for n in from_str.split("$$$") if n]
-    url_groups = [g for g in url_str.split("$$$") if g]
-    for idx, from_name in enumerate(from_names):
-        url_group = url_groups[idx] if idx < len(url_groups) else ""
+    from_names = from_str.split("$$$")
+    url_groups = url_str.split("$$$")
+    for idx, url_group in enumerate(url_groups):
+        flag = from_names[idx] if idx < len(from_names) else ""
+        from_name = flag or f"线路{idx + 1}"
         for ep in url_group.split("#"):
             if not ep:
                 continue
-            parts = ep.split("$")
+            parts = ep.split("$", 1)
             ep_url = parts[-1]
             if ep_url:
                 ep_name = parts[0] if len(parts) >= 2 else ""
-                play_urls.append({"name": f"{from_name}·{ep_name}" if ep_name else from_name, "url": ep_url})
+                play_urls.append({"name": f"{from_name}·{ep_name}" if ep_name else from_name, "url": ep_url, "flag": flag})
 
-    return {
+    if not play_urls:
+        for line in detail.get("play_urls", detail.get("play_lines", [])) or []:
+            if isinstance(line, dict) and line.get("url", line.get("link")):
+                play_urls.append({
+                    "name": line.get("name", line.get("title", "线路")),
+                    "url": line.get("url", line.get("link")),
+                    "flag": line.get("flag", ""),
+                })
+
+    result = {
         "id": str(detail.get("vod_id", detail.get("id", fallback_id))),
         "title": detail.get("vod_name", detail.get("title", fallback_id)),
         "pic": detail.get("vod_pic", detail.get("pic", "")),
         "desc": detail.get("vod_content", detail.get("desc", "")),
         "play_urls": play_urls,
     }
+    for key in ("vod_play_from", "vod_play_url", "play_lines", "play_urls"):
+        if key in detail:
+            result[key] = detail[key]
+    return result
 
 
 def _normalize_play(raw):
     """归一化 playerContent 输出：{parse,url,header} -> {url,headers}。"""
+    raw = _as_mapping(raw)
     if not isinstance(raw, dict):
         return {"url": str(raw) if raw else "", "headers": {}}
     result = {}
@@ -253,10 +339,15 @@ def _normalize_play(raw):
     if url:
         result["url"] = str(url)
     header = raw.get("header")
-    if isinstance(header, dict):
+    if isinstance(header, (dict, str)):
         result["headers"] = header
-    elif isinstance(raw.get("headers"), dict):
+    elif isinstance(raw.get("headers"), (dict, str)):
         result["headers"] = raw["headers"]
+    if "parse" in raw:
+        try:
+            result["parse"] = int(raw["parse"])
+        except (TypeError, ValueError):
+            pass
     return result
 
 
@@ -265,6 +356,12 @@ def _to_json(obj):
     if obj is None:
         return "null"
     if isinstance(obj, str):
+        try:
+            parsed = json.loads(obj)
+            if isinstance(parsed, (dict, list)):
+                return obj
+        except Exception:
+            pass
         return json.dumps(obj, ensure_ascii=False)
     if isinstance(obj, (list, dict)):
         return json.dumps(obj, ensure_ascii=False, default=str)

@@ -163,7 +163,7 @@ class JsonVideoSource(
         mode = m
         baseUrl = api
         endpoints = ep
-        siteConfig = selectedSite
+        siteConfig = selectedSite ?: FongMiConfigParser.parse(configJson).firstOrNull()
         configSites = fongMiSites
         siteHeaders = headers
         siteExt = ext
@@ -297,11 +297,7 @@ class JsonVideoSource(
         val realUrl = tpl.replace("{url}", enc(url))
         val json = VideoHttpClient.getJson(realUrl, siteHeaders)
             ?: throw IllegalStateException("自定义播放端点无响应: $realUrl")
-        val headers = mutableMapOf<String, String>()
-        json.getAsJsonObject("headers")?.entrySet()?.forEach { (k, v) ->
-            headers[k] = v.asString
-        }
-        PlayResult(url = json.optString("url", url), headers = headers)
+        TvBoxResultParser.parsePlay(json.toString(), url)
     }
 
     override suspend fun danmaku(videoId: String): DanmakuList = withContext(Dispatchers.IO) {
@@ -333,28 +329,12 @@ class JsonVideoSource(
     }
 
     private fun parseCmsDetail(vod: JsonObject): VideoDetail {
-        val lines = mutableListOf<PlayLine>()
-        val playFrom = str(vod, "vod_play_from", "play_from")
-        val playUrl = str(vod, "vod_play_url", "play_url")
-        val fromNames = playFrom.split("$$$").filter { it.isNotBlank() }
-        val urlGroups = playUrl.split("$$$").filter { it.isNotBlank() }
-        fromNames.forEachIndexed { idx, name ->
-            val group = urlGroups.getOrNull(idx) ?: return@forEachIndexed
-            group.split("#").filter { it.isNotBlank() }.forEach { ep ->
-                val parts = ep.split("$")
-                val epName = if (parts.size >= 2) parts[0] else "第${lines.size + 1}集"
-                val epUrl = parts.last()
-                if (epUrl.isNotBlank()) {
-                    lines.add(PlayLine(name = "$name·$epName", url = epUrl))
-                }
-            }
-        }
         return VideoDetail(
             id = str(vod, "vod_id", "id"),
             title = str(vod, "vod_name", "title", "name"),
             pic = str(vod, "vod_pic", "pic", "img", "cover"),
             desc = str(vod, "vod_content", "desc", "content", "description"),
-            playLines = lines,
+            playLines = TvBoxResultParser.parsePlayLines(vod),
         )
     }
 

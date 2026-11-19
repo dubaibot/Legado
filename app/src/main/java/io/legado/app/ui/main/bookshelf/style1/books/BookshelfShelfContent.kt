@@ -216,7 +216,7 @@ private fun rememberShelfSpacing(marginPx: Int, bottomPaddingPx: Int): ShelfSpac
             ShelfSpacing(
                 itemMargin = marginPx.toDp(),
                 itemSpacing = (marginPx * 2).toDp(),
-                topPadding = (marginPx + AppDimens.shelfFirstItemExtraTop.toPx()).toDp(),
+                topPadding = AppDimens.shelfFirstItemExtraTop,
                 bottomPadding = (marginPx + bottomPaddingPx).toDp(),
             )
         }

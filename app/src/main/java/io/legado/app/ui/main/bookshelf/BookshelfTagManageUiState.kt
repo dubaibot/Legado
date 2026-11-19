@@ -61,8 +61,7 @@ sealed interface BookshelfTagDialogState {
         val books: List<BookTagInfo>,
     ) : BookshelfTagDialogState
 
-    /** 重命名标签：改名对所有分组、所有书籍生效，因此只需旧标签名。 */
-    data class RenameTag(val oldTag: String) : BookshelfTagDialogState
+    data class RenameTag(val groupId: Long, val oldTag: String) : BookshelfTagDialogState
 
     /** 智能标签管理对话框。 */
     data object SmartTags : BookshelfTagDialogState

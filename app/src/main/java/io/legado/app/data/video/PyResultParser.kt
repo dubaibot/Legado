@@ -25,12 +25,36 @@ object PyResultParser {
                     VideoCategory(
                         id = str(o, "id", "type_id", "tid"),
                         name = str(o, "name", "type_name", "title"),
+                        filters = parseFilters(obj, str(o, "id", "type_id", "tid")),
                     )
                 )
             } catch (e: Exception) {
             }
         }
         return Pair(categories, parseVideoArray(obj.getAsJsonArray("videos") ?: obj.getAsJsonArray("list")))
+    }
+
+    private fun parseFilters(obj: JsonObject, tid: String): List<VideoFilter> {
+        val root = obj.get("filters")?.let { value ->
+            runCatching { if (value.isJsonPrimitive) JsonParser.parseString(value.asString) else value }.getOrNull()
+        }
+        val groups = root?.takeIf { it.isJsonObject }?.asJsonObject?.get(tid)
+            ?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
+        return groups.mapNotNull { element ->
+            runCatching {
+                val group = element.asJsonObject
+                val key = str(group, "key")
+                val values = group.get("value")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.mapNotNull { item ->
+                        runCatching {
+                            val value = item.asJsonObject
+                            VideoFilterValue(str(value, "n", "name", "title"),
+                                (value.get("v") ?: value.get("value"))?.takeIf { it.isJsonPrimitive }?.asString.orEmpty())
+                        }.getOrNull()
+                    }.orEmpty()
+                if (key.isBlank() || values.isEmpty()) null else VideoFilter(key, str(group, "name").ifBlank { key }, values)
+            }.getOrNull()
+        }
     }
 
     fun parseCategory(json: String, pg: Int): CategoryResult {
@@ -52,67 +76,22 @@ object PyResultParser {
 
     fun parseDetail(json: String, fallbackId: String): VideoDetail {
         val obj = parseObj(json) ?: return VideoDetail(id = fallbackId, title = fallbackId)
-        // detail 可能直接返回 video 对象或包在 video/detail 字段里
-        val video = (obj.getAsJsonObject("video") ?: obj.getAsJsonObject("detail")) ?: obj
-        val lines = mutableListOf<PlayLine>()
-        // 统一格式: play_lines / play_urls = [{"name","url"}]
-        val lineArr = video.getAsJsonArray("play_lines") ?: video.getAsJsonArray("play_urls")
-        lineArr?.forEach { el ->
-            try {
-                val o = el.asJsonObject
-                val name = str(o, "name", "title", "ep")
-                val url = str(o, "url", "link")
-                if (url.isNotBlank()) {
-                    lines.add(PlayLine(name = name.ifBlank { "第${lines.size + 1}集" }, url = url))
-                }
-            } catch (e: Exception) {
-            }
-        }
-        // CMS 格式: vod_play_url = "集名$url#集名$url"（多线路 $$$ 分隔）
-        if (lines.isEmpty()) {
-            val cmsFrom = str(video, "vod_play_from")
-            val cmsUrl = str(video, "vod_play_url")
-            if (cmsUrl.isNotBlank()) {
-                val fromNames = cmsFrom.split("$$$").filter { it.isNotBlank() }
-                val urlGroups = cmsUrl.split("$$$").filter { it.isNotBlank() }
-                fromNames.forEachIndexed { idx, name ->
-                    urlGroups.getOrNull(idx)?.split("#")?.filter { it.isNotBlank() }
-                        ?.forEach { ep ->
-                            val parts = ep.split("$")
-                            val epUrl = parts.last()
-                            if (epUrl.isNotBlank()) {
-                                val epName = if (parts.size >= 2) parts[0] else "第${lines.size + 1}集"
-                                lines.add(PlayLine(name = "$name·$epName", url = epUrl))
-                            }
-                        }
-                }
-            }
-        }
+        val video = obj.get("list")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?.firstOrNull()?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: obj.get("video")?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: obj.get("detail")?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: obj
         return VideoDetail(
             id = str(video, "id", "vod_id").ifBlank { fallbackId },
             title = str(video, "title", "vod_name", "name").ifBlank { fallbackId },
             pic = str(video, "pic", "vod_pic", "cover"),
             desc = str(video, "desc", "vod_content", "description", "remark"),
-            playLines = lines,
+            playLines = TvBoxResultParser.parsePlayLines(video),
         )
     }
 
     fun parsePlay(json: String, fallbackUrl: String): PlayResult {
-        // play 可能直接返回 URL 字符串
-        val trimmed = json.trim()
-        if (!trimmed.startsWith("{")) {
-            return PlayResult(url = trimmed.removeSurrounding("\""))
-        }
-        val obj = parseObj(json) ?: return PlayResult(fallbackUrl)
-        val url = str(obj, "url", "play_url", "link").ifBlank { fallbackUrl }
-        val headers = mutableMapOf<String, String>()
-        obj.getAsJsonObject("headers")?.entrySet()?.forEach { (k, v) ->
-            try {
-                headers[k] = v.asString
-            } catch (e: Exception) {
-            }
-        }
-        return PlayResult(url = url, headers = headers)
+        return TvBoxResultParser.parsePlay(json, fallbackUrl)
     }
 
     private fun parseVideoArray(arr: JsonArray?): List<VideoItem> {

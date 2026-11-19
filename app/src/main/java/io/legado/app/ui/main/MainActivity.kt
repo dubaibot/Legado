@@ -71,10 +71,9 @@ import io.legado.app.ui.association.ImportTxtTocRuleDialog
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
 import io.legado.app.ui.main.bookshelf.style2.BookshelfFragment2
-import io.legado.app.ui.main.explore.ExploreFragment
-import io.legado.app.ui.main.homepage.HomepageFragment
+import io.legado.app.ui.main.drama.DramaFragment
+import io.legado.app.ui.main.discovery.DiscoverFragment
 import io.legado.app.ui.main.my.MyFragment
-import io.legado.app.ui.main.rss.RssFragment
 import io.legado.app.ui.widget.StableLiquidGlassView
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.BadgeView
@@ -126,17 +125,16 @@ class MainActivity :
     private val idBookshelf1 = 11
     private val idBookshelf2 = 12
     private val idExplore = 1
-    private val idRss = 2
+    private val idDrama = 5
     private val idMy = 3
-    private val idHomepage = 4
     private var exitTime: Long = 0
     private var bookshelfReselected: Long = 0
     private var exploreReselected: Long = 0
     private var pagePosition = 0
     private val fragmentMap = hashMapOf<Int, Fragment>()
-    private var bottomMenuCount = 5
+    private var bottomMenuCount = 4
     private val EXIT_INTERVAL = 2000L
-    private val realPositions = arrayOf(idHomepage, idBookshelf, idExplore, idRss, idMy)
+    private val realPositions = arrayOf(idBookshelf, idExplore, idDrama, idMy)
     private val adapter by lazy {
         TabFragmentPageAdapter(supportFragmentManager)
     }
@@ -173,9 +171,8 @@ class MainActivity :
 
     private fun fragmentIdToMenuItemId(fragmentId: Int): Int = when (fragmentId) {
         idBookshelf, idBookshelf1, idBookshelf2 -> R.id.menu_bookshelf
-        idHomepage -> R.id.menu_homepage
         idExplore -> R.id.menu_discovery
-        idRss -> R.id.menu_rss
+        idDrama -> R.id.menu_drama
         idMy -> R.id.menu_my_config
         else -> R.id.menu_bookshelf
     }
@@ -393,14 +390,11 @@ class MainActivity :
             R.id.menu_bookshelf ->
                 viewPagerMain.setCurrentItem(bookshelfPosition(), false)
 
-            R.id.menu_homepage ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idHomepage), false)
-
             R.id.menu_discovery ->
                 viewPagerMain.setCurrentItem(realPositions.indexOf(idExplore), false)
 
-            R.id.menu_rss ->
-                viewPagerMain.setCurrentItem(realPositions.indexOf(idRss), false)
+            R.id.menu_drama ->
+                viewPagerMain.setCurrentItem(realPositions.indexOf(idDrama), false)
 
             R.id.menu_my_config ->
                 viewPagerMain.setCurrentItem(realPositions.indexOf(idMy), false)
@@ -422,8 +416,12 @@ class MainActivity :
                 if (System.currentTimeMillis() - exploreReselected > 300) {
                     exploreReselected = System.currentTimeMillis()
                 } else {
-                    (fragmentMap[idExplore] as? ExploreFragment)?.compressExplore()
+                    (fragmentMap[idExplore] as? DiscoverFragment)?.scrollToTop()
                 }
+            }
+
+            R.id.menu_drama -> {
+                (fragmentMap[idDrama] as? DramaFragment)?.scrollToTop()
             }
         }
     }
@@ -845,54 +843,23 @@ class MainActivity :
     }
 
     private fun upBottomMenu() {
-        val showHomepage = AppConfig.showHomepage
-        val showDiscovery = AppConfig.showDiscovery
-        val showRss = AppConfig.showRSS
-        val navOrder = AppConfig.navItemOrder
-
         val menu = binding.bottomNavigationView.menu
         menu.clear()
 
-        var index = 0
-        for (itemKey in navOrder) {
-            when (itemKey) {
-                "homepage" -> if (showHomepage) {
-                    realPositions[index] = idHomepage
-                    menu.add(0, R.id.menu_homepage, index, R.string.homepage)
-                        .setIcon(R.drawable.ic_bottom_home)
-                    index++
-                }
+        realPositions[0] = idBookshelf
+        realPositions[1] = idExplore
+        realPositions[2] = idDrama
+        realPositions[3] = idMy
 
-                "bookshelf" -> {
-                    realPositions[index] = idBookshelf
-                    menu.add(0, R.id.menu_bookshelf, index, R.string.bookshelf)
-                        .setIcon(R.drawable.ic_bottom_books)
-                    index++
-                }
-
-                "explore" -> if (showDiscovery) {
-                    realPositions[index] = idExplore
-                    menu.add(0, R.id.menu_discovery, index, R.string.discovery)
-                        .setIcon(R.drawable.ic_bottom_explore)
-                    index++
-                }
-
-                "rss" -> if (showRss) {
-                    realPositions[index] = idRss
-                    menu.add(0, R.id.menu_rss, index, R.string.rss)
-                        .setIcon(R.drawable.ic_bottom_rss_feed)
-                    index++
-                }
-
-                "my" -> {
-                    realPositions[index] = idMy
-                    menu.add(0, R.id.menu_my_config, index, R.string.my)
-                        .setIcon(R.drawable.ic_bottom_person)
-                    index++
-                }
-            }
-        }
-        bottomMenuCount = index
+        menu.add(0, R.id.menu_bookshelf, 0, R.string.bookshelf)
+            .setIcon(R.drawable.ic_bottom_books)
+        menu.add(0, R.id.menu_discovery, 1, R.string.discovery)
+            .setIcon(R.drawable.ic_bottom_explore)
+        menu.add(0, R.id.menu_drama, 2, R.string.drama)
+            .setIcon(R.drawable.ic_bottom_drama)
+        menu.add(0, R.id.menu_my_config, 3, R.string.my)
+            .setIcon(R.drawable.ic_bottom_person)
+        bottomMenuCount = 4
 
         // 根据当前 ViewPager 位置设置底部导航栏选中状态
         val currentPosition = binding.viewPagerMain.currentItem.coerceAtMost(bottomMenuCount - 1)
@@ -909,9 +876,8 @@ class MainActivity :
         // 根据 defaultHomePage 找到对应的 ViewPager 位置
         val defaultHome = AppConfig.defaultHomePage
         val fragmentId = when (defaultHome) {
-            "homepage" -> idHomepage
             "explore" -> idExplore
-            "rss" -> idRss
+            "drama" -> idDrama
             "my" -> idMy
             else -> idBookshelf
         }
@@ -954,9 +920,8 @@ class MainActivity :
             val fragmentId = getId(position)
             if ((fragmentId == idBookshelf1 && any is BookshelfFragment1) ||
                 (fragmentId == idBookshelf2 && any is BookshelfFragment2) ||
-                (fragmentId == idHomepage && any is HomepageFragment) ||
-                (fragmentId == idExplore && any is ExploreFragment) ||
-                (fragmentId == idRss && any is RssFragment) ||
+                (fragmentId == idExplore && any is DiscoverFragment) ||
+                (fragmentId == idDrama && any is DramaFragment) ||
                 (fragmentId == idMy && any is MyFragment)
             ) {
                 return POSITION_UNCHANGED
@@ -967,9 +932,8 @@ class MainActivity :
         override fun getItem(position: Int): Fragment = when (getId(position)) {
             idBookshelf1 -> BookshelfFragment1(position)
             idBookshelf2 -> BookshelfFragment2(position)
-            idHomepage -> HomepageFragment(position)
-            idExplore -> ExploreFragment(position)
-            idRss -> RssFragment(position)
+            idExplore -> DiscoverFragment(position)
+            idDrama -> DramaFragment(position)
             else -> MyFragment(position)
         }
 
@@ -1009,6 +973,7 @@ class MainActivity :
      * 因此所有模式均返回 navHeight + bottomMargin。
      */
     fun mainContentBottomPadding(): Int {
+        if (binding.bottomNavigationGlass.visibility != View.VISIBLE) return 0
         val bottomNav = binding.bottomNavigationGlass
         val layoutParams = bottomNav.layoutParams as? FrameLayout.LayoutParams
         val navHeight = bottomNav.height.takeIf { it > 0 } ?: bottomNav.minimumHeight
@@ -1026,6 +991,11 @@ class MainActivity :
                 (fragment as? MainFragmentInterface)?.updateMainBottomPadding(bottomPadding)
             }
         }
+    }
+
+    fun setMainBottomNavigationVisible(visible: Boolean) {
+        binding.bottomNavigationGlass.visibility = if (visible) View.VISIBLE else View.GONE
+        refreshMainContentBottomPadding()
     }
 
     /**

@@ -137,7 +137,7 @@ object PyLoader {
         return try {
             val pluginDir = File(pluginsDir, pluginId)
             if (pluginDir.exists()) {
-                pluginDir.deleteRecursively()
+                if (!pluginDir.deleteRecursively()) return false
             }
             reload()
         } catch (e: Exception) {

@@ -77,10 +77,11 @@ class ExploreAdapter(
     ) {
         binding.run {
             llTitle.isGone = headerGone
+            val topPadding = if (holder.layoutPosition == 0) 0 else 12.dpToPx()
             if (holder.layoutPosition == itemCount - 1) {
-                root.setPadding(16.dpToPx(), 12.dpToPx(), 16.dpToPx(), 12.dpToPx())
+                root.setPadding(16.dpToPx(), topPadding, 16.dpToPx(), 12.dpToPx())
             } else {
-                root.setPadding(16.dpToPx(), 12.dpToPx(), 16.dpToPx(), 0)
+                root.setPadding(16.dpToPx(), topPadding, 16.dpToPx(), 0)
             }
             if (payloads.isEmpty()) {
                 tvName.text = item.bookSourceName

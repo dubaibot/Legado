@@ -39,9 +39,9 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
                 if (item.isDir) {
                     ivIcon.setImageResource(R.drawable.ic_folder)
                     ivIcon.visible()
-                    cbSelect.invisible()
+                    cbSelect.visible()
                     llBrief.gone()
-                    cbSelect.isChecked = false
+                    cbSelect.isChecked = selected.contains(item)
                 } else {
                     if (item.isOnBookShelf) {
                         ivIcon.setImageResource(R.drawable.ic_book_has)
@@ -83,12 +83,27 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
                 }
             }
         }
+        binding.cbSelect.setOnClickListener {
+            getItem(holder.layoutPosition)?.takeIf { !it.isOnBookShelf }?.let {
+                if (!selected.add(it)) selected.remove(it)
+                notifyItemChanged(holder.layoutPosition, true)
+                callBack.upCountView()
+            }
+        }
+        holder.itemView.setOnLongClickListener {
+            getItem(holder.layoutPosition)?.takeIf { it.isDir && !it.isOnBookShelf }?.let {
+                if (!selected.add(it)) selected.remove(it)
+                notifyItemChanged(holder.layoutPosition, true)
+                callBack.upCountView()
+            }
+            true
+        }
     }
 
     private fun upCheckableCount() {
         checkableCount = 0
         getItems().forEach {
-            if (!it.isDir && !it.isOnBookShelf) {
+            if (!it.isOnBookShelf) {
                 checkableCount++
             }
         }
@@ -99,7 +114,7 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
     fun selectAll(selectAll: Boolean) {
         if (selectAll) {
             getItems().forEach {
-                if (!it.isDir && !it.isOnBookShelf) {
+                if (!it.isOnBookShelf) {
                     selected.add(it)
                 }
             }
@@ -112,7 +127,7 @@ class ImportBookAdapter(context: Context, val callBack: CallBack) :
 
     fun revertSelection() {
         getItems().forEach {
-            if (!it.isDir && !it.isOnBookShelf) {
+            if (!it.isOnBookShelf) {
                 if (selected.contains(it)) {
                     selected.remove(it)
                 } else {

@@ -44,8 +44,8 @@ object HomeBridge {
     /**
      * 播放：调用插件 play 函数。
      */
-    fun play(pluginId: String, url: String, onResult: (String?) -> Unit) {
-        callPlugin(pluginId, "play", listOf(url), onResult)
+    fun play(pluginId: String, url: String, flag: String = "", onResult: (String?) -> Unit) {
+        callPlugin(pluginId, "play", listOf(url, flag), onResult)
     }
 
     /**
@@ -58,8 +58,9 @@ object HomeBridge {
     /**
      * 分类：调用插件 category 函数，返回分类视频列表。
      */
-    fun category(pluginId: String, tid: String, pg: Int, onResult: (String?) -> Unit) {
-        callPlugin(pluginId, "category", listOf(tid, pg.toString()), onResult)
+    fun category(pluginId: String, tid: String, pg: Int, onResult: (String?) -> Unit, filtersJson: String = "{}") {
+        val args = listOf(tid, pg.toString(), filtersJson)
+        callPlugin(pluginId, "category", args, onResult)
     }
 
     /**

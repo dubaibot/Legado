@@ -19,6 +19,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.MobiFile
 import io.legado.app.model.localBook.PdfFile
+import io.legado.app.model.localBook.LocalMediaDirectory
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
@@ -158,9 +159,18 @@ object ImageProvider {
         bookSource: BookSource?
     ): File {
         return withContext(IO) {
-            val vFile = BookHelp.getImage(book, src)
-            if (!BookHelp.isImageExist(book, src)) {
+            val cacheSrc = if (LocalMediaDirectory.isDirectory(book)) "${book.bookUrl}|$src" else src
+            val vFile = BookHelp.getImage(book, cacheSrc)
+            if (!vFile.exists()) {
                 val inputStream = when {
+                    LocalMediaDirectory.isDirectory(book) -> {
+                        val uri = android.net.Uri.parse(src)
+                        when (uri.scheme) {
+                            "content" -> appCtx.contentResolver.openInputStream(uri)
+                            "file" -> java.io.FileInputStream(requireNotNull(uri.path))
+                            else -> throw IllegalArgumentException("无效的本地图片地址")
+                        }
+                    }
                     book.isEpub -> EpubFile.getImage(book, src)
                     book.isPdf -> PdfFile.getImage(book, src)
                     book.isMobi -> MobiFile.getImage(book, src)
@@ -282,7 +292,8 @@ object ImageProvider {
             book.setUseReplaceRule(false)
             appCtx.toastOnUi(R.string.error_image_url_empty)
         }
-        val vFile = BookHelp.getImage(book, src)
+        val cacheSrc = if (LocalMediaDirectory.isDirectory(book)) "${book.bookUrl}|$src" else src
+        val vFile = BookHelp.getImage(book, cacheSrc)
         if (!vFile.exists()) return errorBitmap
         //epub文件提供图片链接是相对链接，同时阅读多个epub文件，缓存命中错误
         //bitmapLruCache的key同一改成缓存文件的路径

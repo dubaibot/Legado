@@ -280,10 +280,10 @@ object Restore {
         // 恢复书籍分组
         if ("bookGroup.json" in selectedSet) {
             progress("bookGroup.json")
-            appDb.bookGroupDao.deleteAll()
             fileToListT<BookGroup>(path, "bookGroup.json")?.let {
                 appDb.bookGroupDao.insert(*it.toTypedArray())
             }
+            ensureDefaultBookGroups()
         }
 
         // 恢复书源
@@ -687,10 +687,10 @@ object Restore {
 
         // 恢复书籍分组
         progress("bookGroup.json")
-        appDb.bookGroupDao.deleteAll()
         fileToListT<BookGroup>(path, "bookGroup.json")?.let {
             appDb.bookGroupDao.insert(*it.toTypedArray())
         }
+        ensureDefaultBookGroups()
 
         // 恢复书源（兼容旧版本格式）
         progress("bookSource.json")
@@ -1648,40 +1648,7 @@ object Restore {
     }
 
     private fun ensureDefaultBookGroups() {
-        val defaults = arrayOf(
-            BookGroup(BookGroup.IdAll, appCtx.getString(R.string.all), order = -10, show = true),
-            BookGroup(
-                BookGroup.IdLocal,
-                appCtx.getString(R.string.local),
-                order = -9,
-                enableRefresh = false,
-                show = true,
-            ),
-            BookGroup(BookGroup.IdAudio, appCtx.getString(R.string.audio), order = -8, show = true),
-            BookGroup(
-                BookGroup.IdNetNone,
-                appCtx.getString(R.string.net_no_group),
-                order = -7,
-                show = true,
-            ),
-            BookGroup(
-                BookGroup.IdLocalNone,
-                appCtx.getString(R.string.local_no_group),
-                order = -6,
-                show = false,
-            ),
-            BookGroup(BookGroup.IdVideo, appCtx.getString(R.string.video), order = -5, show = true),
-            BookGroup(
-                BookGroup.IdError,
-                appCtx.getString(R.string.update_book_fail),
-                order = -1,
-                show = true,
-            ),
-        ).filter { appDb.bookGroupDao.getByID(it.groupId) == null }
-
-        if (defaults.isNotEmpty()) {
-            appDb.bookGroupDao.insert(*defaults.toTypedArray())
-        }
+        appDb.bookGroupDao.ensureDefaults(restoring = true)
     }
 
     private fun resolveBackupCacheDir(path: String, cacheIndexList: List<BookCacheIndex>): File? {

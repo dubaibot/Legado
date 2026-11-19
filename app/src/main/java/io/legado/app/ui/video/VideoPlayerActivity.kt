@@ -231,6 +231,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
     private var isNew = true
     internal var isFullScreen = false
+    private var fullscreenHost: VideoPlayer? = null
+    private var fullscreenFragment: VideoFragment? = null
+    private var fullscreenExitInProgress = false
+    private var pagerInputBeforeFullscreen = false
     private var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
     /**
@@ -402,6 +406,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
      */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        exitFullScreen()
         setIntent(intent)
         val newIntent = intent
         val isNewPlayRequest = intent.getBooleanExtra("isNew", true)
@@ -467,18 +472,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
             supportFragmentManager.executePendingTransactions()
         } else {
-            // 传统布局拆卸：先退 GSY 全屏窗口（backFromFull），再释放播放器
-            runCatching { playerView.backFromFull(this) }
             runCatching { playerView.getCurrentPlayer().release() }
-        }
-        // 旧会话若处于全屏态，复位为常规态（新视频从常态开始播放）
-        if (isFullScreen) {
-            isFullScreen = false
-            toggleSystemBar(true)
-            binding.tabBar.visible()
-            binding.contentFrame.visible()
-            requestedOrientation = orientation
-            binding.root.requestApplyInsets()
         }
         // 3. 重置 VideoPlay 单会话状态（订阅源文章列表上下文由 ReadRss 在 startActivity 前写入）
         // 仅当新意图的 record 命中当前 VideoPlay.rssArticles 列表时才保留文章场景上下文；
@@ -567,6 +561,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                             url = obj.optString("url"),
                             duration = 0L,
                             cover = "",
+                            flag = obj.optString("flag"),
                         )
                     }
                     if (episodes.isNotEmpty()) {
@@ -641,7 +636,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                             val playLines = detail.playLines
                             if (playLines.isNotEmpty()) {
                                 val firstLine = playLines.first()
-                                val result = source.play(firstLine.url)
+                                val result = source.play(firstLine.url, firstLine.flag)
                                 val resolvedUrl = result.url.ifBlank { firstLine.url }
                                 VideoPlay.videoUrl = resolvedUrl
                                 VideoPlay.singleUrl = true
@@ -653,6 +648,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                                         url = line.url,
                                         duration = 0L,
                                         cover = "",
+                                        flag = line.flag,
                                     )
                                 }
                                 VideoPlay.rssEpisodes = episodes
@@ -1196,6 +1192,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         val normalized = if (targetMode == 1) 1 else 0
         val currentMode = if (useViewPagerMode) 0 else 1
         if (normalized == currentMode) return false
+        exitFullScreen()
         if (persistPreference) {
             VideoPlay.layoutMode = normalized
             // video-merged-detail-play：用户主动切换，清除会话级覆盖并持久化偏好
@@ -1225,13 +1222,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             } else {
                 runCatching { playerView.getCurrentPlayer().release() }
             }
-            if (isFullScreen) {
-                isFullScreen = false
-                requestedOrientation = orientation
-            }
             binding.tabBar.visible()
             binding.contentFrame.visible()
-            runCatching { playerView.backFromFull(this) }
             // 退出全屏后恢复根布局系统栏留白
             binding.root.requestApplyInsets()
             // 保存精确位置到 PlayHistoryStore（绕过互斥标记的强制保存）
@@ -1599,16 +1591,19 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 val source = VideoSourceRegistry.createSource(info) ?: return@launch
                 val detail = source.detail(item.id)
                 val firstLine = detail.playLines.firstOrNull() ?: return@launch
-                val result = source.play(firstLine.url)
+                val result = source.play(firstLine.url, firstLine.flag)
                 val resolvedUrl = result.url.ifBlank { firstLine.url }
                 if (resolvedUrl.isNotEmpty()) {
                     PngStripDataSourceFactory.PngStripDataSource.enabled =
                         (source.sourceType == io.legado.app.data.video.SourceType.JAR)
                     val episodesJson = org.json.JSONArray().apply {
-                        put(org.json.JSONObject().apply {
-                            put("title", item.title)
-                            put("url", resolvedUrl)
-                        })
+                        detail.playLines.forEach { line ->
+                            put(org.json.JSONObject().apply {
+                                put("title", line.name)
+                                put("url", line.url)
+                                put("flag", line.flag)
+                            })
+                        }
                     }.toString()
                     startActivity(
                         android.content.Intent(this@VideoPlayerActivity, VideoPlayerActivity::class.java)
@@ -2295,62 +2290,71 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     internal fun toggleFullScreen() {
-        updateTabDanmakuState()
-        isFullScreen = !isFullScreen
-        toggleSystemBar(!isFullScreen)
-        // 切换全屏后刷新根布局系统栏留白：全屏清除，非全屏恢复状态栏/导航栏留白
-        binding.root.requestApplyInsets()
-        updateOverlayButtonBorder(isFullScreen)
         if (isFullScreen) {
-            orientation = requestedOrientation
-            if (useViewPagerMode) {
-                // R3 阶段4：ViewPager2 模式直接旋转 Activity，不使用 GSY startWindowFullscreen
-                // 用户需求：根据视频方向选择全屏方向（竖屏视频→竖屏全屏，横屏视频→横屏全屏）
-                requestedOrientation = if (VideoPlay.isPortraitVideo) {
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                }
-                // video-player-redesign：ViewPager 全屏隐藏 Tab 栏与内容区（已随 legacyContainer 隐藏，显式调用保证一致）
-                binding.tabBar.gone()
-                binding.contentFrame.gone()
-                currentFragment?.onFullScreenChanged(true)
-            } else {
-                requestedOrientation = if (VideoPlay.isPortraitVideo) {
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //竖屏
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏
-                }
-                // video-player-redesign：传统布局全屏隐藏 Tab 栏与内容区，仅留播放器
-                binding.tabBar.gone()
-                binding.contentFrame.gone()
-                supportActionBar?.hide()
-                playerView.startWindowFullscreen(this, false, false)
-            }
+            exitFullScreen()
+            return
+        }
+        val host = if (useViewPagerMode) currentFragment?.playerView ?: return else playerView
+        updateTabDanmakuState()
+        orientation = requestedOrientation
+        fullscreenHost = host
+        fullscreenFragment = if (useViewPagerMode) currentFragment else null
+        pagerInputBeforeFullscreen = binding.viewPager.isUserInputEnabled
+        binding.viewPager.isUserInputEnabled = false
+        fullscreenFragment?.onFullScreenChanged(true)
+        host.isNeedOrientationUtils = false
+        host.setShowFullAnimation(false)
+        host.setBackFromFullScreenListener { exitFullScreen() }
+        isFullScreen = true
+        if (host.startWindowFullscreen(this, false, false) == null) {
+            onFullscreenRestored(host)
+            return
+        }
+        toggleSystemBar(false)
+        binding.root.requestApplyInsets()
+        updateOverlayButtonBorder(true)
+        binding.tabBar.gone()
+        binding.contentFrame.gone()
+        supportActionBar?.hide()
+        requestedOrientation = if (VideoPlay.isPortraitVideo) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         } else {
-            if (useViewPagerMode) {
-                // R3 阶段4：ViewPager2 模式恢复竖屏
-                requestedOrientation = orientation
-                // video-player-redesign：ViewPager 退出全屏恢复 Tab 栏与内容区
-                binding.tabBar.visible()
-                binding.contentFrame.visible()
-                supportActionBar?.show()
-                currentFragment?.onFullScreenChanged(false)
-            } else {
-                requestedOrientation = orientation
-                // video-player-redesign：退出全屏恢复 Tab 栏与内容区
-                // data/线路/选集均在 content_frame/intro_scroll 内部，随 contentFrame 显示
-                binding.tabBar.visible()
-                binding.contentFrame.visible()
-                supportActionBar?.show()
-                playerView.postDelayed({
-                    playerView.backFromFull(this)
-                }, if (VideoPlay.isPortraitVideo) 300 else 0)
-                upView()
-            }
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
     }
 
+    internal fun currentPlaybackPlayer(): VideoPlayer? {
+        val host = fullscreenHost ?: if (useViewPagerMode) currentFragment?.playerView else playerView
+        return host?.getCurrentPlayer()
+    }
+
+    internal fun exitFullScreen() {
+        val host = fullscreenHost ?: return
+        if (fullscreenExitInProgress) return
+        fullscreenExitInProgress = true
+        // Restore GSY state synchronously before a caller can release the host.
+        host.restoreFromWindowFullscreen()
+        onFullscreenRestored(host)
+    }
+
+    internal fun onFullscreenRestored(host: VideoPlayer) {
+        if (fullscreenHost !== host) return
+        fullscreenHost = null
+        isFullScreen = false
+        fullscreenExitInProgress = false
+        val fragment = fullscreenFragment
+        fullscreenFragment = null
+        binding.viewPager.isUserInputEnabled = pagerInputBeforeFullscreen
+        fragment?.onFullScreenChanged(false)
+        toggleSystemBar(true)
+        updateOverlayButtonBorder(false)
+        binding.tabBar.visible()
+        binding.contentFrame.visible()
+        supportActionBar?.show()
+        requestedOrientation = orientation
+        binding.root.requestApplyInsets()
+        if (!useViewPagerMode) upView()
+    }
 
     @Suppress("DEPRECATION")
     @SuppressLint("SwitchIntDef")
@@ -2364,21 +2368,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-            // R3 阶段4：ViewPager2 模式下不自动触发全屏
-            // 全屏由用户主动点击全屏按钮或双指拉伸触发，避免设备旋转后反复进入/退出全屏
-            if (useViewPagerMode) return
-            when (newConfig.orientation) {
-                Configuration.ORIENTATION_LANDSCAPE -> {
-                    if (!VideoPlay.isPortraitVideo) {
-                        toggleFullScreen()
-                    }
-                }
-                Configuration.ORIENTATION_PORTRAIT -> {
-                    if (VideoPlay.isPortraitVideo) {
-                        toggleFullScreen()
-                    }
-                }
-            }
+            // Fullscreen entry belongs to explicit controls; restored orientation may arrive later.
         }
     }
 
@@ -2406,7 +2396,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             playerView.fullscreenButton?.visibility = View.VISIBLE
         }
         playerView.fullscreenButton?.setOnClickListener { toggleFullScreen() }
-        playerView.setBackFromFullScreenListener { toggleFullScreen() }
+        playerView.setBackFromFullScreenListener { exitFullScreen() }
         playerView.setVideoAllCallBack(object : GSYSampleCallBack() {
             @SuppressLint("SourceLockedOrientationActivity")
             override fun onPrepared(url: String?, vararg objects: Any?) {
@@ -2573,6 +2563,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             DlnaCastManager.stopByUser()
             toastOnUi(getString(R.string.dlna_stopped_local_paused))
         }
+        exitFullScreen()
         val activePlayer = if (useViewPagerMode) {
             currentFragment?.playerView?.getCurrentPlayer() ?: return
         } else {
@@ -3028,6 +3019,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     override fun onDestroy() {
+        exitFullScreen()
         // PngStripDataSourceFactory 门控复位：避免 jar 会话残留后影响下一情形播放
         PngStripDataSourceFactory.PngStripDataSource.enabled = false
         // app-stability-round2 P2-2: 先取消抓取协程（含嗅探 WebView），再释放播放器资源
