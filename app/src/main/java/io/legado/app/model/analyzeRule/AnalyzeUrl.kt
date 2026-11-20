@@ -38,7 +38,7 @@ import io.legado.app.help.http.newCallStrResponse
 import io.legado.app.help.http.postForm
 import io.legado.app.help.http.postJson
 import io.legado.app.help.http.postMultipart
-import io.legado.app.help.source.getShareScope
+import io.legado.app.help.source.evalJsLibInto
 import io.legado.app.model.Debug
 import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.GSON
@@ -389,14 +389,8 @@ class AnalyzeUrl(
             bindings["result"] = result
             bindings["infoMap"] = infoMap
         }
-        val sharedScope = source?.getShareScope(coroutineContext)
-        val scope = if (sharedScope == null) {
-            RhinoScriptEngine.getRuntimeScope(bindings)
-        } else {
-            bindings.apply {
-                chainTo(sharedScope)
-            }
-        }
+        val scope = RhinoScriptEngine.getRuntimeScope(bindings)
+        source?.evalJsLibInto(scope, coroutineContext)
         return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)
     }
 

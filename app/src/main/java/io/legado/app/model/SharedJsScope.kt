@@ -124,6 +124,46 @@ object SharedJsScope {
         return scope
     }
 
+    /**
+     * 仅做「下载 + 拼装」，把 jsLib（普通 JS 文本或 JSON 对象，含远程 URL 片段）
+     * 解析成一段可整体 eval 的 JS 字符串，不构建共享作用域、不进缓存。
+     * 供需要在「每次求值的绑定作用域」里现域执行 jsLib 的场景使用——
+     * 这样 jsLib 内部函数被调用时 `this` 即当前绑定作用域（含 java/source/book/chapter 等），
+     * 与 mozilla Rhino 的“调用作用域作为 this”语义一致。
+     */
+    fun getJsLibString(jsLib: String?): String? {
+        if (jsLib.isNullOrBlank()) {
+            return null
+        }
+        if (!jsLib.isJsonObject()) {
+            return jsLib
+        }
+        val jsMap: Map<String, String> = GSON.fromJson(
+            jsLib,
+            TypeToken.getParameterized(
+                Map::class.java,
+                String::class.java,
+                String::class.java
+            ).type
+        )
+        return jsMap.values
+            .mapNotNull { value ->
+                if (value.isAbsUrl()) {
+                    val fileName = MD5Utils.md5Encode(value)
+                    aCache.getAsString(fileName) ?: runBlocking {
+                        okHttpClient.newCallStrResponse {
+                            url(value)
+                        }.body
+                    }?.also { aCache.put(fileName, it) }
+                } else {
+                    value.takeIf { it.isNotBlank() }
+                }
+            }
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\n")
+            ?.takeIf { it.isNotBlank() }
+    }
+
     fun remove(jsLib: String?) {
         if (jsLib.isNullOrBlank()) {
             return

@@ -20,7 +20,7 @@ import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.CookieStore
-import io.legado.app.help.source.getShareScope
+import io.legado.app.help.source.evalJsLibInto
 import io.legado.app.model.Debug
 import io.legado.app.model.debug.toDebugString
 import io.legado.app.model.webBook.WebBook
@@ -1063,18 +1063,8 @@ class AnalyzeRule(
             bindings["rssArticle"] = rssArticle
             bindings["fromBookInfo"] = isFromBookInfo
         }
-        val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef?.get()
-        val scope = if (topScope == null) {
-            RhinoScriptEngine.getRuntimeScope(bindings).apply {
-                if (evalJSCallCount++ > 16) {
-                    topScopeRef = WeakReference(RhinoScriptEngine.newStandardTopLevel())
-                }
-            }
-        } else {
-            bindings.apply {
-                chainTo(topScope)
-            }
-        }
+        val scope = RhinoScriptEngine.getRuntimeScope(bindings)
+        source?.evalJsLibInto(scope, coroutineContext)
         
         val jsResult = try {
             val script = compileScriptCache(jsStr)

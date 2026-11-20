@@ -18,6 +18,7 @@ import io.legado.app.help.http.CookieBridge
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.TaskCookieStore
 import io.legado.app.help.source.clearExploreKindsCache
+import io.legado.app.help.source.evalJsLibInto
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.SharedJsScope
 import io.legado.app.model.SharedJsScope.remove
@@ -450,14 +451,8 @@ interface BaseSource : JsExtensions {
             bindings["cache"] = CacheManager
             bindings.apply(bindingsConfig)
         }
-        val sharedScope = getShareScope(coroutineContext)
-        val scope = if (sharedScope == null) {
-            RhinoScriptEngine.getRuntimeScope(bindings)
-        } else {
-            bindings.apply {
-                chainTo(sharedScope)
-            }
-        }
+        val scope = RhinoScriptEngine.getRuntimeScope(bindings)
+        evalJsLibInto(scope, coroutineContext)
         return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)
     }
 
@@ -487,9 +482,8 @@ interface BaseSource : JsExtensions {
             }
             bindings.apply(bindingsConfig)
         }
-        val scope = bindings.apply {
-            chainTo(SharedJsScope.createIsolatedScope(jsLib, coroutineContext))
-        }
+        val scope = RhinoScriptEngine.getRuntimeScope(bindings)
+        evalJsLibInto(scope, coroutineContext)
         return RhinoScriptEngine.eval(jsStr, scope, coroutineContext)
     }
 }
