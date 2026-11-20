@@ -46,6 +46,7 @@ import org.htmlunit.corejs.javascript.Function
 import org.htmlunit.corejs.javascript.JavaScriptException
 import org.htmlunit.corejs.javascript.NativeJSON
 import org.htmlunit.corejs.javascript.RhinoException
+import org.htmlunit.corejs.javascript.Script
 import org.htmlunit.corejs.javascript.Scriptable
 import org.htmlunit.corejs.javascript.ScriptableObject
 import org.htmlunit.corejs.javascript.TopLevel
@@ -187,6 +188,17 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
         return sb.toString()
     }
 
+    /**
+     * 使用允许 E4X/XML 语法的 CompilerEnvirons 编译脚本。
+     * htmlunit-core-js 的 [org.htmlunit.corejs.javascript.CompilerEnvirons.initFromContext]
+     * 会强制关闭 XML 支持,导致书源 jsLib 中的 E4X 后代访问语法(如 `data..item_null`)
+     * 在编译期直接抛 "XML 解析不可用"。这里在解析前重新开启,与官方 Rhino 行为对齐。
+     */
+    private fun compileAllowingXml(cx: Context, source: String, sourceName: String): Script =
+        cx.compileReader(StringReader(source), sourceName, 1, null) { env ->
+            env.isXmlAvailable = true
+        }
+
     fun eval(js: String, bindingsConfig: ScriptBindings.() -> Unit = {}): Any? {
         val bindings = ScriptBindings()
         Context.enter()
@@ -219,7 +231,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
         val ret: Any?
         try {
             cx.checkRecursive()
-            ret = cx.evaluateString(scope, source, sourceName, 1, null)
+            ret = compileAllowingXml(cx, source, sourceName).exec(cx, scope)
         } catch (re: RhinoException) {
             throw createScriptException(re, source, sourceName)
         } catch (var14: IOException) {
@@ -248,7 +260,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
             cx.recursiveCount++
             try {
                 cx.checkRecursive()
-                val script = cx.compileString(source, sourceName, 1, null)
+                val script = compileAllowingXml(cx, source, sourceName)
                 try {
                     ret = cx.executeScriptWithContinuations(script, scope)
                 } catch (e: ContinuationPending) {
@@ -395,7 +407,7 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
         val cx = Context.enter()
         val ret: RhinoCompiledScript
         try {
-            val scr = cx.compileString(source, sourceName, 1, null)
+            val scr = compileAllowingXml(cx, source, sourceName)
             ret = RhinoCompiledScript(this, scr, source, sourceName)
         } catch (re: RhinoException) {
             throw createScriptException(re, source, sourceName)
