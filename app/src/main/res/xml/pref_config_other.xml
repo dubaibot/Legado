@@ -104,6 +104,12 @@
             android:key="checkSource"
             android:title="@string/check_source_config" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="ajaxErrorReturnEmpty"
+            android:summary="@string/ajax_error_return_empty_summary"
+            android:title="@string/ajax_error_return_empty" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="uploadRule"
             android:summary="@string/direct_link_upload_rule_summary"

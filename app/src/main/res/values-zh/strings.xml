@@ -973,6 +973,8 @@
 
     <!-- check source config string -->
     <string name="check_source_config">校验设置</string>
+    <string name="ajax_error_return_empty">网络请求失败返回空对象</string>
+    <string name="ajax_error_return_empty_summary">开启后 java.ajax 请求失败返回 {} 而非错误堆栈，可避免部分书源因 JSON.parse 抛异常而误报「下载最新版」。默认关闭以保持与 Legado Max 一致</string>
     <string name="check_source_item">校验项目</string>
     <string name="check_source_timeout">单个书源校验超时（秒）</string>
     <string name="timeout">超时</string>

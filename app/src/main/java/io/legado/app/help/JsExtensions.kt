@@ -148,7 +148,7 @@ interface JsExtensions : JsEncodeUtils {
             rhinoContextOrNull?.ensureActive()
             AppLog.put("ajax(${urlStr}) error\n${it.localizedMessage}", it)
         }.getOrElse {
-            it.stackTraceStr
+            if (AppConfig.ajaxErrorReturnEmpty) "{}" else it.stackTraceStr
         }
     }
 

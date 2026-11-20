@@ -1009,6 +1009,8 @@
 
     <!-- check source config string -->
     <string name="check_source_config">Check setting</string>
+    <string name="ajax_error_return_empty">Return empty object on network failure</string>
+    <string name="ajax_error_return_empty_summary">When enabled, java.ajax returns {} instead of an error stack trace on failure, preventing some sources from falsely prompting to download the latest version due to JSON.parse throwing. Disabled by default to match Legado Max.</string>
     <string name="check_source_item">Check item</string>
     <string name="check_source_timeout">Single book source check timeout (seconds)</string>
     <string name="timeout">Timeout</string>
