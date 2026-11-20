@@ -45,6 +45,24 @@ data class DramaCandidate(
     val episodeCount: Int = 1,
     /** 发布时间（毫秒），用于新鲜度；0 表示未知 */
     val publishedAt: Long = 0L,
+    /** 剧简介（description） */
+    val intro: String = "",
+    /** 当前集标题，如"第32集" */
+    val chapterTitle: String = "",
+)
+
+/** 单集信息（选集弹窗 / 下一集 / 续播用）。 */
+data class DramaEpisode(
+    val index: Int,
+    val title: String,
+    val url: String,
+)
+
+/** 某部剧的整季选集列表。 */
+data class DramaSeriesPlaylist(
+    val seriesId: String,
+    val episodes: List<DramaEpisode>,
+    val currentIndex: Int,
 )
 
 /** 解析完成的可播放信息。 */

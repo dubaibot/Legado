@@ -30,6 +30,13 @@ interface ShortDramaInteractionDao {
     @Query("delete from shortDramaInteractions where seriesId = :seriesId")
     fun deleteSeries(seriesId: String)
 
+    @Query(
+        "delete from shortDramaInteractions where seriesId = :seriesId and action = :action " +
+            "and timestamp = (select max(timestamp) from shortDramaInteractions " +
+            "where seriesId = :seriesId and action = :action)"
+    )
+    fun deleteLatestOfSeriesAndAction(seriesId: String, action: String)
+
     @Query("delete from shortDramaInteractions")
     fun clearAll()
 

@@ -70,23 +70,61 @@ object ShortDramaHistoryStore {
         }.getOrDefault(DramaHistorySnapshot.EMPTY)
     }
 
+    /** 该系列是否被点过爱心（加重推荐权重的强正向信号）。 */
+    suspend fun isLiked(seriesId: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching { appDb.shortDramaInteractionDao.since(0L) }
+            .getOrDefault(emptyList())
+            .any { it.seriesId == seriesId && it.action == ShortDramaAction.LIKE }
+    }
+
+    /**
+     * 切换爱心（加重推荐权重）。
+     * liked=true 记一条 LIKE；liked=false 删该系列最新一条 LIKE。
+     */
+    suspend fun toggleLike(
+        seriesId: String,
+        sourceId: String,
+        tags: List<String>,
+        liked: Boolean,
+    ) = withContext(Dispatchers.IO) {
+        runCatching {
+            if (liked) {
+                record(seriesId, sourceId, ShortDramaAction.LIKE, tags)
+            } else {
+                appDb.shortDramaInteractionDao.deleteLatestOfSeriesAndAction(
+                    seriesId, ShortDramaAction.LIKE
+                )
+            }
+        }.onFailure { AppLog.put("ShortDramaHistoryStore.toggleLike failed", it) }
+        Unit
+    }
+
     /** 偏好分 = 0.6 * 平均观看完成率 + 0.4 * 标签出现次数占比。 */
     private fun derivePreferences(rows: List<ShortDramaInteraction>): Map<String, Double> {
         if (rows.isEmpty()) return emptyMap()
         val ratioSum = HashMap<String, Double>()
         val occurrences = HashMap<String, Int>()
         rows.forEach { row ->
+            // 曝光(SHOW)与快速划走(SKIP)不进偏好，否则 ratio=0 会拉低标签得分
+            if (row.action == ShortDramaAction.EXPOSURE || row.action == ShortDramaAction.SKIP) {
+                return@forEach
+            }
             val tags = row.tags.split(',').filter { it.isNotBlank() }
             if (tags.isEmpty()) return@forEach
+            val isLiked = row.action == ShortDramaAction.LIKE
             val ratio = when {
+                isLiked -> 1.0
                 row.action == ShortDramaAction.COMPLETE -> 1.0
                 row.duration > 0 && row.position > 0 ->
                     (row.position.toDouble() / row.duration).coerceIn(0.0, 1.0)
                 else -> 0.0
             }
+            // 爱心是强正向信号：计数与权重都放大，让 occurrences/ratioSum 更偏向被点爱心的标签
+            val w = if (isLiked) 2 else 1
+            val weightedRatio = ratio * w
             tags.forEach { tag ->
-                ratioSum[tag] = (ratioSum[tag] ?: 0.0) + ratio
-                occurrences[tag] = (occurrences[tag] ?: 0) + 1
+                ratioSum[tag] = (ratioSum[tag] ?: 0.0) + weightedRatio
+                occurrences[tag] = (occurrences[tag] ?: 0) + w
             }
         }
         val maxOccurrence = occurrences.values.maxOrNull()?.coerceAtLeast(1) ?: 1

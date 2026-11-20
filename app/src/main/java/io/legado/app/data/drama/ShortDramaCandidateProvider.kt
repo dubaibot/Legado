@@ -138,6 +138,7 @@ object ShortDramaCandidateProvider {
                             title = book.name,
                             author = book.author,
                             cover = book.coverUrl.orEmpty(),
+                            intro = book.intro.orEmpty(),
                             tags = book.kind?.split(',', '，', '/')
                                 ?.map { it.trim() }
                                 ?.filter { it.isNotEmpty() }

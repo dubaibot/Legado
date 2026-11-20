@@ -112,15 +112,20 @@ object ShortDramaPlaybackResolver {
                 author = candidate.author,
                 type = BookType.video,
             )
+        val sid = candidate.seriesId
         return runCatching {
             withTimeoutOrNull(RESOLVE_PAGE_TIMEOUT_MS) {
                 runCatching { WebBook.getBookInfoAwait(source, book, canReName = false) }
-                    .onFailure { AppLog.put("ShortDramaPlaybackResolver bookInfo failed", it) }
+                    .onFailure { AppLog.put("ShortDrama[$sid] bookInfo failed: ${it.message}") }
                 val chapters = runCatching { WebBook.getChapterListAwait(source, book) }
                     .getOrNull()?.getOrNull()
                     .orEmpty()
                     .filterNot { it.isVolume }
-                val chapter = chapters.firstOrNull() ?: return@withTimeoutOrNull null
+                if (chapters.isEmpty()) {
+                    AppLog.put("ShortDrama[$sid] resolveBook chapters empty")
+                    return@withTimeoutOrNull null
+                }
+                val chapter = chapters.first()
                 if (VideoUrlExtractor.isDirectVideoStreamUrl(chapter.url)) {
                     return@withTimeoutOrNull DramaPlayable(
                         url = chapter.url,
@@ -129,9 +134,13 @@ object ShortDramaPlaybackResolver {
                     )
                 }
                 val referer = mapOf("Referer" to chapter.url)
-                val body = runCatching {
+                val bodyResult = runCatching {
                     WebBook.getContentAwait(source, book, chapter, needSave = false)
-                }.getOrNull().orEmpty()
+                }
+                val body = bodyResult.getOrNull().orEmpty()
+                if (body.isBlank()) {
+                    AppLog.put("ShortDrama[$sid] getContent failed: ${bodyResult.exceptionOrNull()?.message}")
+                }
                 val fromContent = if (body.isNotBlank() && body != chapter.url) {
                     VideoUrlExtractor.extractPrecise(body, chapter.url)
                         .firstOrNull { VideoUrlExtractor.isDirectVideoStreamUrl(it) }
@@ -143,17 +152,60 @@ object ShortDramaPlaybackResolver {
                         title = chapter.title.ifBlank { candidate.title },
                     )
                 }
+                AppLog.put("ShortDrama[$sid] extractPrecise no media hit, fallback sniff")
                 val sniffed = VideoUrlExtractor.extractVideoUrlForEpisode(chapter.url, source, book)
-                sniffed?.url?.takeIf { it.isNotBlank() }?.let {
-                    DramaPlayable(
-                        url = it,
-                        headers = sniffed.headers.ifEmpty { referer },
-                        title = chapter.title.ifBlank { candidate.title },
-                    )
+                val mediaUrl = sniffed?.url?.takeIf { it.isNotBlank() }
+                if (mediaUrl == null) {
+                    AppLog.put("ShortDrama[$sid] sniff failed")
+                    return@withTimeoutOrNull null
                 }
+                DramaPlayable(
+                    url = mediaUrl,
+                    headers = sniffed.headers.ifEmpty { referer },
+                    title = chapter.title.ifBlank { candidate.title },
+                )
             }
         }.onFailure {
-            AppLog.put("ShortDramaPlaybackResolver.resolveBook failed", it)
+            AppLog.put("ShortDrama[$sid] resolveBook failed", it)
         }.getOrNull()
     }
+
+    /** 取整部剧的直链章节列表（供选集弹窗/下一集/续播用），仅书源有目录概念。 */
+    suspend fun resolveEpisodes(candidate: DramaCandidate): List<DramaEpisode> =
+        withContext(Dispatchers.IO) {
+            if (candidate.source.kind != DramaSourceKind.BOOK || candidate.pageUrl.isBlank()) {
+                return@withContext emptyList()
+            }
+            val source = appDb.bookSourceDao.getBookSource(candidate.source.key)
+                ?: return@withContext emptyList()
+            val book = appDb.searchBookDao.getSearchBook(candidate.pageUrl)?.toBook()
+                ?: Book(
+                    bookUrl = candidate.pageUrl,
+                    origin = candidate.source.key,
+                    originName = candidate.source.name,
+                    name = candidate.title,
+                    author = candidate.author,
+                    type = BookType.video,
+                )
+            val sid = candidate.seriesId
+            runCatching {
+                withTimeoutOrNull(RESOLVE_PAGE_TIMEOUT_MS) {
+                    runCatching { WebBook.getBookInfoAwait(source, book, canReName = false) }
+                        .onFailure { AppLog.put("ShortDrama[$sid] resolveEpisodes bookInfo failed: ${it.message}") }
+                    val chapters = runCatching { WebBook.getChapterListAwait(source, book) }
+                        .getOrNull()?.getOrNull()
+                        .orEmpty()
+                        .filterNot { it.isVolume }
+                    if (chapters.isEmpty()) {
+                        AppLog.put("ShortDrama[$sid] resolveEpisodes chapters empty")
+                        return@withTimeoutOrNull emptyList()
+                    }
+                    chapters.mapIndexed { i, c ->
+                        DramaEpisode(i, c.title.ifBlank { "第${i + 1}集" }, c.url)
+                    }.filter { VideoUrlExtractor.isDirectVideoStreamUrl(it.url) }
+                }
+            }.onFailure {
+                AppLog.put("ShortDrama[$sid] resolveEpisodes failed", it)
+            }.getOrDefault(emptyList()).orEmpty()
+        }
 }

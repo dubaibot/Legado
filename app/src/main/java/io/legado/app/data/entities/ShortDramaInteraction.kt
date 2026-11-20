@@ -19,7 +19,7 @@ data class ShortDramaInteraction(
     var seriesId: String = "",
     var sourceId: String = "",
     var episodeId: String = "",
-    /** exposure | start | progress | complete | skip */
+    /** exposure | start | progress | complete | skip | like */
     var action: String = "",
     /** 逗号分隔的标签串 */
     var tags: String = "",
@@ -34,4 +34,6 @@ object ShortDramaAction {
     const val PROGRESS = "progress"
     const val COMPLETE = "complete"
     const val SKIP = "skip"
+    /** 加重推荐权重：强正向偏好信号 */
+    const val LIKE = "like"
 }

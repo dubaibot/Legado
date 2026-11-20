@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.legado.app.data.drama.DramaCandidate
+import io.legado.app.data.drama.DramaEpisode
 import io.legado.app.data.drama.DramaPlayable
+import io.legado.app.data.drama.DramaSeriesPlaylist
 import io.legado.app.data.drama.DramaSourceRef
 import io.legado.app.data.drama.ShortDramaCandidateProvider
 import io.legado.app.data.drama.ShortDramaHistoryStore
@@ -38,6 +40,11 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         val error: String? = null,
         val ended: Boolean = false,
         val supplement: Boolean = false,
+        val playlist: DramaSeriesPlaylist? = null,
+        val speed: Float = 1f,
+        val cleanScreen: Boolean = false,
+        val autoSlide: Boolean = true,
+        val autoNext: Boolean = true,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -50,6 +57,17 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
 
     /** 页内播放解析缓存：key = seriesId；解析失败不缓存，滑动回来可重试 */
     private val playableCache = HashMap<String, DramaPlayable>()
+
+    init {
+        _state.update {
+            it.copy(
+                speed = ShortDramaPrefs.getSpeed(),
+                cleanScreen = ShortDramaPrefs.getCleanScreen(),
+                autoSlide = ShortDramaPrefs.getAutoSlide(),
+                autoNext = ShortDramaPrefs.getAutoNext(),
+            )
+        }
+    }
 
     fun ensureLoaded() {
         if (_state.value.loading) return
@@ -151,10 +169,9 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * 解析页内播放地址。
+     * 按源类别解析页内可播地址（视频源 detail/play；订阅源抓页+嗅探；书源目录首章）。
      *
-     * 仅 PY / TVBOX 源支持页内直链播放；解析结果按 seriesId 缓存，
-     * 失败（超时、无线路、空地址）返回 null，由页面回退到外部播放器。
+     * 解析结果按 seriesId 缓存，失败（超时、无线路、空地址）返回 null，由页面兜底。
      */
     suspend fun resolvePlayable(candidate: DramaCandidate): DramaPlayable? {
         playableCache[candidate.seriesId]?.let { return it }
@@ -190,6 +207,121 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 action = ShortDramaAction.SKIP,
                 tags = candidate.tags,
             )
+        }
+    }
+
+    /** 解析直链章节列表（选集弹窗直接消费，返回空表示无可用选集）。 */
+    suspend fun resolveEpisodes(candidate: DramaCandidate): List<DramaEpisode> =
+        ShortDramaPlaybackResolver.resolveEpisodes(candidate)
+
+    /** 加载整部剧的直链章节列表，供选集弹窗/下一集/续播用。失败保持 null（单集兜底）。 */
+    fun loadPlaylist(candidate: DramaCandidate) {
+        viewModelScope.launch {
+            val episodes = ShortDramaPlaybackResolver.resolveEpisodes(candidate)
+            if (episodes.isEmpty()) return@launch
+            _state.update { it.copy(playlist = DramaSeriesPlaylist(candidate.seriesId, episodes, 0)) }
+        }
+    }
+
+    /** 选中某集：更新当前集、回填集标题、记 START（带 episodeId）。 */
+    fun selectEpisode(candidate: DramaCandidate, index: Int) {
+        val playlist = _state.value.playlist?.takeIf { it.seriesId == candidate.seriesId } ?: return
+        val episode = playlist.episodes.getOrNull(index) ?: return
+        _state.update {
+            it.copy(
+                playlist = it.playlist?.copy(currentIndex = index),
+                feed = it.feed.map { item ->
+                    if (item.seriesId == candidate.seriesId) item.copy(chapterTitle = episode.title) else item
+                },
+            )
+        }
+        viewModelScope.launch {
+            ShortDramaHistoryStore.record(
+                seriesId = candidate.seriesId,
+                sourceId = candidate.source.id,
+                action = ShortDramaAction.START,
+                tags = candidate.tags,
+                episodeId = episode.url,
+            )
+        }
+    }
+
+    /** 切到下一集，成功返回 true，末集返回 false。 */
+    fun nextEpisode(candidate: DramaCandidate): Boolean {
+        val playlist = _state.value.playlist?.takeIf { it.seriesId == candidate.seriesId }
+            ?: return false
+        val next = playlist.currentIndex + 1
+        if (next >= playlist.episodes.size) return false
+        selectEpisode(candidate, next)
+        return true
+    }
+
+    fun setSpeed(value: Float) {
+        ShortDramaPrefs.setSpeed(value)
+        _state.update { it.copy(speed = value) }
+    }
+
+    fun setCleanScreen(value: Boolean) {
+        ShortDramaPrefs.setCleanScreen(value)
+        _state.update { it.copy(cleanScreen = value) }
+    }
+
+    fun setAutoSlide(value: Boolean) {
+        ShortDramaPrefs.setAutoSlide(value)
+        _state.update { it.copy(autoSlide = value) }
+    }
+
+    fun setAutoNext(value: Boolean) {
+        ShortDramaPrefs.setAutoNext(value)
+        _state.update { it.copy(autoNext = value) }
+    }
+
+    /** 播放进度落库：>60% 或 >30s 记 PROGRESS，>95% 记 COMPLETE。 */
+    fun recordProgress(
+        candidate: DramaCandidate,
+        episodeId: String,
+        position: Long,
+        duration: Long,
+    ) {
+        if (duration <= 0) return
+        viewModelScope.launch {
+            val ratio = position.toDouble() / duration
+            val action = when {
+                ratio >= 0.95 -> ShortDramaAction.COMPLETE
+                ratio >= 0.60 || position >= 30_000L -> ShortDramaAction.PROGRESS
+                else -> return@launch
+            }
+            ShortDramaHistoryStore.record(
+                seriesId = candidate.seriesId,
+                sourceId = candidate.source.id,
+                action = action,
+                tags = candidate.tags,
+                episodeId = episodeId,
+                position = position,
+                duration = duration,
+            )
+        }
+    }
+
+    fun toggleLike(candidate: DramaCandidate, liked: Boolean) {
+        viewModelScope.launch {
+            ShortDramaHistoryStore.toggleLike(
+                seriesId = candidate.seriesId,
+                sourceId = candidate.source.id,
+                tags = candidate.tags,
+                liked = liked,
+            )
+        }
+    }
+
+    suspend fun isLiked(seriesId: String): Boolean = ShortDramaHistoryStore.isLiked(seriesId)
+
+    suspend fun isInBookshelf(candidate: DramaCandidate): Boolean =
+        ShortDramaBookshelf.isInBookshelf(candidate)
+
+    fun toggleBookshelf(candidate: DramaCandidate, add: Boolean) {
+        viewModelScope.launch {
+            if (add) ShortDramaBookshelf.add(candidate) else ShortDramaBookshelf.remove(candidate)
         }
     }
 
