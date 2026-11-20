@@ -1,10 +1,13 @@
 package io.legado.app.ui.main.discovery
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.background
@@ -33,6 +36,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
@@ -70,6 +74,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -129,6 +134,7 @@ fun DiscoverScreen(
     var showSourceMenu by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
     var showNetworkImportDialog by remember { mutableStateOf(false) }
+    var showDiagnosisDialog by remember { mutableStateOf(false) }
     var networkImportUrl by remember { mutableStateOf("") }
     val sources by viewModel.sources.collectAsStateWithLifecycle()
     val currentSource by viewModel.currentSource.collectAsStateWithLifecycle()
@@ -161,6 +167,9 @@ fun DiscoverScreen(
         scrollPositionCache.clear()
     }
 
+    // 诊断只针对影视列表源（py / TVBox 配置源），WebView 页面与书源/订阅源不在范围内
+    val diagnosisAvailable = selected?.type == DiscoverSourceType.HOME &&
+        homeSources.any { it.id == selected.id && it.type != "web" }
     val inlineStartHtmlSelected = selected?.type == DiscoverSourceType.RSS && !selected.startHtml.isNullOrBlank()
     Column(Modifier.fillMaxSize().background(
         if (inlineStartHtmlSelected) Color.Transparent else MaterialTheme.colorScheme.background,
@@ -234,6 +243,13 @@ fun DiscoverScreen(
                             showSettingsMenu = false
                             pyViewModel.showTvboxDialog = true
                         })
+                        if (diagnosisAvailable) {
+                            DropdownMenuItem(text = { Text("诊断当前源") }, onClick = {
+                                showSettingsMenu = false
+                                pyViewModel.diagnoseCurrentSource()
+                                showDiagnosisDialog = true
+                            })
+                        }
                         DropdownMenuItem(text = { Text("弹幕 API 配置") }, onClick = {
                             showSettingsMenu = false
                             pyViewModel.showDanmakuApiDialog = true
@@ -356,6 +372,35 @@ fun DiscoverScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pyViewModel.showDanmakuApiDialog = false }) { Text("取消") }
+            },
+        )
+    }
+    if (showDiagnosisDialog) {
+        val context = LocalContext.current
+        AlertDialog(
+            onDismissRequest = { showDiagnosisDialog = false },
+            title = { Text(if (pyViewModel.diagnosisRunning) "诊断中…" else "源诊断报告") },
+            text = {
+                if (pyViewModel.diagnosisRunning) {
+                    Text("正在探测 home → detail → play → search，请稍候…")
+                } else {
+                    Text(
+                        text = pyViewModel.diagnosisReport.ifBlank { "暂无诊断结果" },
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !pyViewModel.diagnosisRunning && pyViewModel.diagnosisReport.isNotBlank(), onClick = {
+                    context.getSystemService(ClipboardManager::class.java)
+                        ?.setPrimaryClip(ClipData.newPlainText("源诊断报告", pyViewModel.diagnosisReport))
+                    Toast.makeText(context, "报告已复制", Toast.LENGTH_SHORT).show()
+                }) { Text("复制") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiagnosisDialog = false }) { Text("关闭") }
             },
         )
     }

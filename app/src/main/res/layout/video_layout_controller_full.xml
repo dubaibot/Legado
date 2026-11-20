@@ -227,6 +227,8 @@
             <ImageView
                 android:id="@+id/player_float"
                 style="@style/VideoControlNormalIcon"
+                android:padding="13dp"
+                android:scaleType="centerInside"
                 android:src="@drawable/ic_float_window"
                 android:tint="@android:color/white"
                 android:contentDescription="@string/float_window" />

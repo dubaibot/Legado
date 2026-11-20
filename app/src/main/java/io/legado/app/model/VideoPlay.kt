@@ -2230,7 +2230,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             videoTitle = chapter.title
             this.chapter = chapter
             rssEpisodeIndex = chapterInVolumeIndex
-            currentPlayHeaders = emptyMap()
+            currentPlayHeaders = linkedMapOf()
             originalPlayUrl = chapter.url
             danmakuStr = null
             danmakuFile = null
@@ -2238,7 +2238,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             hasPlayedSuccessfully = false
             val localPlayer = resolvePlaybackPlayer(player)
             localPlayer.seekOnStart = book.durChapterPos.coerceAtLeast(0).toLong()
-            localPlayer.mapHeadData = emptyMap()
+            localPlayer.mapHeadData = linkedMapOf()
             // SAF URIs go straight to the player; no URL rules, HTTP cache or sniffing.
             localPlayer.setUp(chapter.url, false, null, chapter.title)
             if (autoPlay) localPlayer.startPlayLogic()
@@ -2616,8 +2616,16 @@ object VideoPlay : CoroutineScope by MainScope(){
                     episode.url
                 }
             } else {
+                // TVBox 展开的 py 站点：sourceId ≠ Python 模块 ID，extend 来自 Config 的 ext
+                val pyInfo = runCatching { VideoSourceRegistry.getSourceInfo(pluginId) }.getOrNull()
+                val pyModule = pyInfo?.pluginId?.ifBlank { pluginId } ?: pluginId
+                val pyExtend = pyInfo?.extend.orEmpty()
                 val resolved = suspendCancellableCoroutine<String?> { cont ->
-                    HomeBridge.play(pluginId, episode.url, flag = episode.flag) { cont.resume(it) }
+                    HomeBridge.play(
+                        pyModule, episode.url, flag = episode.flag,
+                        onResult = { cont.resume(it) },
+                        extend = pyExtend,
+                    )
                 }
                 val playResult = io.legado.app.data.video.PyResultParser.parsePlay(
                     resolved.orEmpty(), episode.url

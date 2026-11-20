@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    音量手势提示（覆盖 GSY 默认布局）。
+
+    GSY 通过 volume_progressbar 这个 ProgressBar 更新音量（max=100），
+    只认这个 id。窗口尺寸由 GSY 设置为播放器大小并定位，这里保持根布局铺满，
+    内容改成居中横向胶囊，和亮度提示保持一致。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/content"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_video_widget"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginEnd="10dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_volume_up"
+            android:tint="@android:color/white" />
+
+        <ProgressBar
+            android:id="@+id/volume_progressbar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="140dp"
+            android:layout_height="wrap_content"
+            android:indeterminate="false"
+            android:max="100"
+            android:progressBackgroundTint="#66FFFFFF"
+            android:progressTint="@android:color/white" />
+    </LinearLayout>
+</LinearLayout>

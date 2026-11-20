@@ -1195,6 +1195,9 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
     override fun setUp(url: String?, cacheWithPlay: Boolean, cachePath: File?, title: String?): Boolean {
         initDanmaku()
+        // GSY 内部会向 mapHeadData 写入/清理，传入 emptyMap() 等不可变实现会抛
+        // UnsupportedOperationException（EmptyMap.clear）；统一转成可变副本再交给播放器。
+        mapHeadData = mapHeadData?.toMutableMap() ?: mutableMapOf()
         return super.setUp(url, cacheWithPlay, cachePath, title)
     }
 

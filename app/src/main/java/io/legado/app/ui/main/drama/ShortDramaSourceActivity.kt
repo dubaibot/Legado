@@ -2,6 +2,7 @@ package io.legado.app.ui.main.drama
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,11 +13,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,6 +56,8 @@ class ShortDramaSourceActivity : BaseComposeActivity() {
         val groups = remember { mutableStateMapOf<DramaSourceKind, List<DramaSourceRef>>() }
         val enabled = remember { mutableStateMapOf<String, Boolean>() }
         var loading by remember { mutableStateOf(true) }
+        var query by remember { mutableStateOf("") }
+        var selectedKind by remember { mutableStateOf<DramaSourceKind?>(null) }
 
         LaunchedEffect(Unit) {
             val available = ShortDramaSourceStore.availableAll()
@@ -62,11 +69,15 @@ class ShortDramaSourceActivity : BaseComposeActivity() {
             loading = false
         }
 
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 8.dp, top = 12.dp),
+                    .padding(start = 20.dp, end = 8.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -103,14 +114,64 @@ class ShortDramaSourceActivity : BaseComposeActivity() {
                 return@Column
             }
 
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                placeholder = { Text("搜索源名称") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = selectedKind == null,
+                    onClick = { selectedKind = null },
+                    label = { Text("全部") },
+                )
+                DramaSourceKind.entries.forEach { kind ->
+                    FilterChip(
+                        selected = selectedKind == kind,
+                        onClick = { selectedKind = kind },
+                        label = { Text(kind.label) },
+                    )
+                }
+            }
+
+            val keyword = query.trim()
+            val visibleGroups = DramaSourceKind.entries
+                .filter { selectedKind == null || it == selectedKind }
+                .associateWith { kind ->
+                    groups[kind].orEmpty().filter {
+                        keyword.isEmpty() || it.name.contains(keyword, ignoreCase = true)
+                    }
+                }
+
+            if (visibleGroups.values.all { it.isEmpty() }) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "没有匹配的源，换个关键词或筛选条件试试。",
+                        color = pageSecondaryTextColor(),
+                        modifier = Modifier.padding(32.dp),
+                    )
+                }
+                return@Column
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     start = 16.dp, end = 16.dp, bottom = 32.dp
                 ),
             ) {
-                DramaSourceKind.entries.forEach { kind ->
-                    val refs = groups[kind].orEmpty()
+                visibleGroups.forEach { (kind, refs) ->
                     if (refs.isEmpty()) return@forEach
                     item(key = "header-${kind.name}") {
                         Text(

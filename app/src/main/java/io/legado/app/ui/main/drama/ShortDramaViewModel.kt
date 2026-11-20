@@ -4,9 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.legado.app.data.drama.DramaCandidate
+import io.legado.app.data.drama.DramaPlayable
+import io.legado.app.data.drama.DramaSourceKind
 import io.legado.app.data.drama.DramaSourceRef
 import io.legado.app.data.drama.ShortDramaCandidateProvider
 import io.legado.app.data.drama.ShortDramaHistoryStore
+import io.legado.app.data.drama.ShortDramaPlaybackResolver
 import io.legado.app.data.drama.ShortDramaRecommendEngine
 import io.legado.app.data.drama.ShortDramaSourceStore
 import io.legado.app.data.entities.ShortDramaAction
@@ -45,6 +48,9 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     private val sessionSkips = HashSet<String>()
     private var candidatePool: List<DramaCandidate> = emptyList()
     private var loadJob: Job? = null
+
+    /** 页内播放解析缓存：key = seriesId；解析失败不缓存，滑动回来可重试 */
+    private val playableCache = HashMap<String, DramaPlayable>()
 
     fun ensureLoaded() {
         if (_state.value.loading) return
@@ -143,6 +149,23 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
             action = ShortDramaAction.EXPOSURE,
             tags = candidate.tags,
         )
+    }
+
+    /**
+     * 解析页内播放地址。
+     *
+     * 仅 PY / TVBOX 源支持页内直链播放；解析结果按 seriesId 缓存，
+     * 失败（超时、无线路、空地址）返回 null，由页面回退到外部播放器。
+     */
+    suspend fun resolvePlayable(candidate: DramaCandidate): DramaPlayable? {
+        if (candidate.source.kind != DramaSourceKind.PY &&
+            candidate.source.kind != DramaSourceKind.TVBOX
+        ) return null
+        playableCache[candidate.seriesId]?.let { return it }
+        val playable = ShortDramaPlaybackResolver.resolve(candidate) ?: return null
+        if (playable.url.isBlank()) return null
+        playableCache[candidate.seriesId] = playable
+        return playable
     }
 
     fun onPlay(candidate: DramaCandidate) {

@@ -141,6 +141,9 @@ class MainActivity :
     private var onUpBooksBadgeView: BadgeView? = null
     private var bottomNavigationConfigSignature: String? = null
 
+    /** 页面级底栏背景色覆盖，null 表示沿用导航栏配置；短剧页可见期间使用半透明黑 */
+    private var bottomBarColorOverride: Int? = null
+
     /** 首屏分步放开常驻范围是否已开始，见 [ensureFullOffscreenPageLimit] */
     private var offscreenLimitStaged = false
 
@@ -1074,8 +1077,22 @@ class MainActivity :
         }
     }
 
+    /**
+     * 设置底栏背景色覆盖（页面级临时覆盖）。
+     *
+     * 传入 null 恢复导航栏配置；颜色变化时清空签名缓存并强制重建底栏，
+     * 让图标/文字色、玻璃采样与选中指示器按新底色重新计算。
+     */
+    fun setBottomBarColorOverride(color: Int?) {
+        if (bottomBarColorOverride == color) return
+        bottomBarColorOverride = color
+        bottomNavigationConfigSignature = null
+        refreshBottomNavigationConfig(force = true)
+    }
+
     /** 解析底栏背景色：内置配置用主题色+配置透明度，自定义配置用配置中的颜色+透明度 */
     private fun resolveNavigationBarBackground(config: NavigationBarConfig): Int {
+        bottomBarColorOverride?.let { return it }
         val baseColor = if (config.isBuiltin) {
             bottomBackground
         } else if (AppConfig.isNightTheme) {

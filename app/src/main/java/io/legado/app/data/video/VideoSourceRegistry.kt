@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.JsonObject
 import io.legado.app.help.python.HomeBridge
 import io.legado.app.help.python.PyLoader
+import io.legado.app.utils.LogUtils
 import io.legado.app.ui.main.homepage.HomeSourceStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -39,6 +40,10 @@ object VideoSourceRegistry {
         val type: SourceType,
         val parentId: String = "",  // 父源 ID（Config/TXT 展开时使用）
         val siteKey: String = if (parentId.isEmpty()) "" else id.removePrefix("$parentId:"),
+        /** PY 源实际使用的 Python 插件模块 ID（TVBox 展开站点与插件 ID 不同） */
+        val pluginId: String = "",
+        /** TVBox 站点扩展参数（Spider.init 的 extend） */
+        val extend: String = "",
     )
 
     /** 已创建的源实例缓存（避免重复读盘+创建） */
@@ -68,7 +73,7 @@ object VideoSourceRegistry {
     fun listSources(includeHidden: Boolean = false): List<SourceInfo> {
         val sources = mutableListOf<SourceInfo>()
 
-        // py 插件源
+        // py 插件源（用户导入的 .py 插件）
         try {
             PyLoader.listInstalled().forEach { installed ->
                 sources.add(
@@ -76,6 +81,8 @@ object VideoSourceRegistry {
                         id = installed.meta.id,
                         name = installed.meta.name.ifBlank { installed.meta.id },
                         type = SourceType.PY,
+                        pluginId = installed.meta.id,
+                        extend = installed.meta.extend,
                     )
                 )
             }
@@ -95,7 +102,6 @@ object VideoSourceRegistry {
                         FongMiConfigParser.parse(content).forEach { site ->
                             when (site.siteKind) {
                                 FongMiConfigParser.SiteKind.JAR_SPIDER -> {
-                                    if (site.jar.isBlank()) return@forEach
                                     sources.add(
                                         SourceInfo(
                                             id = "${meta.id}:${site.key}",
@@ -115,7 +121,24 @@ object VideoSourceRegistry {
                                         )
                                     )
                                 }
-                                else -> return@forEach
+                                FongMiConfigParser.SiteKind.PY_SPIDER -> {
+                                    sources.add(
+                                        SourceInfo(
+                                            id = "${meta.id}:${site.key}",
+                                            name = site.name,
+                                            type = SourceType.PY,
+                                            parentId = meta.id,
+                                            pluginId = resolvePyModuleId(site.key, site.name, site.api),
+                                            extend = site.ext,
+                                        )
+                                    )
+                                }
+                                else -> {
+                                    LogUtils.d(
+                                        "VideoSourceRegistry",
+                                        "skip unsupported site (${site.siteKind}): ${site.name} api=${site.api}"
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -126,10 +149,9 @@ object VideoSourceRegistry {
                         } catch (e: Exception) { null }
                         val apiVal = root?.get("api")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
                         val siteKind = FongMiConfigParser.SiteKind.detect(apiVal)
+                        val ext = root?.get("ext")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
                         when (siteKind) {
                             FongMiConfigParser.SiteKind.JAR_SPIDER -> {
-                                val jar = root?.get("jar")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
-                                if (jar.isBlank()) return@forEach
                                 sources.add(
                                     SourceInfo(
                                         id = meta.id,
@@ -147,7 +169,23 @@ object VideoSourceRegistry {
                                     )
                                 )
                             }
-                            else -> return@forEach
+                            FongMiConfigParser.SiteKind.PY_SPIDER -> {
+                                sources.add(
+                                    SourceInfo(
+                                        id = meta.id,
+                                        name = meta.name,
+                                        type = SourceType.PY,
+                                        pluginId = resolvePyModuleId(meta.id, meta.name, apiVal),
+                                        extend = ext,
+                                    )
+                                )
+                            }
+                            else -> {
+                                LogUtils.d(
+                                    "VideoSourceRegistry",
+                                    "skip unsupported site (${siteKind}): ${meta.name} api=$apiVal"
+                                )
+                            }
                         }
                     }
                 }
@@ -195,13 +233,40 @@ object VideoSourceRegistry {
     /** 按类型获取源信息 */
     fun getSourceInfo(id: String): SourceInfo? = listSources().find { it.id == id }
 
+    /** 源对应的 Python 插件模块 ID（TVBox 展开的 py 站点需映射到已安装插件） */
+    fun pyModuleId(sourceId: String): String =
+        getSourceInfo(sourceId)?.pluginId?.ifBlank { sourceId } ?: sourceId
+
+    /** 源对应的 Spider 扩展参数（来自 Config 的 ext 或插件 meta.json 的 extend） */
+    fun pyExtend(sourceId: String): String = getSourceInfo(sourceId)?.extend.orEmpty()
+
+    /** 匹配已安装插件：站点 key / 名称 / py 文件名，均未命中时退回站点 key */
+    private fun resolvePyModuleId(siteKey: String, siteName: String, api: String): String {
+        val installed = try {
+            PyLoader.listInstalled().map { it.meta }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val apiStem = api.substringBefore('?').substringAfterLast('/').substringBeforeLast('.').trim()
+        return installed.firstOrNull { it.id == siteKey }?.id
+            ?: installed.firstOrNull { it.name.isNotBlank() && it.name == siteName }?.id
+            ?: installed.firstOrNull { apiStem.isNotEmpty() && it.id == apiStem }?.id
+            ?: installed.firstOrNull { apiStem.isNotEmpty() && it.name == apiStem }?.id
+            ?: siteKey
+    }
+
     /** 创建 VideoSource 实例（py/json/txt/html），已缓存则直接返回 */
     fun createSource(info: SourceInfo): VideoSource? {
         // 调用方可能持有删除前的摘要，先核对当前站点再读取实例缓存。
         if (info.parentId.isNotEmpty() && getSourceInfo(info.id) == null) return null
         instanceCache[info.id]?.let { return it }
         val source = when (info.type) {
-            SourceType.PY -> PyVideoSource(info.id, info.name)
+            SourceType.PY -> PyVideoSource(
+                sourceId = info.id,
+                sourceName = info.name,
+                moduleId = info.pluginId.ifBlank { info.id },
+                extend = info.extend,
+            )
             SourceType.JSON -> {
                 // FongMi Config 展开的源：读取原始 Config 后选择指定站点
                 if (info.parentId.isNotEmpty()) {
@@ -306,6 +371,10 @@ object VideoSourceRegistry {
 class PyVideoSource(
     override val sourceId: String,
     override val sourceName: String,
+    /** Python 插件模块 ID；TVBox 展开的 py 站点与 sourceId 不同 */
+    private val moduleId: String = "",
+    /** 站点扩展参数，传给 Spider.init */
+    private val extend: String = "",
 ) : VideoSource {
 
     override val sourceType = SourceType.PY
@@ -320,18 +389,27 @@ class PyVideoSource(
     private val categoryCache = mutableMapOf<String, CacheEntry<CategoryResult>>()
     private val searchCache = mutableMapOf<String, CacheEntry<List<VideoItem>>>()
 
+    private val pyModule get() = moduleId.ifBlank { sourceId }
+
     private suspend fun call(func: String, vararg args: String): String? =
         withContext(Dispatchers.IO) {
             suspendCancellableCoroutine { cont ->
                 val onResult: (String?) -> Unit = { result ->
                     if (cont.isActive) cont.resume(result)
                 }
+                val module = pyModule
                 when (func) {
-                    "home" -> HomeBridge.home(sourceId, onResult)
-                    "category" -> HomeBridge.category(sourceId, args[0], args[1].toIntOrNull() ?: 1, onResult, args.getOrElse(2) { "{}" })
-                    "search" -> HomeBridge.search(sourceId, args[0], onResult)
-                    "detail" -> HomeBridge.detail(sourceId, args[0], onResult)
-                    "play" -> HomeBridge.play(sourceId, args[0], flag = args.getOrElse(1) { "" }, onResult = onResult)
+                    "home" -> HomeBridge.home(module, onResult, extend)
+                    "category" -> HomeBridge.category(
+                        module, args[0], args[1].toIntOrNull() ?: 1, onResult,
+                        args.getOrElse(2) { "{}" }, extend,
+                    )
+                    "search" -> HomeBridge.search(module, args[0], onResult, extend)
+                    "detail" -> HomeBridge.detail(module, args[0], onResult, extend)
+                    "play" -> HomeBridge.play(
+                        module, args[0], flag = args.getOrElse(1) { "" },
+                        onResult = onResult, extend = extend,
+                    )
                     else -> onResult(null)
                 }
             }

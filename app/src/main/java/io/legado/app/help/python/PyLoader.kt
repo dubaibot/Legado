@@ -37,6 +37,8 @@ object PyLoader {
         val author: String = "",
         val desc: String = "",
         val permissions: List<String> = emptyList(),
+        /** TVBox 站点扩展参数（Spider.init 的 extend） */
+        val extend: String = "",
     )
 
     /** 插件完整信息（元信息 + 是否已加载） */

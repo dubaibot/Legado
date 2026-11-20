@@ -22,6 +22,15 @@ object HomeBridge {
     /** 插件能力缓存：pluginId -> {func: [paramNames]} */
     private val capabilities = ConcurrentHashMap<String, Map<String, List<String>>>()
 
+    /** 模块级函数名 → FongMi Spider 方法名（能力检测别名） */
+    private val spiderCapabilityAliases = mapOf(
+        "home" to "homeContent",
+        "category" to "categoryContent",
+        "search" to "searchContent",
+        "detail" to "detailContent",
+        "play" to "playerContent",
+    )
+
     /** 插件元信息缓存：pluginId -> PyPluginMeta */
     private val metaCache = ConcurrentHashMap<String, PyLoader.PyPluginMeta>()
 
@@ -30,37 +39,60 @@ object HomeBridge {
     /**
      * 搜索：调用插件 search 函数。
      */
-    fun search(pluginId: String, keyword: String, onResult: (String?) -> Unit) {
-        callPlugin(pluginId, "search", listOf(keyword), onResult)
+    fun search(
+        pluginId: String,
+        keyword: String,
+        onResult: (String?) -> Unit,
+        extend: String = "",
+    ) {
+        callPlugin(pluginId, "search", listOf(keyword), onResult, extend)
     }
 
     /**
      * 详情：调用插件 detail 函数。
      */
-    fun detail(pluginId: String, id: String, onResult: (String?) -> Unit) {
-        callPlugin(pluginId, "detail", listOf(id), onResult)
+    fun detail(
+        pluginId: String,
+        id: String,
+        onResult: (String?) -> Unit,
+        extend: String = "",
+    ) {
+        callPlugin(pluginId, "detail", listOf(id), onResult, extend)
     }
 
     /**
      * 播放：调用插件 play 函数。
      */
-    fun play(pluginId: String, url: String, flag: String = "", onResult: (String?) -> Unit) {
-        callPlugin(pluginId, "play", listOf(url, flag), onResult)
+    fun play(
+        pluginId: String,
+        url: String,
+        flag: String = "",
+        onResult: (String?) -> Unit,
+        extend: String = "",
+    ) {
+        callPlugin(pluginId, "play", listOf(url, flag), onResult, extend)
     }
 
     /**
      * 首页：调用插件 home 函数，返回分类与推荐视频。
      */
-    fun home(pluginId: String, onResult: (String?) -> Unit) {
-        callPlugin(pluginId, "home", emptyList(), onResult)
+    fun home(pluginId: String, onResult: (String?) -> Unit, extend: String = "") {
+        callPlugin(pluginId, "home", emptyList(), onResult, extend)
     }
 
     /**
      * 分类：调用插件 category 函数，返回分类视频列表。
      */
-    fun category(pluginId: String, tid: String, pg: Int, onResult: (String?) -> Unit, filtersJson: String = "{}") {
+    fun category(
+        pluginId: String,
+        tid: String,
+        pg: Int,
+        onResult: (String?) -> Unit,
+        filtersJson: String = "{}",
+        extend: String = "",
+    ) {
         val args = listOf(tid, pg.toString(), filtersJson)
-        callPlugin(pluginId, "category", args, onResult)
+        callPlugin(pluginId, "category", args, onResult, extend)
     }
 
     /**
@@ -125,6 +157,7 @@ object HomeBridge {
         func: String,
         args: List<Any?>,
         onResult: (String?) -> Unit,
+        extend: String = "",
     ) {
         // 权限检查
         if (!checkPermission(pluginId, func)) {
@@ -135,12 +168,12 @@ object HomeBridge {
 
         // 能力缓存检查
         val caps = detectCapabilities(pluginId)
-        if (!caps.containsKey(func)) {
+        if (!hasCapability(caps, func)) {
             // 能力检测可能因 Chaquopy 兼容问题失败，尝试直接调用作为 fallback
             val module = PyLoader.getModule(pluginId)
             if (module != null) {
                 LogUtils.d(TAG, "capability check failed, calling directly: $pluginId.$func")
-                val task = PyTaskQueue.submit(pluginId, func, args)
+                val task = PyTaskQueue.submit(pluginId, func, args, extend)
                 if (task != null) {
                     callbackExecutor.execute {
                         val result = task.await(TIMEOUT_MS)
@@ -155,7 +188,7 @@ object HomeBridge {
         }
 
         // 提交任务
-        val task = PyTaskQueue.submit(pluginId, func, args)
+        val task = PyTaskQueue.submit(pluginId, func, args, extend)
         if (task == null) {
             LogUtils.d(TAG, "task submit failed: $pluginId.$func")
             callbackExecutor.execute { onResult(null) }
@@ -167,6 +200,13 @@ object HomeBridge {
             val result = task.await(TIMEOUT_MS)
             onResult(result)
         }
+    }
+
+    /** 能力判断：模块级函数或对应 Spider 方法任一存在即可调用 */
+    private fun hasCapability(caps: Map<String, List<String>>, func: String): Boolean {
+        if (caps.containsKey(func)) return true
+        val alias = spiderCapabilityAliases[func] ?: return false
+        return caps.containsKey(alias)
     }
 
     private fun parseCapabilities(jsonStr: String): Map<String, List<String>> {

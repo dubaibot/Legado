@@ -45,8 +45,13 @@ object PyTaskQueue {
      * 提交任务到队列。
      * 返回 Task 实例（含 await/result）；去重命中返回已存在的 Task；队列满返回 null。
      */
-    fun submit(plugin: String, func: String, args: List<Any?> = emptyList()): Task? {
-        val key = taskKey(plugin, func, args)
+    fun submit(
+        plugin: String,
+        func: String,
+        args: List<Any?> = emptyList(),
+        extend: String = "",
+    ): Task? {
+        val key = taskKey(plugin, func, args, extend)
 
         // 去重：已入队或正在执行的同一任务直接返回
         activeTasks[key]?.let { return it }
@@ -56,7 +61,7 @@ object PyTaskQueue {
             return null
         }
 
-        val task = Task(plugin, func, args)
+        val task = Task(plugin, func, args, extend)
 
         // putIfAbsent 原子操作，避免并发重复添加
         val existing = activeTasks.putIfAbsent(key, task)
@@ -111,7 +116,7 @@ object PyTaskQueue {
     fun clearPending() {
         while (true) {
             val pending = taskQueue.poll() ?: break
-            activeTasks.remove(taskKey(pending.plugin, pending.func, pending.args))
+            activeTasks.remove(taskKey(pending.plugin, pending.func, pending.args, pending.extend))
             LogUtils.d("PyTaskQueue", "cleared pending task: ${pending.plugin}.${pending.func}")
         }
     }
@@ -163,7 +168,7 @@ object PyTaskQueue {
 
             val pluginEntry = PythonEnv.module("plugin_entry")
             val jsonResult: String? = if (pluginEntry != null) {
-                callPluginFunc(module, pluginEntry, task.func, task.args)
+                callPluginFunc(module, pluginEntry, task.func, task.args, task.extend)
             } else {
                 LogUtils.d("PyTaskQueue", "plugin_entry not available, fallback to callModuleFunc")
                 PythonEnv.callModuleFunc(module, task.func, task.args)
@@ -174,7 +179,7 @@ object PyTaskQueue {
             LogUtils.d("PyTaskQueue", "execute task error: ${e.message}")
             task.complete(null)
         } finally {
-            activeTasks.remove(taskKey(task.plugin, task.func, task.args))
+            activeTasks.remove(taskKey(task.plugin, task.func, task.args, task.extend))
         }
     }
 
@@ -187,34 +192,50 @@ object PyTaskQueue {
         pluginEntry: com.chaquo.python.PyObject,
         func: String,
         args: List<Any?>,
+        extend: String,
     ): String? {
-        return try {
+        var directResult: String? = null
+        var directError: Exception? = null
+        try {
             val result = module.callAttr(func, *args.toTypedArray())
-            pluginEntry.callAttr("_to_json", result)?.toString()
+            directResult = pluginEntry.callAttr("_to_json", result)?.toString()
         } catch (e: Exception) {
+            directError = e
             // Installed module functions may accept fewer arguments than the Spider bridge.
             for (count in listOf(2, 1)) {
                 if (args.size <= count) continue
                 try {
                     val result = module.callAttr(func, *args.take(count).toTypedArray())
-                    return pluginEntry.callAttr("_to_json", result)?.toString()
+                    directResult = pluginEntry.callAttr("_to_json", result)?.toString()
+                    directError = null
+                    break
                 } catch (e2: Exception) {
                     // fall through
                 }
             }
-            // Spider 类兼容层：尝试 fallback，不仅限于 AttributeError
-            // Chaquopy 可能抛出不同类型的异常，统一尝试 Spider 路径
-            val errMsg = e.message ?: e.toString()
-            LogUtils.d("PyTaskQueue", "callPluginFunc $func failed: $errMsg, trying spider fallback")
-            val spiderResult = callSpiderFunc(module, pluginEntry, func, args)
-            if (spiderResult != null) {
-                LogUtils.d("PyTaskQueue", "spider fallback succeeded for $func")
-                return spiderResult
-            }
-            val finalMsg = getErrorMessage(e, func)
-            LogUtils.d("PyTaskQueue", "callPluginFunc error: $finalMsg")
-            buildErrorJson(finalMsg)
         }
+
+        // 直接调用异常、返回空结果（null/[]/{}）或错误 JSON 时，尝试 Spider 类兼容层
+        if (!isEmptyResult(directResult)) return directResult
+        val reason = directError?.let { it.message ?: it.toString() } ?: "empty result"
+        LogUtils.d("PyTaskQueue", "callPluginFunc $func direct failed/empty: $reason, trying spider fallback")
+        val spiderResult = callSpiderFunc(module, pluginEntry, func, args, extend)
+        if (!isEmptyResult(spiderResult)) {
+            LogUtils.d("PyTaskQueue", "spider fallback succeeded for $func")
+            return spiderResult
+        }
+        // 保留模块级调用的原始结果：错误 JSON 比空结果更有诊断价值
+        if (directResult != null) return directResult
+        val finalMsg = getErrorMessage(directError ?: Exception("empty result"), func)
+        LogUtils.d("PyTaskQueue", "callPluginFunc error: $finalMsg")
+        return buildErrorJson(finalMsg)
+    }
+
+    /** 结果是否为空或错误（用于触发 Spider 兜底） */
+    private fun isEmptyResult(json: String?): Boolean {
+        val text = json?.trim().orEmpty()
+        return text.isEmpty() || text == "None" || text == "null" ||
+            text == "[]" || text == "{}" || text.contains("\"error\"")
     }
 
     /**
@@ -226,6 +247,7 @@ object PyTaskQueue {
         pluginEntry: com.chaquo.python.PyObject,
         func: String,
         args: List<Any?>,
+        extend: String,
     ): String? {
         return try {
             val result = pluginEntry.callAttr(
@@ -233,6 +255,7 @@ object PyTaskQueue {
                 module,
                 func,
                 args.toTypedArray(),
+                extend,
             )
             val str = result?.toString()
             // Python None → "None"，视为无 Spider 类，返回 null 走原始错误路径
@@ -253,8 +276,8 @@ object PyTaskQueue {
         return "{\"error\": \"$escaped\"}"
     }
 
-    private fun taskKey(plugin: String, func: String, args: List<Any?>): String {
-        return "$plugin.$func.${args.joinToString(",")}"
+    private fun taskKey(plugin: String, func: String, args: List<Any?>, extend: String): String {
+        return "$plugin.$func.${args.joinToString(",")}@$extend"
     }
 }
 
@@ -265,6 +288,7 @@ class Task(
     val plugin: String,
     val func: String,
     val args: List<Any?>,
+    val extend: String = "",
 ) {
     @Volatile
     var result: String? = null

@@ -259,7 +259,8 @@ dependencies {
     // soundtouch-jni：TTS 变速/变调音频处理（TtsSoundTouchAudioProcessor）
     implementation(libs.soundtouch.jni.android)
     implementation(libs.soundtouch.jni.core)
-    //implementation(libs.media3.ui)
+    // 短剧页内播放：PlayerView（media3-ui）
+    implementation(libs.media3.ui)
     // For loading data using the OkHttp network stack
     implementation(libs.media3.datasource.okhttp)
     // P0: Cronet DataSource（TLS 指纹与 Chrome 一致，解决 CDN TLS 指纹检测导致 m3u8 播放失败）

@@ -254,7 +254,8 @@ class PyHomepageViewModel : ViewModel() {
             val videoSources = try {
                 VideoSourceRegistry.listSources()
                     .filter {
-                        it.type != SourceType.PY &&
+                        // PY 有两类来源：用户导入插件（由 PyLoader 列出）与 TVBox 展开的 py 站点
+                        (it.type != SourceType.PY || it.parentId.isNotEmpty()) &&
                             HomeSourceManagementStore.isEnabled("${it.type.name}:${it.id}")
                     }
                     .map {
@@ -262,11 +263,14 @@ class PyHomepageViewModel : ViewModel() {
                             id = it.id,
                             name = it.name,
                             type = when (it.type) {
+                                SourceType.PY -> "py"
                                 SourceType.TXT -> "txt"
                                 SourceType.HTML -> "html"
                                 else -> "json"  // JSON / JAR 均按列表源处理
                             },
-                            loaded = true
+                            loaded = if (it.type == SourceType.PY) {
+                                PyLoader.isLoaded(it.pluginId.ifBlank { it.id })
+                            } else true
                         )
                     }
             } catch (e: Exception) {
@@ -773,9 +777,17 @@ class PyHomepageViewModel : ViewModel() {
                         content,
                     )
                 if (!saved) throw IllegalStateException("订阅配置保存失败")
-                val successCount = sites.count {
-                    it.siteKind == io.legado.app.data.video.FongMiConfigParser.SiteKind.CMS ||
-                        (it.siteKind == io.legado.app.data.video.FongMiConfigParser.SiteKind.JAR_SPIDER && it.jar.isNotBlank())
+                val supportedCount = sites.count {
+                    when (it.siteKind) {
+                        io.legado.app.data.video.FongMiConfigParser.SiteKind.CMS,
+                        io.legado.app.data.video.FongMiConfigParser.SiteKind.JAR_SPIDER,
+                        io.legado.app.data.video.FongMiConfigParser.SiteKind.PY_SPIDER,
+                        -> true
+                        else -> false
+                    }
+                }
+                val jsCount = sites.count {
+                    it.siteKind == io.legado.app.data.video.FongMiConfigParser.SiteKind.JS_SPIDER
                 }
                 // 保存订阅 URL 到偏好
                 val subs = loadTvboxSubscriptions()
@@ -783,10 +795,10 @@ class PyHomepageViewModel : ViewModel() {
                     saveTvboxSubscriptions(subs + trimmedUrl)
                 }
                 withContext(Dispatchers.Main) {
-                    val msg = if (successCount > 0) {
-                        "成功导入 $successCount 个 TVbox 源"
-                    } else {
-                        "订阅内容无可用站点"
+                    val msg = buildString {
+                        if (supportedCount > 0) append("成功导入 $supportedCount 个 TVbox 源")
+                        else append("订阅内容无可用站点")
+                        if (jsCount > 0) append("；另有 $jsCount 个 JS 爬虫站点暂不支持")
                     }
                     Toast.makeText(appCtx, msg, Toast.LENGTH_LONG).show()
                     refreshSources()
@@ -844,7 +856,15 @@ class PyHomepageViewModel : ViewModel() {
     fun deleteSource(source: HomeSource) {
         viewModelScope.launch(Dispatchers.IO) {
             when (source.type) {
-                "py" -> PyLoader.uninstall(source.id)
+                "py" -> {
+                    // TVBox 展开的 py 站点只隐藏站点，不卸载插件本体
+                    val info = runCatching { VideoSourceRegistry.getSourceInfo(source.id) }.getOrNull()
+                    if (info != null && info.parentId.isNotEmpty()) {
+                        VideoSourceRegistry.deleteSource(info)
+                    } else {
+                        PyLoader.uninstall(source.id)
+                    }
+                }
                 "json", "txt", "html" -> {
                     // 展开源（parentId 非空）删除父文件，未命中时回退直接删文件
                     if (!VideoSourceRegistry.deleteSource(source.id)) {
@@ -897,6 +917,151 @@ class PyHomepageViewModel : ViewModel() {
     }
 
     // ---- 统一视频源辅助 ----
+
+    // ---- 当前源诊断 ----
+
+    var diagnosisRunning by mutableStateOf(false)
+        private set
+
+    var diagnosisReport by mutableStateOf("")
+        private set
+
+    /**
+     * 只读探测当前源：home → 第一条 → detail → play → search。
+     * 逐段计时并捕获异常，生成可复制的文本报告；不写任何源状态/缓存。
+     */
+    fun diagnoseCurrentSource() {
+        if (diagnosisRunning) return
+        val sourceId = selectedSourceId.ifBlank { _sources.value.firstOrNull()?.id ?: "" }
+        if (sourceId.isBlank()) {
+            diagnosisReport = "当前没有可诊断的源"
+            return
+        }
+        diagnosisRunning = true
+        diagnosisReport = ""
+        viewModelScope.launch(Dispatchers.IO) {
+            val startedAt = System.currentTimeMillis()
+            val lines = mutableListOf<String>()
+            try {
+                val info = runCatching { VideoSourceRegistry.getSourceInfo(sourceId) }.getOrNull()
+                lines.add("id: $sourceId")
+                lines.add("name: ${info?.name ?: currentSourceName() ?: "-"}")
+                lines.add("type: ${info?.type?.name ?: currentSourceType()?.uppercase() ?: "-"}")
+                val source = info?.let { runCatching { VideoSourceRegistry.createSource(it) }.getOrNull() }
+                if (source == null) {
+                    lines.add("✗ 源实例创建失败（配置缺失、父源已删除或插件未安装）")
+                } else {
+                    lines.add("sourceType: ${source.sourceType.name}")
+                    lines.add("extend: ${info.extend.ifBlank { "-" }}")
+
+                    suspend fun mark(title: String, block: suspend () -> String) {
+                        val started = System.currentTimeMillis()
+                        val text = try {
+                            block()
+                        } catch (e: Exception) {
+                            "✗ 失败: ${e.javaClass.simpleName}: ${e.message}"
+                        }
+                        lines.add("\n【$title】${System.currentTimeMillis() - started}ms\n$text")
+                    }
+
+                    var firstId = ""
+                    var firstTitle = ""
+                    var categories = emptyList<io.legado.app.data.video.VideoCategory>()
+                    mark("home") {
+                        val (cats, videos) = source.home()
+                        categories = cats
+                        firstId = videos.firstOrNull()?.id.orEmpty()
+                        firstTitle = videos.firstOrNull()?.title.orEmpty()
+                        if (cats.isEmpty() && videos.isEmpty()) {
+                            "✗ 分类与推荐均为空"
+                        } else {
+                            val catText = cats.take(5).joinToString("、") { it.name }
+                            val vidText = videos.take(3).joinToString("、") { it.title }
+                            buildString {
+                                append("分类 ${cats.size} 个")
+                                if (catText.isNotEmpty()) append("（$catText）")
+                                append("；推荐 ${videos.size} 个")
+                                if (vidText.isNotEmpty()) append("（$vidText）")
+                            }
+                        }
+                    }
+
+                    if (firstId.isBlank()) {
+                        categories.firstOrNull()?.let { firstCat ->
+                            mark("category") {
+                                val page = source.category(firstCat.id, 1)
+                                firstId = page.videos.firstOrNull()?.id.orEmpty()
+                                firstTitle = page.videos.firstOrNull()?.title.orEmpty()
+                                if (page.videos.isEmpty()) {
+                                    "✗ 分类「${firstCat.name}」第 1 页为空"
+                                } else {
+                                    "分类「${firstCat.name}」第 1 页 ${page.videos.size} 个" +
+                                        "（${page.videos.take(3).joinToString("、") { it.title }}）"
+                                }
+                            }
+                        }
+                    }
+
+                    if (firstId.isBlank()) {
+                        lines.add("\n【detail】跳过：home/category 未返回任何条目")
+                        lines.add("\n【play】跳过：无可用条目")
+                    } else {
+                        var playUrl = ""
+                        var playFlag = ""
+                        mark("detail") {
+                            val detail = source.detail(firstId)
+                            detail.playLines.firstOrNull()?.let {
+                                playUrl = it.url
+                                playFlag = it.flag
+                            }
+                            if (detail.playLines.isEmpty()) {
+                                "✗ 详情无播放线路（将导致 videoUrl=null 空转）" +
+                                    "\n  标题: ${detail.title}"
+                            } else {
+                                val lineNames = detail.playLines.take(5).joinToString("、") {
+                                    it.name.ifBlank { it.flag }
+                                }
+                                "标题: ${detail.title}；线路 ${detail.playLines.size} 条（$lineNames）" +
+                                    "；首集 ${detail.playLines.first().url.take(80)}"
+                            }
+                        }
+                        if (playUrl.isBlank()) {
+                            lines.add("\n【play】跳过：详情未返回可播放地址")
+                        } else {
+                            mark("play") {
+                                val result = source.play(playUrl, playFlag)
+                                if (result.url.isBlank()) {
+                                    "✗ 播放地址为空（flag=${playFlag.ifBlank { "-" }}）"
+                                } else {
+                                    val headerKeys = result.headers.keys.joinToString("、").ifBlank { "-" }
+                                    "直链: ${result.url.take(120)}；headers: $headerKeys；parse=${result.parse}"
+                                }
+                            }
+                        }
+                    }
+
+                    mark("search") {
+                        val keyword = firstTitle.ifBlank { info.name }.take(6)
+                        val items = source.search(keyword, 1)
+                        if (items.isEmpty()) {
+                            "关键词「$keyword」无结果"
+                        } else {
+                            "关键词「$keyword」命中 ${items.size} 个" +
+                                "（${items.take(3).joinToString("、") { it.title }}）"
+                        }
+                    }
+                }
+                lines.add("\n总耗时: ${System.currentTimeMillis() - startedAt} ms")
+            } catch (e: Exception) {
+                lines.add("\n✗ 诊断中断: ${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                withContext(Dispatchers.Main) {
+                    diagnosisReport = lines.joinToString("\n")
+                    diagnosisRunning = false
+                }
+            }
+        }
+    }
 
     /** 创建统一源实例（py/json/txt/html，利用 VideoSourceRegistry 实例缓存） */
     private suspend fun sourceFor(sourceId: String): VideoSource? {

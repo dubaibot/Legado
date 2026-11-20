@@ -73,6 +73,10 @@ def call_func_json(module, func_name, args):
         return json.dumps({"error": err})
 
 
+# FongMi/hipy 生态中 Spider 类的常见命名
+SPIDER_CLASS_NAMES = ("Spider", "appSpider", "App", "AppSpider", "SpiderX", "Drpy", "SPIDER")
+
+
 def detect_capabilities(module):
     """检测插件模块的能力。
 
@@ -84,10 +88,41 @@ def detect_capabilities(module):
         func = getattr(module, name, None)
         if func is not None and callable(func):
             funcs[name] = []
+    # FongMi Spider 标准方法名定义在类里，单独探测 Spider 类
+    spider_cls = _find_spider_cls(module)
+    if spider_cls is not None:
+        for name in (
+            "homeContent", "categoryContent", "searchContent",
+            "detailContent", "playerContent",
+        ):
+            if callable(getattr(spider_cls, name, None)):
+                funcs[name] = []
     return json.dumps(funcs, ensure_ascii=False)
 
 
-def call_spider_func(module, func_name, args):
+def _find_spider_cls(module):
+    """按常见类名查找 Spider 类，找不到时扫描模块内带 homeContent 的可调用类。"""
+    for name in SPIDER_CLASS_NAMES:
+        cls = getattr(module, name, None)
+        if cls is not None and callable(cls):
+            return cls
+    try:
+        attrs = dir(module)
+    except Exception:
+        return None
+    for attr in attrs:
+        if attr.startswith("__"):
+            continue
+        try:
+            candidate = getattr(module, attr)
+        except Exception:
+            continue
+        if callable(candidate) and hasattr(candidate, "homeContent"):
+            return candidate
+    return None
+
+
+def call_spider_func(module, func_name, args, extend=""):
     """Spider 类兼容层：模块级函数不存在时，实例化 Spider 子类调用对应方法。
 
     FongMi/TV 约定：Spider 子类方法 homeContent/categoryContent/detailContent/
@@ -97,12 +132,13 @@ def call_spider_func(module, func_name, args):
         module: 插件模块对象
         func_name: 模块级函数名（home/category/search/detail/play）
         args: 参数列表
+        extend: 站点扩展参数（来自 Config 的 ext 字段），传给 Spider.init
 
     Returns:
         JSON 字符串（成功时为结果 JSON，失败时为 {"error": "..."}）
         None 表示无 Spider 类，Kotlin 侧走原始错误路径
     """
-    spider_cls = getattr(module, "Spider", None)
+    spider_cls = _find_spider_cls(module)
     if spider_cls is None:
         print("[call_spider_func] no Spider class found in module")
         return None
@@ -118,8 +154,15 @@ def call_spider_func(module, func_name, args):
     try:
         init_func = getattr(spider, "init", None)
         if callable(init_func):
+            real_extend = "" if extend is None else str(extend)
             try:
-                init_func("")
+                init_func(real_extend)
+            except TypeError:
+                # 无参 init 实现
+                try:
+                    init_func()
+                except Exception:
+                    pass
             except Exception:
                 pass
     except Exception as e:

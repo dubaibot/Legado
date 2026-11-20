@@ -29,13 +29,19 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -45,12 +51,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import io.legado.app.data.drama.DramaCandidate
+import io.legado.app.data.drama.DramaPlayable
+import io.legado.app.data.drama.DramaSourceKind
+import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.help.exoplayer.mediaMimeTypeOfUrl
+import io.legado.app.help.http.videoStreamClient
 import kotlinx.coroutines.launch
 
 /**
@@ -106,6 +129,7 @@ fun ShortDramaScreen(
                     }
                 },
                 onSkip = viewModel::onSkip,
+                onResolve = viewModel::resolvePlayable,
                 onOpenSources = openSources,
             )
         }
@@ -119,6 +143,7 @@ private fun DramaFeed(
     onShown: (DramaCandidate, Int) -> Unit,
     onPlay: (DramaCandidate) -> Unit,
     onSkip: (DramaCandidate) -> Unit,
+    onResolve: suspend (DramaCandidate) -> DramaPlayable?,
     onOpenSources: () -> Unit,
 ) {
     val pagerState = rememberPagerState(pageCount = { state.feed.size })
@@ -144,8 +169,10 @@ private fun DramaFeed(
             val candidate = state.feed[page]
             DramaPage(
                 candidate = candidate,
+                active = pagerState.currentPage == page,
                 onPlay = { onPlay(candidate) },
                 onSkip = { onSkip(candidate) },
+                onResolve = onResolve,
             )
         }
         IconButton(
@@ -164,15 +191,46 @@ private fun DramaFeed(
 @Composable
 private fun DramaPage(
     candidate: DramaCandidate,
+    active: Boolean,
     onPlay: () -> Unit,
     onSkip: () -> Unit,
+    onResolve: suspend (DramaCandidate) -> DramaPlayable?,
 ) {
+    // 页内直链播放只覆盖 PY / TVBOX；其余源仍交给既有外部播放器
+    val inlineEligible = candidate.source.kind == DramaSourceKind.PY ||
+        candidate.source.kind == DramaSourceKind.TVBOX
+    var playable by remember(candidate.seriesId) { mutableStateOf<DramaPlayable?>(null) }
+    var resolving by remember(candidate.seriesId) { mutableStateOf(false) }
+    var playFailed by remember(candidate.seriesId) { mutableStateOf(false) }
+
+    LaunchedEffect(active, candidate.seriesId) {
+        if (!active || !inlineEligible || playable != null || resolving) return@LaunchedEffect
+        resolving = true
+        val resolved = onResolve(candidate)
+        resolving = false
+        if (resolved != null) {
+            playable = resolved
+        } else {
+            playFailed = true
+        }
+    }
+
+    val playingInline = playable != null
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .clickable(onClick = onPlay)
+            .then(if (playingInline) Modifier else Modifier.clickable(onClick = onPlay))
     ) {
-        if (candidate.cover.isNotBlank()) {
+        if (playingInline) {
+            DramaPlayer(
+                playable = playable!!,
+                active = active,
+                onPlaybackError = {
+                    playable = null
+                    playFailed = true
+                },
+            )
+        } else if (candidate.cover.isNotBlank()) {
             GlideImage(
                 model = candidate.cover,
                 contentDescription = candidate.title,
@@ -185,15 +243,19 @@ private fun DramaPage(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(
-                            Color.Black.copy(alpha = 0.25f),
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.28f),
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.55f),
-                            Color.Black.copy(alpha = 0.9f),
-                        )
+                        ),
+                        endY = with(LocalDensity.current) { 220.dp.toPx() },
                     )
                 )
         )
+        if (resolving && !playingInline) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(30.dp))
+            }
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -247,18 +309,106 @@ private fun DramaPage(
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onPlay) { Text("立即观看") }
-                OutlinedButton(
-                    onClick = onSkip,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color.White.copy(alpha = 0.85f)
-                    ),
-                ) { Text("不感兴趣") }
+            if (playFailed) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "播放解析失败，点击画面用外部播放器打开",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                )
+            }
+            if (!playingInline) {
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onPlay) { Text("立即观看") }
+                    OutlinedButton(
+                        onClick = onSkip,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White.copy(alpha = 0.85f)
+                        ),
+                    ) { Text("不感兴趣") }
+                }
             }
         }
     }
+}
+
+/**
+ * 页内播放器：ExoPlayer + PlayerView，关闭默认控制器以保持沉浸感。
+ *
+ * - 循环单条播放；滑走（active=false）或页面暂停时停止，返回时续播
+ * - 点击画面切换播放/暂停
+ * - 解析出的请求头（Referer/Cookie）通过 OkHttp 数据源注入，兼顾防盗链
+ */
+@Composable
+private fun DramaPlayer(
+    playable: DramaPlayable,
+    active: Boolean,
+    onPlaybackError: () -> Unit,
+) {
+    val context = LocalContext.current
+    val currentOnError by rememberUpdatedState(onPlaybackError)
+    val exoPlayer = remember(playable.url, playable.headers) {
+        // setDefaultRequestProperties 会整体覆盖默认头，这里先把浏览器 UA 补进请求头，
+        // 避免解析结果只有 Referer/Cookie 时退化成 ExoPlayer 默认 UA 被 CDN 拒绝。
+        val requestHeaders = HashMap(playable.headers)
+        if (requestHeaders.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
+            requestHeaders["User-Agent"] = ExoPlayerHelper.BROWSER_UA
+        }
+        val dataSourceFactory = OkHttpDataSource.Factory(videoStreamClient)
+            .setDefaultRequestProperties(requestHeaders)
+        val mime = mediaMimeTypeOfUrl(playable.url)
+        val mediaItem = MediaItem.Builder()
+            .setUri(playable.url)
+            .apply { mime?.let { setMimeType(it) } }
+            .build()
+        val mediaSource = if (mime == MimeTypes.APPLICATION_M3U8) {
+            HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+        } else {
+            ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+        }
+        ExoPlayer.Builder(context).build().apply {
+            setMediaSource(mediaSource)
+            repeatMode = Player.REPEAT_MODE_ONE
+            prepare()
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                currentOnError()
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+            exoPlayer.release()
+        }
+    }
+
+    LaunchedEffect(active) {
+        if (active) exoPlayer.playWhenReady = true else exoPlayer.pause()
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { exoPlayer.pause() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (active) exoPlayer.playWhenReady = true else exoPlayer.pause()
+    }
+
+    AndroidView(
+        factory = {
+            PlayerView(it).apply {
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                setShutterBackgroundColor(android.graphics.Color.BLACK)
+                player = exoPlayer
+                setOnClickListener {
+                    exoPlayer.playWhenReady = !exoPlayer.playWhenReady
+                }
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable

@@ -180,7 +180,6 @@ object BookChapterList {
         if (!book.getReverseToc()) {
             list.reverse()
         }
-        BookPlaylineParser.addVolumes(list)
         Debug.log(book.origin, "◇目录总数:${list.size}")
         currentCoroutineContext().ensureActive()
         list.forEachIndexed { index, bookChapter ->
@@ -468,7 +467,6 @@ object BookChapterList {
         if (!book.getReverseToc()) {
             result.reverse()
         }
-        BookPlaylineParser.addVolumes(result)
         result.forEachIndexed { index, bookChapter ->
             bookChapter.index = index
         }
@@ -638,7 +636,6 @@ object BookChapterList {
             val payRule = analyzeRule.splitSourceRule(tocRule.isPay)
             val upTimeRule = analyzeRule.splitSourceRule(tocRule.updateTime)
             val isVolumeRule = analyzeRule.splitSourceRule(tocRule.isVolume)
-            val playlineRule = analyzeRule.splitSourceRule(tocRule.playline)
             val tocCountWords = AppConfig.tocCountWords
             elements.forEachIndexed { index, item ->
                 currentCoroutineContext().ensureActive()
@@ -647,9 +644,6 @@ object BookChapterList {
                 analyzeRule.setChapter(bookChapter)
                 bookChapter.title = analyzeRule.getString(nameRule)
                 bookChapter.url = analyzeRule.getString(urlRule)
-                if (!tocRule.playline.isNullOrBlank()) {
-                    bookChapter.putVariable("playline", analyzeRule.getString(playlineRule).trim())
-                }
                 
                 if (index == 0) {
                     FlowLogRecorder.logExtract(

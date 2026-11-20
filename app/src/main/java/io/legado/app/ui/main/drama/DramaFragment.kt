@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.drama
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,6 +10,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.Fragment
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
@@ -53,6 +55,19 @@ class DramaFragment() : Fragment(), MainFragmentInterface {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 短剧页沉浸式观感：底栏改为 30% 半透明黑，页面切换/退到后台时由 onPause 还原
+        (activity as? MainActivity)?.setBottomBarColorOverride(
+            ColorUtils.setAlphaComponent(Color.BLACK, 0x4D)
+        )
+    }
+
+    override fun onPause() {
+        super.onPause()
+        (activity as? MainActivity)?.setBottomBarColorOverride(null)
     }
 
     fun scrollToTop() {

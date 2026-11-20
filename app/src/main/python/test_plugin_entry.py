@@ -215,6 +215,83 @@ class PluginEntryTest(unittest.TestCase):
                     self.assertEqual(result["url"], "u")
                     self.assertEqual(result["headers"]["Route"], flag)
 
+    def test_non_standard_spider_class_names_are_found(self):
+        for class_name in ("appSpider", "App", "AppSpider", "SpiderX", "Drpy", "SPIDER"):
+            with self.subTest(class_name=class_name):
+                cls = type(class_name, (), {
+                    "homeContent": lambda self, filter=True: {"list": [{"vod_id": class_name}]},
+                })
+                module = type("Module", (), {class_name: cls})
+                result = json.loads(plugin_entry.call_spider_func(module, "home", []))
+                self.assertEqual(result["videos"][0]["id"], class_name)
+
+    def test_spider_class_found_by_scanning_home_content(self):
+        class CustomSpider:
+            def homeContent(self, filter=True):
+                return {"class": [{"type_id": "1", "type_name": "扫描命中"}]}
+
+        module = type("Module", (), {"CustomSpider": CustomSpider})
+        result = json.loads(plugin_entry.call_spider_func(module, "home", []))
+        self.assertEqual(result["categories"][0]["name"], "扫描命中")
+
+    def test_init_receives_real_extend(self):
+        received = []
+
+        class Spider:
+            def init(self, extend=""):
+                received.append(extend)
+
+            def homeContent(self, filter=True):
+                return {"list": []}
+
+        module = type("Module", (), {"Spider": Spider})
+        plugin_entry.call_spider_func(module, "home", [], "https://example.org/ext")
+        plugin_entry.call_spider_func(module, "home", [])
+        self.assertEqual(received[:2], ["https://example.org/ext", ""])
+
+    def test_init_without_extend_argument_still_works(self):
+        initialized = []
+
+        class NoArgSpider:
+            def init(self):
+                initialized.append(True)
+
+            def homeContent(self, filter=True):
+                return {"list": [{"vod_id": "no-arg"}]}
+
+        result = json.loads(plugin_entry.call_spider_func(
+            type("Module", (), {"Spider": NoArgSpider}), "home", [], "ext"))
+        self.assertEqual(result["videos"][0]["id"], "no-arg")
+        self.assertTrue(initialized)
+
+    def test_module_without_home_uses_spider_class(self):
+        class OnlySpider:
+            def init(self, extend=""):
+                self.extend = extend
+
+            def homeContent(self, filter=True):
+                return {"class": [{"type_id": "1", "type_name": "只有类"}], "list": [{"vod_id": "x"}]}
+
+        module = type("Module", (), {"Spider": OnlySpider})
+        self.assertFalse(hasattr(module, "home"))
+        result = json.loads(plugin_entry.call_spider_func(module, "home", []))
+        self.assertEqual(result["categories"][0]["name"], "只有类")
+        self.assertEqual(result["videos"][0]["id"], "x")
+
+    def test_detect_capabilities_includes_spider_method_names(self):
+        class Spider:
+            def homeContent(self, filter=True):
+                return {}
+
+            def searchContent(self, key, quick=False, pg="1"):
+                return []
+
+        module = type("Module", (), {"Spider": Spider, "home": lambda: {}})
+        caps = json.loads(plugin_entry.detect_capabilities(module))
+        self.assertIn("homeContent", caps)
+        self.assertIn("searchContent", caps)
+        self.assertIn("home", caps)
+
 
 if __name__ == "__main__":
     unittest.main()
