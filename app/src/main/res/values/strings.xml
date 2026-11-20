@@ -698,7 +698,7 @@
     <string name="add_to_group">Add to Group</string>
     <string name="save_image">Save image</string>
     <string name="no_default_path">No default path</string>
-    <string name="change_group">Group settings</string>
+    <string name="change_group">Set label</string>
     <string name="view_toc">View Chapters</string>
     <string name="bar_elevation">Navigation bar shadow</string>
     <string name="bar_elevation_s">Current shadow size(elevation): %s</string>
@@ -1119,8 +1119,8 @@
     <string name="ignore_audio_focus_summary">Allow audio to be played at the same time as other applications</string>
     <string name="refresh_sort">Refresh sort</string>
     <string name="cover_decode_js">Decode Cover Js(coverDecodeJs)</string>
-    <string name="net_no_group">Network ungrouped</string>
-    <string name="local_no_group">Local ungrouped</string>
+    <string name="net_no_group">Network uncategorized</string>
+    <string name="local_no_group">Local uncategorized</string>
     <string name="parallel_export_book">Multithreaded export</string>
     <string name="progress_bar_behavior">Progress bar behavior</string>
     <string name="source_edit_text_max_line">Maximum number of rows in the source edit box</string>
@@ -1810,11 +1810,11 @@ Placeholders:
 
 <string name="cache_manage_empty">No %1$s cache</string>
 
-    <string name="bookshelf_tag_delete_title">删除标签</string>
+    <string name="bookshelf_tag_delete_title">Delete group</string>
 
 <string name="discovery_suite_add_widget">Add widget</string>
 
-    <string name="bookshelf_tag_empty_summary">当前分组还没有标签，可以点击“新增”创建。</string>
+    <string name="bookshelf_tag_empty_summary">This label has no groups yet. Tap “Add” to create one.</string>
 
     <string name="scene_bookmark_book">Scenes in this book</string>
     <string name="ai_chat_entry_none">Off</string>
@@ -2407,7 +2407,7 @@ Placeholders:
 
     <string name="about_promise_no_account">零账号：所有功能本地可用，无需注册或登录</string>
 
-    <string name="bookshelf_tag_manage">管理标签</string>
+    <string name="bookshelf_tag_manage">Manage groups</string>
 
 <string name="bottom_bar_border_alpha">Bottom bar border opacity</string>
 
@@ -3146,7 +3146,7 @@ Placeholders:
 
 <string name="online_import_raw_link_label">Original link (include it when reporting)</string>
 
-    <string name="bookshelf_tag_book_count">已标记 %1$d 本书</string>
+    <string name="bookshelf_tag_book_count">%1$d books grouped</string>
 
 <string name="cache_manage_upload_all">Upload all</string>
 
@@ -3783,7 +3783,7 @@ Placeholders:
 
     <string name="rss_sort_tabs_all">All ▾</string>
 
-    <string name="bookshelf_tag_visible">标签栏显示</string>
+    <string name="bookshelf_tag_visible">Show group bar</string>
 
 	<string name="read_menu_custom_button">Custom</string>
 
@@ -4009,7 +4009,7 @@ Placeholders:
 
     <string name="clear_all_cache_confirm">Clear all cache? Books and sources will not be deleted.</string>
 
-    <string name="bookshelf_tag_none">未设置标签</string>
+    <string name="bookshelf_tag_none">No group</string>
 
     <string name="filter_error">Error</string>
 
@@ -4316,7 +4316,7 @@ Placeholders:
 
         <string name="duration_hour">%d h</string>
 
-    <string name="bookshelf_tag_no_reusable">没有可复用的已有标签，可直接输入新标签</string>
+    <string name="bookshelf_tag_no_reusable">No reusable existing groups, enter a new group</string>
 
     <string name="rss_source_unread">Unread articles</string>
 
@@ -4351,7 +4351,7 @@ Selected text or question:
 
     <string name="download_unfinished_tip">download incomplete, see Download folder</string>
 
-    <string name="bookshelf_tag_new_label">新标签</string>
+    <string name="bookshelf_tag_new_label">New group</string>
 
     <string name="ai_image_provider_manage_summary">配置 OpenAI 生图接口或 JS 生图规则。AI 对话可通过工具调用或独立生图入口生成图片。</string>
 
@@ -4877,7 +4877,7 @@ Selected text or question:
 
     <string name="ai_api_mode">接口模式</string>
 
-    <string name="bookshelf_tag_no_matching_existing">没有匹配的已有标签</string>
+    <string name="bookshelf_tag_no_matching_existing">No matching existing groups</string>
 
         <string name="source_variable_hint">Source variables can be read in JS with source.getVariable()</string>
 
@@ -4927,7 +4927,7 @@ Selected text or question:
 
 <string name="public_web_relay_pair">配对此设备</string>
 
-    <string name="bookshelf_tag_new_hint">新增标签，多个用空格或逗号分隔</string>
+    <string name="bookshelf_tag_new_hint">New groups, separated by spaces or commas</string>
 
         <string name="book_info_component_ai_images_hint">No images generated for this book yet.</string>
 
@@ -5628,7 +5628,7 @@ Selected text or question:
 
     <string name="image_crop_saving">Saving, please wait…</string>
 
-    <string name="bookshelf_tag_search_existing">搜索已有标签</string>
+    <string name="bookshelf_tag_search_existing">Search existing groups</string>
 
     <string name="debug_ping_hide">隐藏详情</string>
 
@@ -5766,7 +5766,7 @@ Selected text or question:
 
     <string name="ai_edit_provider">编辑提供商</string>
 
-    <string name="bookshelf_tag_add_title">添加标签</string>
+    <string name="bookshelf_tag_add_title">Add group</string>
 
     <string name="video_danmaku_off">关弹幕</string>
 
@@ -5804,7 +5804,7 @@ Selected text or question:
 
     <string name="image_enhance_level_medium">中</string>
 
-    <string name="bookshelf_tag_group_summary">%1$d 本书 · %2$d 个标签</string>
+    <string name="bookshelf_tag_group_summary">%1$d books · %2$d groups</string>
 
     <string name="highlight_rule_restore_overwrite_confirm_title">警告</string>
 
@@ -5872,7 +5872,7 @@ Selected text or question:
 
     <string name="scene_bookmark_clear_book">Clear scenes in this book</string>
 
-    <string name="bookshelf_tag_delete_message">确定从“%2$s”分组的所有书籍中移除“%1$s”标签吗？不会删除书籍。</string>
+    <string name="bookshelf_tag_delete_message">Remove group “%1$s” from all books in “%2$s”? Books will not be deleted.</string>
 
 	<string name="read_menu_icon_select_file">Select menu icon</string>
 
@@ -6163,7 +6163,7 @@ Selected text or question:
 
     <string name="rr_heatmap_sun">Sun</string>
 
-    <string name="smart_tag_sub_title">Sub tags</string>
+    <string name="smart_tag_sub_title">Sub groups</string>
 
     <string name="bubble_svg_edit_title">SVG...</string>
 
@@ -6264,7 +6264,7 @@ Selected text or question:
     <string name="rr_date_format_md_weekday">M/d E</string>
 
 
-    <string name="show_bookshelf_tag_bar">Show tag bar</string>
+    <string name="show_bookshelf_tag_bar">Show group bar</string>
 
     <string name="explore_block_rule_name_hint">e.g. block ads</string>
 
@@ -6429,7 +6429,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="backward_pre_download_s">Pre-download %s chapters backward</string>
 
-    <string name="show_book_tag_in_book_info">Show Tags</string>
+    <string name="show_book_tag_in_book_info">Show Set Group</string>
 
     <string name="fvd_can_restore">Can be restored normally</string>
 
@@ -6531,7 +6531,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="perm_section_cookie">Cookie Management</string>
 
-    <string name="set_book_tag">Set Tags</string>
+    <string name="set_book_tag">Set Group</string>
 
     <string name="connection_failed">Connection Failed</string>
 
@@ -6641,7 +6641,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="apply_theme">Apply</string>
 
-    <string name="bookshelf_tag_rename_label">Tag name</string>
+    <string name="bookshelf_tag_rename_label">Group name</string>
 
     <string name="download_empty_failed_title">No failed downloads</string>
 
@@ -6749,7 +6749,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="book_cache">Book cache</string>
 
-    <string name="smart_tag_enable">Smart tags</string>
+    <string name="smart_tag_enable">Smart groups</string>
 
     <string name="show_book_border">Show Border</string>
 
@@ -6991,7 +6991,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="enable_eink_render_summary">Apply the E-Ink display style in both day and night mode. The UI and images turn grayscale, which costs extra rendering performance while scrolling</string>
 
-    <string name="smart_tag_sub_summary">Available only when smart tags are enabled</string>
+    <string name="smart_tag_sub_summary">Available only when smart groups are enabled</string>
 
     <string name="homepage_title_label">Title</string>
 
@@ -7013,7 +7013,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="source_used_api">Source Used API</string>
 
-    <string name="bookshelf_tag_rename_title">Rename tag</string>
+    <string name="bookshelf_tag_rename_title">Rename group</string>
 
     <string name="rr_merge_all_confirm">All records of same-name books will be merged into one: the newer reading progress is kept and read time is accumulated. This cannot be undone.</string>
 
@@ -7033,7 +7033,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="rr_current_streak">Current Streak</string>
 
-    <string name="book_tag_existing">Existing tags</string>
+    <string name="book_tag_existing">Existing groups</string>
 
     <string name="manga_check_battery">Hide Battery Icon</string>
 
@@ -7107,7 +7107,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="smart_tag_rule_medium">Medium length</string>
 
-    <string name="smart_tag_manage">Smart tag management</string>
+    <string name="smart_tag_manage">Smart group management</string>
 
     <string name="export_to_file">Export to File</string>
 
@@ -7479,7 +7479,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="fvd_validating">Validating</string>
 
-    <string name="book_tag_s">Tags: %s</string>
+    <string name="book_tag_s">Group: %s</string>
 
     <string name="fvd_downloading">Downloading backup file...</string>
 
@@ -7539,7 +7539,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="download_open_file_failed">Cannot open file</string>
 
-    <string name="bookshelf_tag_rename_scope">Rename "%1$s" in all groups</string>
+    <string name="bookshelf_tag_rename_scope">Rename “%1$s” in all labels</string>
 
     <string name="select_column_count">Select Column Count</string>
 
@@ -7595,7 +7595,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
 
     <string name="perm_android_system_desc">Control reading system information</string>
 
-    <string name="smart_tag_enable_summary">Auto match tags by book type, reading progress, chapter count and update status</string>
+    <string name="smart_tag_enable_summary">Auto match groups by book type, reading progress, chapter count and update status</string>
 
     <string name="view_cookie">View Cookie</string>
 
@@ -8108,4 +8108,17 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="danmaku">弹幕</string>
     <string name="prev_film">上一部</string>
     <string name="next_film">下一部</string>
+    <string name="bookshelf_label">Label</string>
+    <string name="bookshelf_label_s">Label: %s</string>
+    <string name="bookshelf_label_manage">Manage labels</string>
+    <string name="bookshelf_label_select">Select label</string>
+    <string name="bookshelf_label_edit">Edit label</string>
+    <string name="bookshelf_label_name">Label name</string>
+    <string name="bookshelf_label_none">Uncategorized</string>
+    <string name="bookshelf_label_net_none">Network uncategorized</string>
+    <string name="bookshelf_label_local_none">Local uncategorized</string>
+    <string name="bookshelf_label_move_to">Move to label</string>
+    <string name="bookshelf_label_limit">Label limit reached (64)</string>
+    <string name="bookshelf_label_name_empty">Label name cannot be empty</string>
+    <string name="bookshelf_label_add">Add label</string>
 </resources>

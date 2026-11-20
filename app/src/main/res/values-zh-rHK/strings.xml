@@ -671,7 +671,7 @@
     <string name="add_to_group">加入分組</string>
     <string name="save_image">保存圖片</string>
     <string name="no_default_path">沒有默認路徑</string>
-    <string name="change_group">設置分組</string>
+    <string name="change_group">設置標籤</string>
     <string name="view_toc">查看目錄</string>
     <string name="bar_elevation">導航欄陰影</string>
     <string name="bar_elevation_s">當前陰影大小 (elevation): %s</string>
@@ -1227,4 +1227,17 @@
     <string name="folder_view">資料夾視圖</string>
 
     <string name="all_groups">全部</string>
+    <string name="bookshelf_label">標籤</string>
+    <string name="bookshelf_label_s">標籤：%s</string>
+    <string name="bookshelf_label_manage">標籤管理</string>
+    <string name="bookshelf_label_select">標籤選擇</string>
+    <string name="bookshelf_label_edit">編輯標籤</string>
+    <string name="bookshelf_label_name">標籤名稱</string>
+    <string name="bookshelf_label_none">未分類</string>
+    <string name="bookshelf_label_net_none">網絡未分類</string>
+    <string name="bookshelf_label_local_none">本地未分類</string>
+    <string name="bookshelf_label_move_to">移入標籤</string>
+    <string name="bookshelf_label_limit">標籤已達上限(64個)</string>
+    <string name="bookshelf_label_name_empty">標籤名稱不能為空</string>
+    <string name="bookshelf_label_add">新增標籤</string>
 </resources>

@@ -682,7 +682,7 @@
     <string name="add_to_group">Adicionar ao grupo</string>
     <string name="save_image">Salvar imagem</string>
     <string name="no_default_path">Nenhum pasta padrão</string>
-    <string name="change_group">Configurações de grupo</string>
+    <string name="change_group">Configurações de etiqueta</string>
     <string name="view_toc">Ver os capítulos</string>
     <string name="bar_elevation">Sombra na barra de navegação</string>
     <string name="bar_elevation_s">Tamanho da sombra atual(elevação): %s</string>

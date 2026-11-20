@@ -16,7 +16,7 @@
         app:displayHomeAsUp="false"
         app:fitStatusBar="false"
         app:popupTheme="@style/AppTheme.PopupOverlay"
-        app:title="@string/group_edit"
+        app:title="@string/bookshelf_label_edit"
         app:titleTextAppearance="@style/ToolbarTitle" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -43,7 +43,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_margin="6dp"
-            android:hint="@string/group_name"
+            android:hint="@string/bookshelf_label_name"
             app:layout_constraintBottom_toTopOf="@+id/tv_sort"
             app:layout_constraintLeft_toRightOf="@+id/iv_cover"
             app:layout_constraintRight_toRightOf="parent"

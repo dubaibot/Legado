@@ -22,6 +22,7 @@ import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.SourceGroupTagLinker
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isLocal
@@ -439,6 +440,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             }
             if (inBookshelf) {
                 book.removeType(BookType.updateError)
+                SourceGroupTagLinker.apply(book, source)
                 bookData.value?.delete()
                 appDb.bookDao.insert(book)
                 appDb.bookChapterDao.insert(*toc.toTypedArray())
@@ -464,6 +466,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     fun saveBook(book: Book?, success: (() -> Unit)? = null) {
         book ?: return
         execute {
+            if (inBookshelf) {
+                SourceGroupTagLinker.apply(book, bookSource)
+            }
             if (book.order == 0) {
                 book.order = appDb.bookDao.minOrder - 1
             }
@@ -497,6 +502,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             bookData.value?.let { book ->
                 book.removeType(BookType.notShelf)
+                SourceGroupTagLinker.apply(book, bookSource)
                 if (book.order == 0) {
                     book.order = appDb.bookDao.minOrder - 1
                 }

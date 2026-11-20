@@ -86,7 +86,7 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
             binding.cbEnableRefresh.isChecked = it.enableRefresh
             binding.cbEnableOnlyRead.isChecked = it.onlyUpdateRead
         } ?: let {
-            binding.toolBar.title = getString(R.string.add_group)
+            binding.toolBar.title = getString(R.string.bookshelf_label_add)
             binding.btnDelete.gone()
             binding.ivCover.load()
         }
@@ -117,7 +117,7 @@ class GroupEditDialog() : BaseDialogFragment(R.layout.dialog_book_group_edit) {
             btnOk.onClick {
                 val groupName = tieGroupName.text?.toString()
                 if (groupName.isNullOrEmpty()) {
-                    toastOnUi("分组名称不能为空")
+                    toastOnUi(R.string.bookshelf_label_name_empty)
                 } else {
                     val bookSort = binding.spSort.selectedItemPosition - 1
                     val coverPath = binding.ivCover.bitmapPath

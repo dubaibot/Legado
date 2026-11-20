@@ -65,7 +65,7 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker
     }
 
     private fun initView() {
-        binding.toolBar.title = getString(R.string.group_select)
+        binding.toolBar.title = getString(R.string.bookshelf_label_select)
         binding.toolBar.inflateMenu(R.menu.book_group_manage)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener(this)

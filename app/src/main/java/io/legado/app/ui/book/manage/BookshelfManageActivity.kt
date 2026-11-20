@@ -106,7 +106,7 @@ class BookshelfManageActivity :
         lifecycleScope.launch {
             viewModel.groupName = withContext(IO) {
                 appDb.bookGroupDao.getByID(viewModel.groupId)?.groupName
-                    ?: getString(R.string.no_group)
+                    ?: getString(R.string.bookshelf_label_none)
             }
             upTitle()
         }
@@ -192,7 +192,7 @@ class BookshelfManageActivity :
     }
 
     private fun initOtherView() {
-        binding.selectActionBar.setMainActionText(R.string.move_to_group)
+        binding.selectActionBar.setMainActionText(R.string.bookshelf_label_move_to)
         binding.selectActionBar.inflateMenu(R.menu.bookshelf_menage_sel)
         binding.selectActionBar.setOnMenuItemClickListener(this)
         binding.selectActionBar.setCallBack(this)

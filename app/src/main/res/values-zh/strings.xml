@@ -695,7 +695,7 @@
     <string name="add_to_group">加入分组</string>
     <string name="save_image">保存图片</string>
     <string name="no_default_path">没有默认路径</string>
-    <string name="change_group">设置分组</string>
+    <string name="change_group">设置标签</string>
     <string name="view_toc">查看目录</string>
     <string name="bar_elevation">导航栏阴影</string>
     <string name="bar_elevation_s">当前阴影大小（elevation）：%s</string>
@@ -1081,8 +1081,8 @@
     <string name="ignore_audio_focus_summary">允许与其他应用同时播放音频</string>
     <string name="refresh_sort">刷新分类</string>
     <string name="cover_decode_js">封面解密（coverDecodeJs）</string>
-    <string name="net_no_group">网络未分组</string>
-    <string name="local_no_group">本地未分组</string>
+    <string name="net_no_group">网络未分类</string>
+    <string name="local_no_group">本地未分类</string>
     <string name="parallel_export_book">多线程导出</string>
     <string name="progress_bar_behavior">进度条行为</string>
     <string name="source_edit_text_max_line">源编辑框最大行数</string>
@@ -1529,7 +1529,7 @@
 
 <string name="paragraph_import_conflict_skip_description">只导入名称不冲突的规则</string>
 
-<string name="bookshelf_tag_delete_message">确定从“%2$s”分组的所有书籍中移除“%1$s”标签吗？不会删除书籍。</string>
+<string name="bookshelf_tag_delete_message">确定从“%2$s”标签的所有书籍中移除“%1$s”分组吗？不会删除书籍。</string>
 
     <string name="rss_search_running">正在搜索 · 已得 %1$d 条</string>
 
@@ -1820,7 +1820,7 @@
 
 <string name="manage_bar_immersion_summary">开启后书源、订阅源、书签等管理页顶栏与背景融为一体，不再使用强调色</string>
 
-<string name="bookshelf_tag_new_hint">新增标签，多个用空格或逗号分隔</string>
+<string name="bookshelf_tag_new_hint">新增分组，多个用空格或逗号分隔</string>
 
     <string name="rss_tag_all_count">全部 · %1$d 源</string>
 
@@ -2113,7 +2113,7 @@
 
     <string name="downloading_dots">下载中……</string>
 
-<string name="bookshelf_tag_new_label">新标签</string>
+<string name="bookshelf_tag_new_label">新分组</string>
 
     <string name="logging_in">正在登录…</string>
 
@@ -2237,7 +2237,7 @@ bookUrl：%7$s
 用户选中或追问：
 %6$s</string>
 
-<string name="bookshelf_tag_no_matching_existing">没有匹配的已有标签</string>
+<string name="bookshelf_tag_no_matching_existing">没有匹配的已有分组</string>
 
 <string name="bookshelf_tag_filter_all">全部</string>
 
@@ -2825,7 +2825,7 @@ bookUrl：%7$s
 
     <string name="ai_provider_search_empty_title">没有匹配「%1$s」的提供商</string>
 
-<string name="bookshelf_tag_book_count">已标记 %1$d 本书</string>
+<string name="bookshelf_tag_book_count">已分入 %1$d 本书</string>
 
     <string name="copy_link">复制链接</string>
 
@@ -3006,7 +3006,7 @@ bookUrl：%7$s
 
 	<string name="content_select_menu_config_summary">配置长按菜单动作与默认打开项</string>
 
-<string name="bookshelf_tag_add_title">添加标签</string>
+<string name="bookshelf_tag_add_title">添加分组</string>
 
 
 <string name="cache_manage_download_failed_simple">下载失败</string>
@@ -3373,7 +3373,7 @@ bookUrl：%7$s
 
     <string name="uploading">上传中……</string>
 
-<string name="bookshelf_tag_empty_summary">当前分组还没有标签，可以点击“新增”创建。</string>
+<string name="bookshelf_tag_empty_summary">当前标签还没有分组，可以点击“新增”创建。</string>
 
 	<string name="ai_usage_model_detail">按模型拆分</string>
 
@@ -3425,7 +3425,7 @@ bookUrl：%7$s
 
     <string name="search_result_counting">搜索中 · 已命中 %1$d 本</string>
 
-<string name="bookshelf_tag_search_existing">搜索已有标签</string>
+<string name="bookshelf_tag_search_existing">搜索已有分组</string>
 
         <string name="appearance_kit_delete_confirm">删除应用主题“%s”？</string>
 
@@ -3894,7 +3894,7 @@ bookUrl：%7$s
 
     <string name="read_record_month_label">本月</string>
 
-<string name="bookshelf_tag_none">未设置标签</string>
+<string name="bookshelf_tag_none">未设置分组</string>
 
     <string name="download_resume_task">继续</string>
 
@@ -4058,7 +4058,7 @@ bookUrl：%7$s
 
 <string name="navigation_bar_preview">底栏预览</string>
 
-<string name="bookshelf_tag_visible">标签栏显示</string>
+<string name="bookshelf_tag_visible">分组栏显示</string>
 
 	<string name="adapt_special_style">&#36866;&#37197;&#29305;&#27530;&#26679;&#24335;</string>
 
@@ -4518,7 +4518,7 @@ bookUrl：%7$s
 
     <string name="search_thread_count_toast">配置已保存，将在下次搜索时生效</string>
 
-<string name="bookshelf_tag_manage">管理标签</string>
+<string name="bookshelf_tag_manage">管理分组</string>
 
     <string name="hours_ago">%1$d小时前</string>
 
@@ -4676,9 +4676,9 @@ bookUrl：%7$s
 
 <string name="fast_scroller_touch_target_standard">标准 44dp</string>
 
-<string name="bookshelf_tag_delete_title">删除标签</string>
+<string name="bookshelf_tag_delete_title">删除分组</string>
 
-<string name="bookshelf_tag_group_summary">%1$d 本书 · %2$d 个标签</string>
+<string name="bookshelf_tag_group_summary">%1$d 本书 · %2$d 个分组</string>
 
     <string name="toc_unread_chapters">%1$d 章未读</string>
 
@@ -5039,7 +5039,7 @@ bookUrl：%7$s
 
     <string name="rss_article_type_web">网页</string>
 
-<string name="bookshelf_tag_no_reusable">没有可复用的已有标签，可直接输入新标签</string>
+<string name="bookshelf_tag_no_reusable">没有可复用的已有分组，可直接输入新分组</string>
 
 <string name="cache_manage_state_remote">&#20113;&#31471;</string>
 
@@ -5488,7 +5488,7 @@ bookUrl：%7$s
 
     <string name="rr_heatmap_mon">一</string>
 
-    <string name="smart_tag_sub_title">子标签</string>
+    <string name="smart_tag_sub_title">子分组</string>
 
     <string name="book_cache_selector_summary">选择要备份缓存的书籍</string>
 
@@ -5508,7 +5508,7 @@ bookUrl：%7$s
 
     <string name="homepage_load_more">加载更多</string>
 
-    <string name="set_book_tag">设置标签</string>
+    <string name="set_book_tag">设置分组</string>
 
     <string name="set_timer_by_time">按时间定时</string>
 
@@ -5967,7 +5967,7 @@ bookUrl：%7$s
 
     <string name="share_note_export_failed">导出失败</string>
 
-    <string name="bookshelf_tag_rename_scope">在所有分组中重命名"%1$s"</string>
+    <string name="bookshelf_tag_rename_scope">在所有标签中重命名“%1$s”</string>
 
     <string name="source_info_code_lines">代码行数</string>
 
@@ -6009,7 +6009,7 @@ bookUrl：%7$s
 
     <string name="smart_tag_rule_cannot_update_desc">已关闭自动更新</string>
 
-    <string name="book_tag_s">标签：%s</string>
+    <string name="book_tag_s">分组：%s</string>
 
     <string name="nav_bar_effect_solid">实色</string>
 
@@ -6027,7 +6027,7 @@ bookUrl：%7$s
 
     <string name="menu_highlight_rule">高亮设置</string>
 
-    <string name="smart_tag_enable_summary">根据书籍类型、阅读进度、章节数量和更新状态自动匹配标签</string>
+    <string name="smart_tag_enable_summary">根据书籍类型、阅读进度、章节数量和更新状态自动匹配分组</string>
 
     <string name="text_bold_content">正文</string>
 
@@ -6055,7 +6055,7 @@ bookUrl：%7$s
 
     <string name="backward_pre_download_s">向前预下载 %s 章</string>
 
-    <string name="book_tag_existing">已有标签</string>
+    <string name="book_tag_existing">已有分组</string>
 
     <string name="download_open_folder_failed">无法打开文件夹</string>
 
@@ -6203,7 +6203,7 @@ bookUrl：%7$s
 
     <string name="homepage_switch_layout">切换布局</string>
 
-    <string name="smart_tag_enable">智能标签</string>
+    <string name="smart_tag_enable">智能分组</string>
 
     <string name="grammar_select">语法选择</string>
 
@@ -6458,7 +6458,7 @@ bookUrl：%7$s
 
     <string name="app_theme_file_too_large">应用主题文件过大</string>
 
-    <string name="show_book_tag_in_book_info">显示设置标签</string>
+    <string name="show_book_tag_in_book_info">显示设置分组</string>
 
     <string name="rr_selected_items">已选择 %d 项</string>
 
@@ -6681,7 +6681,7 @@ bookUrl：%7$s
     <string name="debug_regex_pattern_hint">请输入正则表达式</string>
 
 
-    <string name="show_bookshelf_tag_bar">显示标签栏</string>
+    <string name="show_bookshelf_tag_bar">显示分组栏</string>
 
     <string name="source_content_query">源内容查询</string>
 
@@ -6760,7 +6760,7 @@ bookUrl：%7$s
 
     <string name="export_matched_sources">导出匹配的源</string>
 
-    <string name="smart_tag_manage">智能标签管理</string>
+    <string name="smart_tag_manage">智能分组管理</string>
 
     <string name="show_score">开启评分</string>
 
@@ -7083,7 +7083,7 @@ bookUrl：%7$s
 
     <string name="smart_tag_rule_short">短篇</string>
 
-    <string name="bookshelf_tag_rename_title">重命名标签</string>
+    <string name="bookshelf_tag_rename_title">重命名分组</string>
 
     <string name="restore_show_selector">恢复显示选择菜单</string>
 
@@ -7175,7 +7175,7 @@ bookUrl：%7$s
 
     <string name="homepage_manual_add_module">手动添加模块</string>
 
-    <string name="bookshelf_tag_rename_label">标签名</string>
+    <string name="bookshelf_tag_rename_label">分组名</string>
 
     <string name="homepage_delete_set_msg">确定要删除这个集吗？集内模块将被移除。</string>
 
@@ -7223,7 +7223,7 @@ bookUrl：%7$s
 
     <string name="nav_bar_layout_sidebar">侧边栏</string>
 
-    <string name="smart_tag_sub_summary">仅在智能标签开启时生效</string>
+    <string name="smart_tag_sub_summary">仅在智能分组开启时生效</string>
 
     <string name="block_rule_manage">屏蔽规则</string>
 
@@ -7356,4 +7356,17 @@ bookUrl：%7$s
     <string name="debug_curl_method">请求方法</string>
 
     <string name="bubble_source_local">本地</string>
+    <string name="bookshelf_label">标签</string>
+    <string name="bookshelf_label_s">标签：%s</string>
+    <string name="bookshelf_label_manage">标签管理</string>
+    <string name="bookshelf_label_select">标签选择</string>
+    <string name="bookshelf_label_edit">编辑标签</string>
+    <string name="bookshelf_label_name">标签名称</string>
+    <string name="bookshelf_label_none">未分类</string>
+    <string name="bookshelf_label_net_none">网络未分类</string>
+    <string name="bookshelf_label_local_none">本地未分类</string>
+    <string name="bookshelf_label_move_to">移入标签</string>
+    <string name="bookshelf_label_limit">标签已达上限(64个)</string>
+    <string name="bookshelf_label_name_empty">标签名称不能为空</string>
+    <string name="bookshelf_label_add">添加标签</string>
 </resources>

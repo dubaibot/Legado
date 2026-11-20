@@ -680,7 +680,7 @@
     <string name="add_to_group">Add to Group</string>
     <string name="save_image">Save image</string>
     <string name="no_default_path">No default path</string>
-    <string name="change_group">Group settings</string>
+    <string name="change_group">Configuración de etiqueta</string>
     <string name="view_toc">View Chapters</string>
     <string name="bar_elevation">Navigation bar shadow</string>
     <string name="bar_elevation_s">Current shadow size(elevation): %s</string>

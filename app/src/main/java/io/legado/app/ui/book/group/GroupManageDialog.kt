@@ -54,7 +54,7 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
-        binding.toolBar.setTitle(R.string.group_manage)
+        binding.toolBar.setTitle(R.string.bookshelf_label_manage)
         initView()
         initData()
         initMenu()
@@ -96,7 +96,7 @@ class GroupManageDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 if (appDb.bookGroupDao.canAddGroup) {
                     showDialogFragment(GroupEditDialog())
                 } else {
-                    toastOnUi("分组已达上限(64个)")
+                    toastOnUi(R.string.bookshelf_label_limit)
                 }
             }
         }

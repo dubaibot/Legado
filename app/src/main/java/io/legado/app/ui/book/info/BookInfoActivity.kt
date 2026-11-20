@@ -889,12 +889,12 @@ class BookInfoActivity :
         viewModel.loadGroup(groupId) {
             if (it.isNullOrEmpty()) {
                 binding.tvGroup.text = if (book?.isLocal == true) {
-                    getString(R.string.group_s, getString(R.string.local_no_group))
+                    getString(R.string.bookshelf_label_s, getString(R.string.bookshelf_label_local_none))
                 } else {
-                    getString(R.string.group_s, getString(R.string.no_group))
+                    getString(R.string.bookshelf_label_s, getString(R.string.bookshelf_label_none))
                 }
             } else {
-                binding.tvGroup.text = getString(R.string.group_s, it)
+                binding.tvGroup.text = getString(R.string.bookshelf_label_s, it)
             }
         }
     }

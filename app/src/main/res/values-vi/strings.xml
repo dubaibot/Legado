@@ -679,7 +679,7 @@
     <string name="add_to_group">Thêm vào nhóm</string>
     <string name="save_image">Lưu ảnh</string>
     <string name="no_default_path">Không có đường dẫn mặc định</string>
-    <string name="change_group">Cài đặt nhóm</string>
+    <string name="change_group">Cài đặt nhãn</string>
     <string name="view_toc">Xem chương</string>
     <string name="bar_elevation">Bóng thanh điều hướng</string>
     <string name="bar_elevation_s">Kích thước bóng hiện tại (độ cao): %s</string>
