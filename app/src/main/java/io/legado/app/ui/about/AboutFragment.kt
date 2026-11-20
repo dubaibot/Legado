@@ -55,6 +55,7 @@ class AboutFragment : PreferenceFragmentCompat() {
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
+            "projectHome" -> openUrl(R.string.project_home_url)
             "contributors" -> openUrl(R.string.contributors_url)
             "update_log" -> showMdFile(getString(R.string.update_log), "updateLog.md")
             "check_update" -> checkUpdate()
@@ -88,7 +89,7 @@ class AboutFragment : PreferenceFragmentCompat() {
      */
     private fun checkUpdate() {
         waitDialog.show()
-        AppUpdate.giteeUpdate.run {
+        AppUpdate.update.run {
             check(lifecycleScope)
                 .onSuccess {
                     showDialogFragment(

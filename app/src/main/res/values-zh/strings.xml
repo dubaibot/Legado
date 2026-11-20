@@ -1521,7 +1521,7 @@
 
     <string name="read_record_stats_waiting">继续阅读后会开始生成日统计和热力图</string>
 
-    <string name="welcome_title">阅读M</string>
+    <string name="welcome_title">阅读 D</string>
 
 <string name="bottom_bar_effect_glass">玻璃</string>
 
@@ -2574,7 +2574,7 @@ bookUrl：%7$s
 
 	<string name="paragraph_rule_enabled_for_book">&#24403;&#21069;&#20070;&#31821;&#24050;&#21551;&#29992;</string>
 
-	<string name="app_name_sigma">阅读M</string>
+	<string name="app_name_sigma">阅读 D</string>
 
 <string name="cover_collection_name">图集名称</string>
 
@@ -2916,7 +2916,11 @@ bookUrl：%7$s
 
     <string name="cache_stats_audio">音频缓存</string>
 
-    <string name="about_description_sigma">\u3000\u3000阅读M继承自legado-E&amp;阅读 Archive，旨在原版基础上完善和增加功能。</string>
+    <string name="about_description_sigma">\u3000\u3000阅读 D 继承自 Legado，在原版阅读基础上融合影视源、短剧与弹幕播放，是集阅读与观影于一体的开源应用。</string>
+
+    <string name="project_home">项目主页</string>
+    <string name="project_home_summary">GitHub：dubaibot/Legado</string>
+    <string name="source_manage_all_desc">统一管理书源、订阅源、影视源与首页插件</string>
 
     <string name="favorites_empty_browse_rss">去订阅源逛逛</string>
 
@@ -3333,7 +3337,7 @@ bookUrl：%7$s
 
 	<string name="advanced_title_name_required">标题名称不能为空</string>
 
-    <string name="ai_import_default_skill">安装默认 阅读Archive Skill</string>
+    <string name="ai_import_default_skill">安装默认 阅读 D Skill</string>
 
     <string name="theme_source_both">本地+云端</string>
 
@@ -3924,7 +3928,7 @@ bookUrl：%7$s
 
     <string name="url_record_detail">URL记录详情</string>
 
-    <string name="contributors_summary_sigma">老登GTQ，详情请在 GitHub 中查看</string>
+    <string name="contributors_summary_sigma">gedoor（Legado 原作者）及 Legado 开源社区贡献者，阅读 D 基于 Legado 延续开发</string>
 
 <string name="layout_list_compact">&#32039;&#20945;&#21015;&#34920;</string>
 
@@ -4995,7 +4999,7 @@ bookUrl：%7$s
     <string name="ai_manage_mcp_servers">管理 MCP 服务器</string>
 
 	<string name="app_share_description_sigma">
-        阅读Archive 下载地址：\nhttps://gitee.com/zziji/legado/releases\nGitHub 备用：\nhttps://github.com/Rimchars/legado/releases
+        阅读 D 下载地址：\nhttps://github.com/dubaibot/Legado/releases
     </string>
 
     <string name="web_first_launch_title">三步开始使用</string>

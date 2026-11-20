@@ -13,6 +13,20 @@
 
     <io.legado.app.lib.prefs.Preference
         android:icon="@drawable/ic_cfg_source"
+        android:key="sourceManage"
+        android:summary="@string/source_manage_all_desc"
+        android:title="@string/source_manage"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:icon="@drawable/ic_play_outline_24dp"
+        android:key="videoSetting"
+        android:summary="@string/video_setting_summary"
+        android:title="@string/video_setting"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:icon="@drawable/ic_cfg_source"
         android:key="txtTocRuleManage"
         android:summary="@string/config_txt_toc_rule"
         android:title="@string/txt_toc_rule"

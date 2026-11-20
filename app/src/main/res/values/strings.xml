@@ -1355,12 +1355,15 @@
     <string name="video_setting">视频设置</string>
     <string name="video_setting_summary">自动播放、全屏播放等配置</string>
     <string name="history">历史记录</string>
-    <string name="app_name_sigma">阅读Sigma</string>
-    <string name="about_description_sigma">\u3000\u3000阅读Sigma继承自legado，旨在原版基础上完善和增加功能，欢迎您的加入。</string>
-    <string name="contributors_summary_sigma">gedoor、Luoyacheng、Horis和 Xwite 等，详情请在 GitHub 中查看</string>
+    <string name="app_name_sigma">阅读 D</string>
+    <string name="about_description_sigma">\u3000\u3000阅读 D 继承自 Legado，在原版阅读基础上融合影视源、短剧与弹幕播放，是集阅读与观影于一体的开源应用。</string>
+    <string name="contributors_summary_sigma">gedoor（Legado 原作者）及 Legado 开源社区贡献者，阅读 D 基于 Legado 延续开发</string>
     <string name="app_share_description_sigma">
-        阅读 Sigma 下载地址：\nhttps://github.com/Luoyacheng/legado-E/releases
+        阅读 D 下载地址：\nhttps://github.com/dubaibot/Legado/releases
     </string>
+    <string name="project_home">项目主页</string>
+    <string name="project_home_summary">GitHub：dubaibot/Legado</string>
+    <string name="source_manage_all_desc">统一管理书源、订阅源、影视源与首页插件</string>
     <string name="sure_cache_book">是否确认开始缓存？</string>
     <string name="non_printable_set">不可视字符设定</string>
     <string name="whitespace_leading">行首</string>
@@ -3471,7 +3474,7 @@ Placeholders:
 
 <string name="cache_manage_no_cache">No cache to upload</string>
 
-    <string name="ai_import_default_skill">Install default 阅读Archive skill</string>
+    <string name="ai_import_default_skill">Install default 阅读 D skill</string>
 
     <string name="search_thread_count_summary">Concurrency for book/RSS search, source change, cover change, manga search, reading page search, bookshelf search, source verification (current %s, default 32, max 128)</string>
 

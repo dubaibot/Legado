@@ -34,7 +34,9 @@ import io.legado.app.ui.dict.rule.DictRuleActivity
 import io.legado.app.ui.file.FileManageActivity
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
+import io.legado.app.ui.main.discovery.SourceManageActivity
 import io.legado.app.ui.replace.ReplaceRuleActivity
+import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.ui.widget.applyTopBarWallpaper
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
@@ -44,6 +46,7 @@ import io.legado.app.utils.openUrl
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -187,6 +190,8 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
         override fun onPreferenceTreeClick(preference: Preference): Boolean {
             when (preference.key) {
                 "bookSourceManage" -> startActivity<BookSourceActivity>()
+                "sourceManage" -> startActivity<SourceManageActivity>()
+                "videoSetting" -> showDialogFragment(SettingsDialog(requireActivity()))
                 "replaceManage" -> startActivity<ReplaceRuleActivity>()
                 "dictRuleManage" -> startActivity<DictRuleActivity>()
                 "txtTocRuleManage" -> startActivity<TxtTocRuleActivity>()

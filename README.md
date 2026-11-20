@@ -1,262 +1,86 @@
 <div align="center">
-<img width="125" height="125" src="https://gitee.com/lyc486/legado/raw/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="legado"/>
+<img width="125" height="125" src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="reading-d"/>
 <br>
-阅读Sigma
+阅读 D
 <br>
-阅读Sigma继承自<a href="https://github.com/gedoor/legado" target="_blank">Legado</a>，延续开源阅读项目，在其基础上新增更多功能。
+阅读 D 是一个基于 <a href="https://github.com/gedoor/legado" target="_blank">Legado（阅读 3.0）</a> 的开源 Android 应用，在原版小说阅读能力之上，融合了影视源、短剧与弹幕播放。
 </div>
 
-## 版本说明
-- 测试版(beta)：包名与Legado原版相同，可覆盖更新，版本更新频繁
-- 正式版(plus)：新的共存包名，安装后是一个新软件，不会覆盖Legado原版，每到一个稳定阶段进行一次更新
-#### 找不到下载地址可以去这里 [下载软件](https://gitee.com/lyc486/legado/releases)
+## 软件定位
 
-[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
+- 阅读与观影一体：书架、订阅、影视、短剧都在同一个应用里完成
+- 源驱动：书源、订阅源、影视源全部由用户自行导入与管理，软件本身不提供内容
+- 数据本地化：书架、配置与阅读进度保存在本机，支持导出、备份与恢复
+- 开源无广告：应用内不含广告位与推广内容
 
->新用户？
->
->软件不提供内容，需要您自己手动添加，例如导入书源等。  
->看看 [帮助文档](https://www.yuque.com/legado/wiki)，也许里面就有你要的答案。
+## 主要功能
 
-# Function-主要功能 [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-)
+### 影视与短剧
 
-<details><summary>原版</summary>
-1.自定义书源，自己设置规则，抓取网页数据，规则简单易懂，软件内有规则说明。<br>
-2.列表书架，网格书架自由切换。<br>
-3.书源规则支持搜索及发现，所有找书看书功能全部自定义，找书更方便。<br>
-4.订阅内容,可以订阅想看的任何内容,看你想看<br>
-5.支持替换净化，去除广告替换内容很方便。<br>
-6.支持本地TXT、EPUB阅读，手动浏览，智能扫描。<br>
-7.支持高度自定义阅读界面，切换字体、颜色、背景、行距、段距、加粗、简繁转换等。<br>
-8.支持多种翻页模式，覆盖、仿真、滑动、滚动等。<br>
-9.软件开源，持续优化，无广告。
-</details>
+1. 多类型影视源：兼容 FongMi / TVbox 生态，支持 JSON（苹果 CMS V10）、TXT 列表、HTML 规则、Python 插件与 jar 爬虫（`csp_` 站点）五种接入方式。
+2. 短剧竖屏播放：沉浸式竖屏播放页，上下滑切换、双击点赞、收藏直接加入书架、选集网格、倍速、自动连播与进度记忆。
+3. 弹幕播放：支持 B 站 XML / JSON 弹幕解析与 Canvas 渲染，滚动、顶部、底部三种模式，可接入 LogVar / dandanplay 兼容弹幕服务器。
+4. 完善播放器：片头片尾跳过、定时关闭、画面镜像与比例、清晰度切换、截图、悬浮窗与系统媒体通知。
+5. 首页影视流：分类标签栏加视频网格，多源切换、分类浏览与后台预热缓存。
+6. 统一搜索：书源、订阅源与影视源在同一入口搜索，结果统一展示。
 
-<details><summary>延续</summary>
-1.带歌词的音频播放功能。<br>
-2.带弹幕的视频播放功能。<br>
-3.更方便的书源编辑。<br>
-4.更丰富的书源功能实现。<br>
-5.更完善的订阅源功能。<br>
-</details>
+### 阅读（继承自 Legado）
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+1. 自定义书源，规则简单易懂，软件内附规则说明。
+2. 列表书架与网格书架自由切换，支持分组与本地书籍。
+3. 书源支持搜索与发现，找书看书功能全部可自定义。
+4. 订阅内容，可订阅想看的任意内容。
+5. 替换净化，去除广告、替换正文内容。
+6. 本地 TXT、EPUB 阅读，支持手动浏览与智能扫描。
+7. 高度自定义阅读界面：字体、颜色、背景、行距、段距、加粗、简繁转换等。
+8. 多种翻页模式：覆盖、仿真、滑动、滚动。
+9. 在线朗读（TTS）与音频播放，支持带歌词的音频。
+10. Web 服务与 WebDAV 备份，可在浏览器中编辑源、阅读与同步数据。
 
-# Community-交流社区 [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-)
+## 下载与安装
 
-#### Telegram
-[![Telegram-channel](https://img.shields.io/badge/Σ_Telegram-%E9%A2%91%E9%81%93-blue)](https://t.me/readsigma)
+- GitHub Releases：<https://github.com/dubaibot/Legado/releases>
+- CI 构建产物：Actions 中的 `Build ReadingD APK` 工作流，下载 `readingD-apk` Artifacts
+- 安装包按 ABI 拆分，提供 universal、arm64-v8a 与 armeabi-v7a 版本，可按设备选择以减小体积
 
-#### WeChat
-[![WeChat-channel](https://img.shields.io/badge/Σ_%e5%be%ae%e4%bf%a1-%e5%85%ac%e4%bc%97%e5%8f%b7-green)](https://mp.weixin.qq.com/mp/appmsgalbum?action=getalbum&album_id=4345046964963590147)  
-<img src="https://open.weixin.qq.com/qr/code?username=legado_plus" width="100">
+## 快速开始
 
-#### Discord
-[![Discord](https://img.shields.io/discord/560731361414086666?color=%235865f2&label=Discord)](https://discord.gg/VtUfRyzRXn)
+1. 安装后打开应用，进入「我的 - 源管理」导入书源、订阅源或影视源。
+2. 书源可在「发现」中浏览，影视源在「影视」标签浏览与播放。
+3. 软件不内置任何内容，源地址请自行准备。
 
-#### Other
-https://www.yuque.com/legado/wiki/community
+相关文档：
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+- [书源规则教程](https://mgz0227.github.io/The-tutorial-of-Legado/)
+- [帮助文档](/app/src/main/assets/web/help/md/appHelp.md)
+- [更新日志](/app/src/main/assets/updateLog.md)
 
-# API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
-* 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。您可以在[这里](api.md)根据需要自行调用。 
-* 可通过url唤起阅读进行一键导入,url格式: legado://import/{path}?src={url}
-* path类型: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,[addToBookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
-* path类型解释: 书源,订阅源,替换规则,本地txt小说目录规则,在线朗读引擎,主题,阅读排版,添加到书架
+## API
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+* 阅读 3.0 提供两种 API 调用方式：`Web 方式` 与 `Content Provider 方式`，详见 [api.md](api.md)。
+* 可通过 URL 唤起应用进行一键导入，格式为 `legado://import/{path}?src={url}`。
+* `path` 类型：`bookSource`、`rssSource`、`replaceRule`、`textTocRule`、`httpTTS`、`theme`、`readConfig`、`dictRule`、`addToBookshelf`。
+* 类型含义：书源、订阅源、替换规则、本地 TXT 目录规则、在线朗读引擎、主题、阅读排版、添加到书架。
 
-# Other-其他 [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-)  
+## 交流与反馈
 
-<details><summary>免责声明</summary>
-阅读依赖系统webview提供网页访问功能，通过用户自定义的第三方网页书源返回阅读内容，阅读对其返回内容概不负责，亦不承担任何法律责任。任何第三方网页书源均系他人制作或提供，非软件作者，阅读对其合法性概不负责，亦不承担任何法律责任。第三方网页书源提供的试读，不代表阅读赞成其内容或立场。您应该对用搜索到的结果自行承担风险。<br>
-任何单位或个人认为第三方网页书源内容可能涉嫌侵犯其信息网络传播权，应该及时向阅读提出书权力通知，并提供身份证明、权属证明及详细侵权情况证明。阅读在收到上述法律文件后，将会依法尽快屏蔽相关内容。<br>
-</details>
+- 问题反馈与功能建议：<https://github.com/dubaibot/Legado/issues>
+- 源码与提交记录：<https://github.com/dubaibot/Legado>
 
-##### 阅读3.0
-* [书源规则](https://mgz0227.github.io/The-tutorial-of-Legado/)
-* [更新日志](/app/src/main/assets/updateLog.md)
-* [帮助文档](/app/src/main/assets/web/help/md/appHelp.md)
+## 免责声明
 
-# 更新日志
+阅读 D 依赖系统 WebView 提供网页访问能力，通过用户自定义的第三方源返回内容，应用对第三方源返回的内容不负责，亦不承担任何法律责任。任何第三方源均由他人制作或提供，应用作者对其合法性不负责。第三方源提供的试读内容不代表应用赞同其内容或立场，请自行判断并承担使用风险。
 
-【11-04】
-- 修复：JSON 源 CMS API URL 构建参数对齐薯条版 TvBoxCmsSpider（home 用 ?ac=list、search 用 ?ac=videolist&wd=&pg=）
-- 修复：JSON 源搜索带 ac=videolist 参数（原先 wd+quick 无 ac 参数导致搜索无结果）
-- 修复：JSON 源播放返回直链+防盗链头(UA+Referer)
-- 修复：JSON 源 header 支持 "k=v&k2=v2" 字符串格式
-- 修复：JSON 源 ext 支持 JSON 对象/数组非原始类型
-- 修复：JSON 源默认 UA 改为 Windows 桌面 Chrome UA
-- 修复：py 源 Spider 兼容层重写为 Python 包装类，正确映射关键字参数到 Java 位置参数
-- 修复：call_spider_func 移除 isinstance(cls, type) 检查（Chaquopy Java 类不通过该检查）
-- 修复：PyTaskQueue.callPluginFunc 移除 AttributeError 文本匹配限制，统一尝试 Spider fallback
+任何单位或个人认为第三方源内容可能涉嫌侵犯其信息网络传播权，应及时向应用提出书面通知，并提供身份证明、权属证明及详细侵权情况证明。应用在收到上述法律文件后，将依法尽快处理相关内容。
 
-【11-02】
-- 新增：首页源管理页（导入 py 插件 / HTML 自定义页面，支持自定义名称与删除）
-- 新增：预装 requests 库，修复 py 源导入即加载失败
-- 新增：影视源播放功能（详情弹窗显示播放按钮，点击调用插件解析并播放 m3u8）
-- 新增：首页分类标签栏 + 视频网格（调用插件 home/category 函数）
-- 优化：首页设置菜单精简为导入/管理两项
-- 优化：详情弹窗显示结构化描述而非原始 JSON
-- 修复：SAF 导入 py 文件时扩展名检测失败导致误判为 HTML（按文件内容检测类型）
-- 修复：SAF content:// URI 的 lastPathSegment 为空导致导入文件名丢失（改用 DocumentsContract 查询）
-- 修复：源管理页顶栏被列表遮挡、关闭按钮不可见
-- 修复：顶栏搜索按钮始终显示
-- 修复：插件加载错误在管理页可视化展示
-- 修复：启动崩溃 FileNotFoundException web/help/md/updateLog.md（复制 updateLog.md 到 web/help/md/ 路径）
-- 修复：py 插件函数返回值序列化为 Python repr 而非 JSON，导致首页/搜索/详情均无法解析（改用 plugin_entry.call_func 确保 JSON 序列化）
-- 修复：home() 网络请求超时导致首页一直显示"加载中"（分类不依赖网络，视频尝试加载失败返回空；loadHome 超时兜底设空数据）
-- 新增：支持 JSON 视频源（苹果CMS 标准 API + 自定义端点两种模式，支持 home/category/search/detail/play/danmaku）
-- 新增：支持 TXT 视频源（本地文本列表，分节分类与多集格式 "集名$url#集名$url"）
-- 新增：弹幕功能（B站 XML / JSON 格式解析，Canvas 渲染，滚动/顶部/底部三种模式，进度驱动，开关按钮）
-- 新增：VideoSource 统一源接口（py/json/txt 三种源实现 home/category/search/detail/play/danmaku 六方法）
-- 新增：源导入支持 json/txt 文件（按扩展名 + 内容特征检测类型）
-- 优化：播放器浮层新增 MediaController（暂停/进度控制）
-- 优化：播放器浮层新增弹幕开关按钮与进度轮询驱动弹幕
-- 新增：FongMi/TV 多源格式全面支持（json/txt/py/html 四类影视源）
-- 新增：FongMi Config 多站点解析器（sites 数组展开为多个独立源）
-- 新增：FongMi TXT 逐行格式解析器（名称$接口地址展开为多个 CMS 源）
-- 新增：HtmlVideoSource（HTML 源 VideoSource 实现，基于 AnalyzeRule xpath/css 规则解析）
-- 新增：VideoHttpClient 共享 HTTP 客户端（连接池 + 响应缓存 TTL 5 分钟）
-- 新增：JsonVideoSource 支持 FongMi Config 多站点 + CMS V10 + 自定义端点
-- 重写：VideoSourceRegistry 支持 PY/JSON/TXT/HTML 四类源创建与展开
-- 新增：源实例缓存（VideoSourceRegistry ConcurrentHashMap，避免重复读盘+创建）
-- 新增：py 源结果缓存（home/category/search TTL 5 分钟，减少 Python 解释器重复执行）
-- 新增：后台预热机制（refreshSources 时并发预加载所有源 home 数据，切换源直接命中）
-- 优化：切换源不清空缓存，切回来直接命中 homeCache/categoryCache
-- 重构：ViewModel 统一走 VideoSource 接口，删除 bridge*/parse* 分叉逻辑（py/json/txt 一套代码）
-- 当前快照：3.26.110413
+## 开源协议与致谢
 
-【11-04】
-- 修复：VideoHttpClient 改用独立 OkHttpClient（不继承 okHttpClient 拦截器链），对齐薯条版 catvod.OkHttp 行为（信任所有证书、不跟随重定向、不发送 Accept-Encoding、系统 DNS、30s 超时）
-- 修复：VideoHttpClient doGet 不再检查 resp.isSuccessful（非 2xx 响应也返回 body，对齐薯条版 string() 行为）
-- 修复：JSON 源接口失败时抛出异常含 URL 和响应内容（UI 可见具体错误信息，替代原先静默返回空数据）
-- 修复：JSON 源站点形态检测——api 字段为 csp_ 前缀（jar 爬虫）、.js 后缀（JS 爬虫）、.py 后缀（Python 爬虫）时抛出明确错误提示，仅支持 CMS 直连站点
-- 修复：JSON 源列表过滤非 CMS 站点（jar/js/py 爬虫站点不再出现在源列表中）
-- 修复：JSON 源解析异常重新抛出（原先 catch 吞异常导致静默失败）
+本项目基于 [Legado](https://github.com/gedoor/legado) 开发，遵循 GPL-3.0 协议，详见 [LICENSE](LICENSE)。
 
-【11-03】
-- 修复：JSON 源 CMS API URL 构建参数对齐薯条版 TvBoxCmsSpider（home 用 ?ac=list、search 用 ?ac=videolist&wd=&pg=）
+感谢 Legado 作者 gedoor 及 Legado 开源社区的所有贡献者。
 
-【10-27】
-- 优化：应用名称由「阅读D」改为「阅读」
-- 优化：更换应用图标
-- 优化：版本号与发布包名规范化
-- 当前快照：3.26.102702
+主要开源依赖：
 
-【10-03】
-- 安装包按CPU架构拆分，新增arm精简版，减小下载体积
-- 版本号随构建自动递增，便于覆盖升级
-- 当前快照：3.26.100100
-
-【10-02】
-- 发现页改版：支持三列网格展示，书源编辑页可选择发现样式（列表/三列）
-- 发现页新增快捷分组入口栏（长按分组进入书源管理），支持传统/新版发现页切换
-- 分类胶囊标签按字数自适应宽度并自动换行
-- EPUB 正文 ruby 注音与相邻文本合并渲染，避免注音替换后出现多余空白
-- 当前快照：3.26.100100
-
-【07-15】
-- 新增导出链接为口令、自动识别口令导入
-- 当前快照：3.26.071522
-
-【07-04】
-- 链接规则支持head类型
-- 回调事件支持详情页点击标签
-- 详情页简介图片支持执行js，支持长按查看
-- 优化web端加载段评图片
-- 详情页简介支持用web渲染
-- 调整新用户预加载和搜索线程的默认值
-- 其余优化与修复
-- 当前快照：3.26.070423
-
-【03-07】
-- 优化代码，修复问题
-- 当前快照：3.26.030717
-
-【03-03】
-- 优化代码，修复问题
-- 视频悬浮窗播放时进行系统媒体播放通知
-- 净化规则使用js时支持调用java.log
-- 代码编辑器搜索替换内容支持$符号
-- 优化书架滚动位置记忆
-- 增加搜索结果排序时对书籍分类信息进行判断
-- 增加自动检查app更新功能
-- 当前快照：3.26.030223
-
-【02-16】
-- 优化代码，修复问题
-- 让小说朗读走系统媒体播放通道
-- 更新内置字典规则
-- 新增java.refreshBookToc函数
-- java.reLoginView函数增加deltaUp参数
-- 新增@webjs:规则类型
-- 文件类书源支持下载链接type指定文件后缀
-- 提升购买按钮权限
-- 当前快照：3.26.021623
-
-【01-31】
-- 优化代码，修复一些问题
-- 正文增加锁定反向横屏
-- 当前快照：3.26.013122
-
-【01-28】
-- 新增java.reLoginView()函数，刷新登录界面
-- 书源发现支持更多丰富的按钮类型
-- 新增java.refreshExplore()函数
-- java.open函数支持打开登录界面
-- 书源简介支持html标签包裹，显示html样式
-- 书籍简介和字典支持gif动态图和svg图data链接
-- 书籍简介和字典支持button按钮
-- 支持源控制图片显示尺寸
-- 书籍简介支持markdown语法编写
-- 新增java.showBrowser函数，能进行半屏显示段评
-- 支持图片链接click键，不推荐继续使用旧方式
-- 支持双击响应段评图
-- 新增chapter.update()函数
-- 新增java.showPhoto函数
-- 新增java.refreshContent()函数
-- 支持订阅源启动页html用js返回空
-- 提升webview函数获取js结果速度
-- 其余优化与修复
-- 当前快照：3.26.012900
-
-【01-13】
-- 软件自定义背景图支持.9.png格式
-- 背景图导入支持直接输入图片在线链接
-- 主题分享支持在线背景图链接
-- 背景图支持跟随主题切换
-- 主题设置支持透明操作栏，提升图片背景视觉效果
-- 支持分组封面自定义图片恢复默认
-- 登录UI的select类型支持action键
-- 提升内置浏览器打开速度（例：订阅源、段评 打开速度大概快100毫秒左右）
-- 支持正文下划线设为虚线类型
-- cache.get函数新增onlyDisk参数
-- tts源支持jslib规则
-- tts源登录界面新增java.clearTtsCache()函数
-- 支持导出单个tts源
-- 编辑tts源、字典规则、TXT目录规则时误触空白区域会提示保存
-- 新增正文边缘点击阈值设置，防止曲面屏误触
-- 实现订阅源的登录检查规则
-- 在链接访问出错时，也能执行一次登录检查规则
-- StrResponse对象支持callTime()获取响应时间
-- 并发访问函数支持skipRateLimit参数，绕过源并发率限制
-- 视频播放器支持记录函数调用时的播放进度
-- 其余细节优化与bug修复
-- 当前快照：3.26.011319
-
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
-
-# Grateful-感谢 [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-)
 > * org.jsoup:jsoup
 > * cn.wanghaomiao:JsoupXpath
 > * com.jayway.jsonpath:json-path
@@ -274,14 +98,13 @@ https://www.yuque.com/legado/wiki/community
 > * com.positiondev.epublib:epublib-core
 > * com.github.Moriafly:LyricViewX
 > * io.github.rosemoe:editor
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
 
-# Interface-界面 [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
-<img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8bdVVU8X7gejuELokmv2DGfJwQpP2UFcwHqqFK4nzfgNUTL6Wij4QqsJySkoPfQuCB1l5MstXCXWjmH5Mm6PGkU!/b=&bo=UQRICVEESAkWADA!&ek=1&tl=1" width="270">  <img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8epqbe*Bzro*ybEEVmlLpuD9E14zFMjtRx2JeZJdVzNYeSZqCm5Kv0MruAumEe0tJ77n*agIEzJIaSN9VHAen2I!/b=&bo=UQRICVEESAkWADA!&ek=1&tl=1" width="270">  
-<img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8SQggDiubhwWyktI5v48VluvK1vwdY2OV9RauO04TcXb4425kVcBiAz2DhpfnrDZKnSpwp8SLnDtKOxtLm1yP9I!/b=&bo=UQRICVEESAkWADA!&ek=1&tl=1" width="270">  <img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8Tx.7oqZyCeAdzSVQa6ZgtXKE*EaUCdEJ3zm2ynIrgem10TqY8aKvSbG3v5FNNHtwSFyN5QfLW*Zd14gUetfsC8!/b=&bo=UgRKCVIESgkWADA!&ek=1&tl=1" width="270">
+## 更新日志
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+完整更新日志见 [app/src/main/assets/updateLog.md](/app/src/main/assets/updateLog.md)。
+
+【最近更新】
+- 竖屏沉浸播放页交互重做：爱心加强推荐、收藏进书架、选集切换、倍速与自动连播
+- 影视源支持 jar 爬虫（FongMi Spider，`csp_` 站点）、JSON、TXT、HTML 与 Python 插件
+- 弹幕支持 LogVar / dandanplay 兼容服务器
+- 修复 Rhino 源 XML 后代访问语法兼容问题
