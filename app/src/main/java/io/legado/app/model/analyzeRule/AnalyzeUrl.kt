@@ -230,9 +230,26 @@ class AnalyzeUrl(
     }
 
     /**
+     * 兼容对象形式：{"url":"...","method":"...","headers":{...},"body":"..."}
+     * 书源 jsLib 常用 java.ajax(JSON.stringify(opt)) 传递该形式，需拆成 url,{options}
+     */
+    private fun normalizeUrlOptionObject() {
+        val trimmed = ruleUrl.trim()
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return
+        val obj = runCatching {
+            GSON.fromJsonObject<Map<String, Any?>>(trimmed).getOrNull()
+        }.getOrNull()?.toMutableMap() ?: return
+        val innerUrl = obj["url"]?.toString()
+        if (innerUrl.isNullOrBlank()) return
+        obj.remove("url")
+        ruleUrl = if (obj.isEmpty()) innerUrl else innerUrl + "," + GSON.toJson(obj)
+    }
+
+    /**
      * 解析Url
      */
     private fun analyzeUrl() {
+        normalizeUrlOptionObject()
         //replaceKeyPageJs已经替换掉额外内容，此处url是基础形式，可以直接切首个‘,’之前字符串。
         val urlMatcher = paramPattern.matcher(ruleUrl)
         val urlNoOption =

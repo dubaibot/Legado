@@ -550,7 +550,14 @@ class AnalyzeRule(
             }
         }
         
-        val resultList = result?.let { it as List<Any> } ?: ArrayList()
+        @Suppress("UNCHECKED_CAST")
+        val resultList = when (val r = result) {
+            is List<*> -> r as List<Any>
+            // @js 规则直接返回 JSON 数组字符串（如书源 jsLib 的 cppRet -> JSON.stringify(arr)）时，
+            // 解析为「每项为 JSON 字符串」的列表，与旧版 java.util.ArrayList 行为保持一致
+            is String -> parseJsonArrayString(r)
+            else -> ArrayList()
+        }
         
         if (tracker.hasSteps()) {
             val tree = tracker.buildTree()
@@ -565,6 +572,19 @@ class AnalyzeRule(
         }
         
         return resultList
+    }
+
+    /**
+     * 将 JSON 数组字符串解析为列表，元素统一为 JSON 字符串（对象/数组项重新序列化）。
+     * 用于 @js 规则直接返回 JSON.stringify(list) 的场景，保持与 java.util.ArrayList 旧行为一致。
+     */
+    private fun parseJsonArrayString(str: String): List<Any> {
+        val trimmed = str.trim()
+        if (!trimmed.startsWith("[")) return ArrayList()
+        val array = GSON.fromJsonArray<Any>(trimmed).getOrNull() ?: return ArrayList()
+        return array.mapTo(ArrayList<Any>(array.size)) {
+            if (it is String) it else GSON.toJson(it)
+        }
     }
 
     /**
