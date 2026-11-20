@@ -212,3 +212,12 @@ Entries discovered by the Agent during task execution should follow this format:
   - 阅读 App 弹幕链路：书源 chapter.getDanmaku()（String→danmakuStr/File→danmakuFile）→ GSY setUp→initDanmaku→onPrepared→onPrepareDanmaku→view.prepare（DanmakuFlameMaster TAG_BILI，只认 B站 XML，p 解析取前 4 字段）；Dandanplay JSON 需客户端转 B站 XML（DanmakuItem mode 1→5顶部/4→4底部/else→1滚动，p=`time,mode,25,color`）；`VideoSource.danmaku()` 接口是死代码（全无人调用）
   - py 源片名丢失问题：playPyEpisode/playRssEpisode 的 videoTitle 会被覆写为集名，故 VideoPlay 新增 showTitle 字段（intent 传入片名）供 LogVar 检索；检索上下文优先级：book.name → showTitle → videoTitle
   - 弹幕加载统一入口：GSY initDanmaku 无弹幕数据时触发 VideoPlay.loadDanmakuFromServer（Coroutine.async(loadScope,IO)+danmakuLoadKey 防重复请求/防过期写回），成功后 postEvent(EventBus.VIDEO_DANMAKU_READY) 通知 Activity 刷新悬浮层开关；书源/py/jar/订阅源全部路径共用，取代原 py 源专属 `{id}` 模板拉取（已删除）
+
+[对外品牌与文案规范：阅读 D]
+- Date: 2026-11-20
+- Context: 整理「我的」页 /「关于」页 / README，发现大量上游 Sigma、阅读M、阅读Archive、Luoyacheng/lyc486 残留
+- Category: Workflow & Collaboration
+- Instructions:
+  - 本项目对外品牌统一为「阅读 D」（ReadingD），仓库 dubaibot/Legado，applicationId com.myreaderD.reader
+  - 下载、项目主页、贡献者、更新检查一律指向 https://github.com/dubaibot/Legado，不再引用 Sigma / 阅读M / 阅读Archive / gitee lyc486
+  - 关于页文案取自 app_name_sigma / about_description_sigma / contributors_summary_sigma / app_share_description_sigma 四个键，改品牌时四处与 values、values-zh 两份 strings 同步修改
