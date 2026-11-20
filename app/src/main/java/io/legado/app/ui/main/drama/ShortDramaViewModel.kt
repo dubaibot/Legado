@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.legado.app.data.drama.DramaCandidate
 import io.legado.app.data.drama.DramaPlayable
-import io.legado.app.data.drama.DramaSourceKind
 import io.legado.app.data.drama.DramaSourceRef
 import io.legado.app.data.drama.ShortDramaCandidateProvider
 import io.legado.app.data.drama.ShortDramaHistoryStore
@@ -158,15 +157,18 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
      * 失败（超时、无线路、空地址）返回 null，由页面回退到外部播放器。
      */
     suspend fun resolvePlayable(candidate: DramaCandidate): DramaPlayable? {
-        if (candidate.source.kind != DramaSourceKind.PY &&
-            candidate.source.kind != DramaSourceKind.TVBOX
-        ) return null
         playableCache[candidate.seriesId]?.let { return it }
-        val playable = ShortDramaPlaybackResolver.resolve(candidate) ?: return null
+        val playable = ShortDramaPlaybackResolver.resolve(candidate)
+            ?: candidate.pageUrl.takeIf { it.isMediaUrl() }?.let { DramaPlayable(url = it) }
+            ?: return null
         if (playable.url.isBlank()) return null
         playableCache[candidate.seriesId] = playable
         return playable
     }
+
+    private fun String.isMediaUrl(): Boolean =
+        startsWith("http", ignoreCase = true) &&
+            (contains(".m3u8", ignoreCase = true) || contains(".mp4", ignoreCase = true))
 
     fun onPlay(candidate: DramaCandidate) {
         viewModelScope.launch {

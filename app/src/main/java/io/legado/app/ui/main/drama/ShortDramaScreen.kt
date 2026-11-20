@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -70,7 +71,6 @@ import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import io.legado.app.data.drama.DramaCandidate
 import io.legado.app.data.drama.DramaPlayable
-import io.legado.app.data.drama.DramaSourceKind
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.exoplayer.mediaMimeTypeOfUrl
 import io.legado.app.help.http.videoStreamClient
@@ -105,7 +105,6 @@ fun ShortDramaScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .padding(bottom = bottomPadding)
     ) {
         when {
             state.loading -> CenterHint(text = "正在准备短剧…", showLoading = true)
@@ -120,6 +119,7 @@ fun ShortDramaScreen(
             )
             else -> DramaFeed(
                 state = state,
+                bottomInset = bottomPadding,
                 scrollToTopTick = scrollToTopTick,
                 onShown = viewModel::onPageShown,
                 onPlay = { candidate ->
@@ -139,6 +139,7 @@ fun ShortDramaScreen(
 @Composable
 private fun DramaFeed(
     state: ShortDramaViewModel.UiState,
+    bottomInset: Dp,
     scrollToTopTick: Int,
     onShown: (DramaCandidate, Int) -> Unit,
     onPlay: (DramaCandidate) -> Unit,
@@ -169,6 +170,7 @@ private fun DramaFeed(
             val candidate = state.feed[page]
             DramaPage(
                 candidate = candidate,
+                bottomInset = bottomInset,
                 active = pagerState.currentPage == page,
                 onPlay = { onPlay(candidate) },
                 onSkip = { onSkip(candidate) },
@@ -191,20 +193,18 @@ private fun DramaFeed(
 @Composable
 private fun DramaPage(
     candidate: DramaCandidate,
+    bottomInset: Dp,
     active: Boolean,
     onPlay: () -> Unit,
     onSkip: () -> Unit,
     onResolve: suspend (DramaCandidate) -> DramaPlayable?,
 ) {
-    // 页内直链播放只覆盖 PY / TVBOX；其余源仍交给既有外部播放器
-    val inlineEligible = candidate.source.kind == DramaSourceKind.PY ||
-        candidate.source.kind == DramaSourceKind.TVBOX
     var playable by remember(candidate.seriesId) { mutableStateOf<DramaPlayable?>(null) }
     var resolving by remember(candidate.seriesId) { mutableStateOf(false) }
     var playFailed by remember(candidate.seriesId) { mutableStateOf(false) }
 
     LaunchedEffect(active, candidate.seriesId) {
-        if (!active || !inlineEligible || playable != null || resolving) return@LaunchedEffect
+        if (!active || playable != null || resolving) return@LaunchedEffect
         resolving = true
         val resolved = onResolve(candidate)
         resolving = false
@@ -240,14 +240,12 @@ private fun DramaPage(
         }
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(220.dp)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.28f),
-                            Color.Transparent,
-                        ),
-                        endY = with(LocalDensity.current) { 220.dp.toPx() },
+                        listOf(Color.Black.copy(alpha = 0.28f), Color.Transparent)
                     )
                 )
         )
@@ -260,7 +258,7 @@ private fun DramaPage(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(start = 20.dp, end = 72.dp, bottom = 40.dp),
+                .padding(start = 20.dp, end = 72.dp, bottom = 40.dp + bottomInset),
         ) {
             Text(
                 text = candidate.title,
@@ -399,7 +397,7 @@ private fun DramaPlayer(
         factory = {
             PlayerView(it).apply {
                 useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                 player = exoPlayer
                 setOnClickListener {

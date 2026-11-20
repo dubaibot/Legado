@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.drama
 
 import android.app.Activity
+import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
@@ -8,6 +9,8 @@ import io.legado.app.data.drama.DramaCandidate
 import io.legado.app.data.drama.DramaSourceKind
 import io.legado.app.data.drama.ShortDramaPlaybackResolver
 import io.legado.app.data.entities.RssArticle
+import io.legado.app.data.entities.SearchBook
+import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.rss.read.ReadRss
 import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.utils.startActivity
@@ -19,7 +22,7 @@ import kotlinx.coroutines.withContext
  *
  * - PY / TVBOX：传 `pyPluginId` + `pyVideoItemId`，由播放页完成 detail/play 与集数列表
  * - 订阅源：先补 `VideoPlay` 的文章上下文，再以 `sourceType=rss` 打开
- * - 书源：传 `bookUrl`，走既有书源播放链路
+ * - 书源：缓存 searchBook 后进书籍详情页，由详情页带完整上下文进入播放
  */
 object ShortDramaLauncher {
 
@@ -50,12 +53,36 @@ object ShortDramaLauncher {
         }
     }
 
-    private fun openBook(activity: Activity, candidate: DramaCandidate) {
-        activity.startActivity<VideoPlayerActivity> {
-            putExtra("bookUrl", candidate.pageUrl)
-            putExtra("inBookshelf", false)
-            putExtra("videoTitle", candidate.title)
-            putExtra(PreferKey.layoutModeOverride, 1)
+    /**
+     * 书源条目先落一条 searchBooks 缓存，再进详情页。
+     *
+     * 短剧书不在书架、也不在搜索结果里，直接打开播放页会因拿不到书源上下文而提示“未找到源”。
+     * 详情页会按书源规则解析详情与目录，由用户从详情页进入播放。
+     */
+    private suspend fun openBook(activity: Activity, candidate: DramaCandidate) {
+        val bookUrl = candidate.pageUrl
+        if (bookUrl.isBlank()) return
+        withContext(Dispatchers.IO) {
+            if (appDb.searchBookDao.getSearchBook(bookUrl) == null) {
+                runCatching {
+                    appDb.searchBookDao.insert(
+                        SearchBook(
+                            bookUrl = bookUrl,
+                            origin = candidate.source.key,
+                            originName = candidate.source.name,
+                            type = BookType.video,
+                            name = candidate.title,
+                            author = candidate.author,
+                            coverUrl = candidate.cover.takeIf { it.isNotBlank() },
+                        )
+                    )
+                }
+            }
+        }
+        activity.startActivity<BookInfoActivity> {
+            putExtra("bookUrl", bookUrl)
+            putExtra("name", candidate.title)
+            putExtra("author", candidate.author)
         }
     }
 

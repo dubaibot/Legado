@@ -136,6 +136,7 @@ object ShortDramaCandidateProvider {
                             seriesId = "book:${ref.key}:${book.bookUrl}",
                             source = ref,
                             title = book.name,
+                            author = book.author,
                             cover = book.coverUrl.orEmpty(),
                             tags = book.kind?.split(',', '，', '/')
                                 ?.map { it.trim() }

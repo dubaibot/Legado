@@ -1122,6 +1122,9 @@ class MainActivity :
      * - 切换为实色模式或标准布局时及时释放采样视图
      */
     private fun applyBottomNavigationShell(config: NavigationBarConfig, bgColor: Int) = binding.run {
+        // 页面级透明覆盖（如短剧全屏播放）时连同玻璃/磨砂外壳一起撤掉，只保留图标文字，
+        // 否则液态玻璃会持续做折射模糊，在画面底部形成看得见的遮挡层。
+        val shellSuppressed = bottomBarColorOverride?.let { Color.alpha(it) == 0 } == true
         val floating = config.layoutMode == NavigationBarConfig.LAYOUT_FLOATING
         val standard = config.layoutMode == NavigationBarConfig.LAYOUT_STANDARD
         val horizontalMargin = if (floating) 20.dpToPx() else 0
@@ -1160,7 +1163,7 @@ class MainActivity :
             NavigationBarConfig.EFFECT_FROSTED -> 14.dpToPx().toFloat()
             else -> 12.dpToPx().toFloat()
         }
-        if (floating && opacityFactor > 0f) {
+        if (floating && opacityFactor > 0f && !shellSuppressed) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 // API 28+：保留固定 elevation 提供阴影形状，通过阴影颜色 alpha 精确控制强度
                 bottomNavigationGlass.elevation = baseElevation
@@ -1182,7 +1185,7 @@ class MainActivity :
         }
         bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
         bottomNavigationView.background = Color.TRANSPARENT.toDrawable()
-        val liquid = usesRealtimeGlassShell(config)
+        val liquid = usesRealtimeGlassShell(config) && !shellSuppressed
         applyBottomNavigationGlassOutline(bottomNavigationGlass, if (floating) 24f.dpToPx() else 0f)
         applyBottomNavigationGlassOutline(bottomNavigationGlassView, if (floating) 24f.dpToPx() else 0f)
         applyBottomNavigationGlassOutline(bottomNavigationShellOverlay, if (floating) 24f.dpToPx() else 0f)
@@ -1269,6 +1272,9 @@ class MainActivity :
         floating: Boolean,
         bgColor: Int,
     ): Drawable {
+        if (bottomBarColorOverride?.let { Color.alpha(it) == 0 } == true) {
+            return Color.TRANSPARENT.toDrawable()
+        }
         val opacityFactor = config.opacity.coerceIn(0, 100) / 100f
         if (opacityFactor <= 0f) {
             // 完全透明时无静态背景，避免静态底色/描边残留（如 strokeAlpha 基底 0.22）

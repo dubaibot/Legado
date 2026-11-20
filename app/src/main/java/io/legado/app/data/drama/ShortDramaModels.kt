@@ -32,6 +32,8 @@ data class DramaCandidate(
     val seriesId: String,
     val source: DramaSourceRef,
     val title: String,
+    /** 书源条目作者，用于详情页定位 */
+    val author: String = "",
     val cover: String = "",
     val tags: List<String> = emptyList(),
     /** 视频源条目标识：detail/play 需要 */
