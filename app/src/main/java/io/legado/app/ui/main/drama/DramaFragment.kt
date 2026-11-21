@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -24,6 +25,9 @@ class DramaFragment() : Fragment(), MainFragmentInterface {
 
     private var bottomPaddingPx by mutableIntStateOf(0)
     private var scrollToTopTick by mutableIntStateOf(0)
+
+    // 切换 Tab 时 Fragment 会被 onPause，用它作为可见性信号驱动 Compose 停止播放
+    private var hostVisible by mutableStateOf(true)
 
     constructor(position: Int) : this() {
         val bundle = Bundle()
@@ -50,6 +54,7 @@ class DramaFragment() : Fragment(), MainFragmentInterface {
                     ShortDramaScreen(
                         bottomPaddingPx = bottomPaddingPx,
                         scrollToTopTick = scrollToTopTick,
+                        hostVisible = hostVisible,
                     )
                 }
             }
@@ -58,12 +63,14 @@ class DramaFragment() : Fragment(), MainFragmentInterface {
 
     override fun onResume() {
         super.onResume()
+        hostVisible = true
         // 短剧页全屏播放：底栏完全透明，画面铺到屏幕底部，页面切换/退到后台时由 onPause 还原
         (activity as? MainActivity)?.setBottomBarColorOverride(Color.TRANSPARENT)
     }
 
     override fun onPause() {
         super.onPause()
+        hostVisible = false
         (activity as? MainActivity)?.setBottomBarColorOverride(null)
     }
 

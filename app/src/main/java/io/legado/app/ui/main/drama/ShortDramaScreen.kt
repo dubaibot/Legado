@@ -5,6 +5,8 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +60,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -102,6 +106,7 @@ import kotlinx.coroutines.launch
 fun ShortDramaScreen(
     bottomPaddingPx: Int,
     scrollToTopTick: Int = 0,
+    hostVisible: Boolean = true,
     viewModel: ShortDramaViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -138,6 +143,7 @@ fun ShortDramaScreen(
             else -> DramaFeed(
                 state = state,
                 scrollToTopTick = scrollToTopTick,
+                hostVisible = hostVisible,
                 onShown = viewModel::onPageShown,
                 onPlay = { candidate ->
                     viewModel.onPlay(candidate)
@@ -170,6 +176,7 @@ fun ShortDramaScreen(
 private fun DramaFeed(
     state: ShortDramaViewModel.UiState,
     scrollToTopTick: Int,
+    hostVisible: Boolean,
     onShown: (DramaCandidate, Int) -> Unit,
     onPlay: (DramaCandidate) -> Unit,
     onSkip: (DramaCandidate) -> Unit,
@@ -222,7 +229,7 @@ private fun DramaFeed(
             val candidate = state.feed[page]
             DramaPage(
                 candidate = candidate,
-                active = pagerState.currentPage == page,
+                active = pagerState.currentPage == page && hostVisible,
                 state = state,
                 onPlay = { onPlay(candidate) },
                 onSkip = { onSkip(candidate) },
@@ -347,10 +354,28 @@ private fun DramaPage(
         Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
     }
 
+    // 手势回调在 pointerInput 内异步执行，需用最新状态，避免读到组合时的旧值
+    val currentCleanScreen by rememberUpdatedState(state.cleanScreen)
+    val currentSetCleanScreen by rememberUpdatedState(onSetCleanScreen)
+
     val playingInline = playable != null
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .detectCleanScreenGesture(
+                onExpand = {
+                    if (!currentCleanScreen) {
+                        currentSetCleanScreen(true)
+                        toast("已开启清屏 · 双指内缩退出")
+                    }
+                },
+                onShrink = {
+                    if (currentCleanScreen) {
+                        currentSetCleanScreen(false)
+                        toast("已退出清屏")
+                    }
+                },
+            )
             .then(if (playingInline) Modifier else Modifier.clickable(onClick = onPlay))
     ) {
         if (playingInline) {
@@ -561,11 +586,20 @@ private fun DramaVideoPlayer(
         }
     }
     LaunchedEffect(active) {
-        if (active) exoPlayer.playWhenReady = true else exoPlayer.pause()
+        if (active) {
+            exoPlayer.playWhenReady = true
+        } else {
+            // 必须清空 playWhenReady，否则回前台时播放器会自动续播
+            exoPlayer.playWhenReady = false
+            exoPlayer.pause()
+        }
     }
-    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { exoPlayer.pause() }
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+        exoPlayer.playWhenReady = false
+        exoPlayer.pause()
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        if (active) exoPlayer.playWhenReady = true else exoPlayer.pause()
+        if (active) exoPlayer.playWhenReady = true
     }
 
     AndroidView(
@@ -896,6 +930,12 @@ private fun DramaMoreSheet(
             }
             Spacer(Modifier.height(12.dp))
             SwitchRow("清屏", cleanScreen, onCleanScreen)
+            Text(
+                text = "也可双指外扩进入清屏、双指内缩退出清屏",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                fontSize = 11.sp,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+            )
             SwitchRow("自动上滑", autoSlide, onAutoSlide)
             SwitchRow("短剧自动续播", autoNext, onAutoNext)
             Spacer(Modifier.height(24.dp))
@@ -915,6 +955,45 @@ private fun SwitchRow(
     ) {
         Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/**
+ * 双指缩放手势：双指外扩进入清屏、双指内缩退出清屏。
+ * 单指事件不消费，交给 VerticalPager 上下滑与点击；每个手势只触发一次，避免抖动反复切换。
+ */
+private fun Modifier.detectCleanScreenGesture(
+    onExpand: () -> Unit,
+    onShrink: () -> Unit,
+): Modifier = this.pointerInput(Unit) {
+    val expandRatio = 1.30f
+    val shrinkRatio = 0.75f
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        var baseSpan = 0f
+        var triggered = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            val pointers = event.changes.filter { it.pressed }
+            if (pointers.size < 2) {
+                if (pointers.isEmpty()) break
+                continue
+            }
+            pointers.forEach { it.consume() }
+            val span = (pointers[0].position - pointers[1].position).getDistance()
+            if (baseSpan == 0f) {
+                baseSpan = span
+            } else if (!triggered && baseSpan > 1f) {
+                val ratio = span / baseSpan
+                if (ratio >= expandRatio) {
+                    triggered = true
+                    onExpand()
+                } else if (ratio <= shrinkRatio) {
+                    triggered = true
+                    onShrink()
+                }
+            }
+        }
     }
 }
 
