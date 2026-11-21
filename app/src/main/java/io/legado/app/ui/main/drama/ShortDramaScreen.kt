@@ -3,11 +3,13 @@ package io.legado.app.ui.main.drama
 import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -98,7 +101,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -112,7 +114,6 @@ import io.legado.app.data.drama.DramaPlayable
 import io.legado.app.data.drama.DramaSeriesPlaylist
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.exoplayer.mediaMimeTypeOfUrl
-import io.legado.app.help.http.videoStreamClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -414,6 +415,8 @@ private fun DramaPage(
     // 播放进度（每秒 2 次刷新，用于信息面板进度条）
     var playPositionMs by remember(candidate.seriesId) { mutableLongStateOf(0L) }
     var playDurationMs by remember(candidate.seriesId) { mutableLongStateOf(0L) }
+    // 播放器注册的 seek 能力；进度条拖动时回调它跳转到目标位置
+    var seekAction by remember(candidate.seriesId) { mutableStateOf<(Long) -> Unit>({}) }
 
     fun episodeKey(episode: DramaEpisode) =
         "${candidate.seriesId}:${episode.index}:${episode.url}"
@@ -544,6 +547,7 @@ private fun DramaPage(
                     playPositionMs = pos
                     playDurationMs = dur
                 },
+                onSeekReady = { seek -> seekAction = seek },
                 onLongPressStart = {
                     if (speedBeforeLongPress == null && state.speed != 3f) {
                         speedBeforeLongPress = state.speed
@@ -617,6 +621,7 @@ private fun DramaPage(
                 bottomPaddingDp = bottomPaddingDp,
                 playPositionMs = playPositionMs,
                 playDurationMs = playDurationMs,
+                onSeek = { ms -> seekAction(ms) },
                 countdownActive = episodeEnded,
                 playFailed = playFailed,
                 playingInline = playingInline,
@@ -690,6 +695,7 @@ private fun DramaVideoPlayer(
     onEpisodeEnd: () -> Unit,
     onProgress: (Long, Long) -> Unit,
     onTick: (Long, Long) -> Unit,
+    onSeekReady: (seekTo: (Long) -> Unit) -> Unit,
     onLongPressStart: () -> Unit,
     onLongPressEnd: () -> Unit,
 ) {
@@ -698,10 +704,20 @@ private fun DramaVideoPlayer(
     val currentOnEnd by rememberUpdatedState(onEpisodeEnd)
     val currentOnProgress by rememberUpdatedState(onProgress)
     val currentOnTick by rememberUpdatedState(onTick)
+    val currentOnSeekReady by rememberUpdatedState(onSeekReady)
     // 播放器实例按页持有，切集时只替换 MediaSource：
     // 避免新建 ExoPlayer 导致 PlayerView 仍挂在旧实例上（有声音无画面）以及新实例不自动起播。
     val exoPlayer = remember(context) {
         ExoPlayer.Builder(context).build()
+    }
+
+    // 把 seekTo 能力注册给上层进度条；seek 后主动回推一次当前位置，让进度条立即刷新
+    LaunchedEffect(exoPlayer) {
+        currentOnSeekReady { ms ->
+            val target = ms.coerceIn(0L, exoPlayer.duration.takeIf { it != C.TIME_UNSET } ?: ms)
+            exoPlayer.seekTo(target)
+            currentOnTick(exoPlayer.currentPosition, exoPlayer.duration)
+        }
     }
 
     LaunchedEffect(playable.url, playable.headers) {
@@ -709,8 +725,9 @@ private fun DramaVideoPlayer(
         if (requestHeaders.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
             requestHeaders["User-Agent"] = ExoPlayerHelper.BROWSER_UA
         }
-        val dataSourceFactory = OkHttpDataSource.Factory(videoStreamClient)
-            .setDefaultRequestProperties(requestHeaders)
+        // 用带磁盘缓存的数据源工厂：命中「预填的后续视频开头字节」，相邻页切换秒开；
+        // 每页独立工厂注入本页请求头，避免污染全局头（见 ExoPlayerHelper.createDramaDataSourceFactory）。
+        val dataSourceFactory = ExoPlayerHelper.createDramaDataSourceFactory(requestHeaders)
         val mime = mediaMimeTypeOfUrl(playable.url)
         val mediaItem = MediaItem.Builder()
             .setUri(playable.url)
@@ -901,6 +918,7 @@ private fun DramaInfoPanel(
     bottomPaddingDp: Dp,
     playPositionMs: Long,
     playDurationMs: Long,
+    onSeek: (Long) -> Unit,
     playFailed: Boolean,
     playingInline: Boolean,
     onOpenDetail: () -> Unit,
@@ -908,6 +926,8 @@ private fun DramaInfoPanel(
 ) {
     var expanded by remember(candidate.seriesId) { mutableStateOf(false) }
     var countdown by remember(candidate.seriesId) { mutableIntStateOf(4) }
+    // 拖动进度条时的临时位置；非 null 表示正在拖动，此时显示拖动位置而非播放位置
+    var scrubPositionMs by remember(candidate.seriesId) { mutableLongStateOf(-1L) }
 
     // 一集播完后开始 4 秒倒计时，到 0 自动切下一集（播放中不触发）
     LaunchedEffect(countdownActive, active, chapterTitle) {
@@ -990,16 +1010,31 @@ private fun DramaInfoPanel(
         }
         if (playingInline && playDurationMs > 0) {
             Spacer(Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = {
-                    (playPositionMs.toFloat() / playDurationMs.toFloat()).coerceIn(0f, 1f)
+            DramaSeekBar(
+                positionMs = if (scrubPositionMs >= 0L) scrubPositionMs else playPositionMs,
+                durationMs = playDurationMs,
+                onScrub = { scrubPositionMs = it },
+                onScrubFinished = { target ->
+                    onSeek(target)
+                    scrubPositionMs = -1L
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = Color.White,
-                trackColor = Color.White.copy(alpha = 0.25f),
+                modifier = Modifier.fillMaxWidth(),
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = formatDuration(if (scrubPositionMs >= 0L) scrubPositionMs else playPositionMs),
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 11.sp,
+                )
+                Text(
+                    text = formatDuration(playDurationMs),
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 11.sp,
+                )
+            }
         }
         if (playFailed) {
             Spacer(Modifier.height(6.dp))
@@ -1018,6 +1053,85 @@ private fun DramaInfoPanel(
             )
         }
     }
+}
+
+/**
+ * 可拖动进度条。
+ *
+ * - 点击：直接跳到点击位置；
+ * - 水平拖动：实时回显目标位置（[onScrub]），松手后 [onScrubFinished] 一次性 seek，
+ *   避免拖动过程中反复 seek 造成卡顿；
+ * - 只消费水平手势，垂直方向留给 VerticalPager 继续上下滑；
+ * - 视觉上仍是细线 + 圆形滑块，沉浸式不突兀。
+ */
+@Composable
+private fun DramaSeekBar(
+    positionMs: Long,
+    durationMs: Long,
+    onScrub: (Long) -> Unit,
+    onScrubFinished: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 触摸热区高度，方便手指拖动；轨道仍绘制成细线
+    val barHeight = 20.dp
+    val trackStroke = 2.dp
+    val thumbRadius = 5.dp
+    // 记录本次拖动最后位置，供 onDragEnd 使用（不进 pointerInput key，避免重组中断手势）
+    val lastTargetMs = remember(durationMs) { longArrayOf(-1L) }
+    val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+
+    Canvas(
+        modifier = modifier
+            .height(barHeight)
+            .pointerInput(durationMs) {
+                if (durationMs <= 0) return@pointerInput
+                fun msAt(x: Float) =
+                    ((x / size.width.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f) * durationMs).toLong()
+                detectTapGestures { offset -> onScrubFinished(msAt(offset.x)) }
+            }
+            .pointerInput(durationMs) {
+                if (durationMs <= 0) return@pointerInput
+                fun msAt(x: Float) =
+                    ((x / size.width.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f) * durationMs).toLong()
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        val ms = msAt(offset.x)
+                        lastTargetMs[0] = ms
+                        onScrub(ms)
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        val ms = msAt(change.position.x)
+                        lastTargetMs[0] = ms
+                        onScrub(ms)
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (lastTargetMs[0] >= 0) onScrubFinished(lastTargetMs[0])
+                        lastTargetMs[0] = -1L
+                    },
+                    onDragCancel = { lastTargetMs[0] = -1L },
+                )
+            },
+    ) {
+        val y = size.height / 2f
+        val strokePx = trackStroke.toPx()
+        val endX = size.width * fraction
+        // 轨道
+        drawLine(Color.White.copy(alpha = 0.25f), Offset(0f, y), Offset(size.width, y), strokeWidth = strokePx)
+        // 已播放部分
+        drawLine(Color.White, Offset(0f, y), Offset(endX, y), strokeWidth = strokePx)
+        // 滑块
+        drawCircle(Color.White, radius = thumbRadius.toPx(), center = Offset(endX, y))
+    }
+}
+
+/** 毫秒格式化为 m:ss。 */
+private fun formatDuration(ms: Long): String {
+    if (ms <= 0) return "0:00"
+    val totalSec = ms / 1000
+    val min = totalSec / 60
+    val sec = totalSec % 60
+    return "%d:%02d".format(min, sec)
 }
 
 /** 选集弹窗：网格列出直链章节，点击切集。 */
