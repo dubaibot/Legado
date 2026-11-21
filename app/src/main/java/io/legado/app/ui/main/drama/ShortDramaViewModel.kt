@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import splitties.init.appCtx
+import io.legado.app.utils.isWifiConnect
 
 /**
  * 短剧信息流 ViewModel。
@@ -69,6 +71,16 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     /** 页内播放解析缓存：key = seriesId；解析失败不缓存，滑动回来可重试 */
     private val playableCache = HashMap<String, DramaPlayable>()
 
+    /** 候选池缓存容量上限，防止长期浏览后缓慢增长导致内存占用过高。 */
+    private val maxPoolSize = 400
+
+    /** 首屏候选偏少时（低于该值）才把慢源结果补进信息流，避免打断已滑远的用户。 */
+    private val shortFeedThreshold = ShortDramaRecommendEngine.BATCH_SIZE * 2
+
+    /** 相邻页预取：最多向前预热 2 个候选的播放地址，仅 WiFi 下进行。 */
+    private var prefetchJob: Job? = null
+    private val prefetchAhead = 2
+
     init {
         _state.update {
             it.copy(
@@ -110,7 +122,44 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
             val pool = if (usableCache) {
                 cachedPool
             } else {
-                ShortDramaCandidateProvider.load(sources).also {
+                // 渐进式加载：快源先返回首屏，慢源完成后通过回调并入候选池
+                ShortDramaCandidateProvider.load(sources) { late ->
+                    if (late.isEmpty()) return@load
+                    // 仅当源签名仍是本次批次时才并入，避免过期回调污染换源后的池
+                    if (signature != cachedPoolSignature) return@load
+                    // 切回 ViewModel 作用域处理共享字段，避免与页面状态更新竞争
+                    viewModelScope.launch {
+                        val merged = (candidatePool + late)
+                            .distinctBy { it.seriesId }
+                            .take(maxPoolSize)
+                        candidatePool = merged
+                        cachedPool = merged
+                        cachedPoolAt = System.currentTimeMillis()
+                        // 用户仍在信息流顶部、非搜索、未结束且当前批次偏少时，才补进信息流，
+                        // 避免慢源延迟返回打断已经滑远的用户
+                        val cur = _state.value
+                        if (cur.searchQuery.isEmpty() && !cur.ended && !cur.loading &&
+                            cur.feed.size < shortFeedThreshold
+                        ) {
+                            val existing = cur.feed.map { it.seriesId }.toSet()
+                            val appended = merged.filter { it.seriesId !in existing }
+                                .take(shortFeedThreshold - cur.feed.size)
+                            if (appended.isNotEmpty()) {
+                                val snapshotLate = ShortDramaHistoryStore.snapshot()
+                                val rankedLate = ShortDramaRecommendEngine.rank(
+                                    candidates = appended,
+                                    snapshot = snapshotLate,
+                                    sessionExposed = sessionExposed.toList(),
+                                    currentFeed = cur.feed,
+                                    rng = Random.Default,
+                                )
+                                if (rankedLate.candidates.isNotEmpty()) {
+                                    _state.update { it.copy(feed = it.feed + rankedLate.candidates) }
+                                }
+                            }
+                        }
+                    }
+                }.also {
                     cachedPool = it
                     cachedPoolSignature = signature
                     cachedPoolAt = System.currentTimeMillis()
@@ -235,11 +284,36 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun onPageShown(candidate: DramaCandidate, index: Int) {
+        val feed = _state.value.feed
+        // 滑过当前批次一半就预取下一批（搜索模式由 provider 一次性返回，无需分页）
+        if (_state.value.searchQuery.isEmpty()) {
+            val size = feed.size
+            if (size > 0 && index >= (size + 1) / 2) loadMore()
+        }
         if (candidate.seriesId in sessionExposed) return
         viewModelScope.launch { recordExposure(candidate, index) }
-        // 滑过当前批次一半就预取下一批
-        val size = _state.value.feed.size
-        if (size > 0 && index >= (size + 1) / 2) loadMore()
+        // 预热相邻页播放地址：仅 WiFi、仅解析直链（不下载视频），让滑到下一页时秒开
+        prefetchNext(candidate, index, feed)
+    }
+
+    /**
+     * 相邻页播放地址预取。
+     * 只调用 [resolvePlayable] 生成直链并写入缓存；单个候选失败静默跳过。
+     * 用 [prefetchJob] 保证任一时刻只有一次预取在跑，避免快速滑动时叠加大量请求。
+     */
+    private fun prefetchNext(candidate: DramaCandidate, index: Int, feed: List<DramaCandidate>) {
+        if (_state.value.searchQuery.isNotEmpty()) return
+        if (!appCtx.isWifiConnect) return
+        if (feed.isEmpty() || index >= feed.size - 1) return
+        if (prefetchJob?.isActive == true) return
+        prefetchJob = viewModelScope.launch {
+            val targets = feed.subList(index + 1, minOf(index + 1 + prefetchAhead, feed.size))
+            for (next in targets) {
+                // 已缓存则跳过；解析失败（返回 null）不缓存，下次滑到会重试
+                if (playableCache.containsKey(next.seriesId)) continue
+                runCatching { resolvePlayable(next) }
+            }
+        }
     }
 
     private suspend fun recordExposure(candidate: DramaCandidate, index: Int) {

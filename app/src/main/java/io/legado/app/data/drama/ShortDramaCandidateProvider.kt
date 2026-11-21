@@ -13,10 +13,14 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.LogUtils
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -31,30 +35,93 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 object ShortDramaCandidateProvider {
 
-    // 单源拉取超时：过长会让“正在准备短剧”卡住，9s 足够 home()/explore 首屏返回
+    // 单源拉取超时：过长会让"正在准备短剧"卡住，9s 足够 home()/explore 首屏返回
     private const val SOURCE_TIMEOUT_MS = 9_000L
+    // 首屏软截止：快的源先返回，慢源不再阻塞首屏（结果通过 onLate 回调补充）
+    private const val FIRST_BATCH_DEADLINE_MS = 2_500L
+    // 首屏最少拿到的源数：即使超时也至少等这些源，避免首屏内容过少
+    private const val FIRST_BATCH_MIN_SOURCES = 2
     private const val RSS_PER_SOURCE = 10
     private const val VIDEO_PER_SOURCE = 20
     private const val BOOK_PER_SOURCE = 20
 
+    /**
+     * 渐进式加载候选池。
+     *
+     * 旧的 `awaitAll()` 会等最慢的源（最长 9s）才返回，导致"正在准备短剧"卡住。
+     * 这里改为：所有源并发拉取，快源先汇入首屏；到 [FIRST_BATCH_DEADLINE_MS] 软截止时，
+     * 只要已拿到不少于 [FIRST_BATCH_MIN_SOURCES] 个源的结果就先返回首屏，
+     * 仍在拉取的慢源结果随后通过 [onLate] 回调追加，由 ViewModel 决定是否补进信息流。
+     *
+     * @param onLate 慢源结果的追加回调（主线程无关，内部自行切协程）。传 null 时退化为"等全部"。
+     */
     suspend fun load(
         sources: List<DramaSourceRef>,
         limit: Int = 60,
+        onLate: (suspend (List<DramaCandidate>) -> Unit)? = null,
     ): List<DramaCandidate> = withContext(Dispatchers.IO) {
         if (sources.isEmpty()) return@withContext emptyList()
-        val results = coroutineScope {
-            sources
-                .flatMap { ref ->
-                    val loaders = when (ref.kind) {
-                        DramaSourceKind.PY, DramaSourceKind.TVBOX -> listOf(async { loadVideoSource(ref) })
-                        DramaSourceKind.RSS -> listOf(async { loadRssSource(ref) })
-                        DramaSourceKind.BOOK -> listOf(async { loadBookSource(ref) })
-                    }
-                    loaders
-                }
-                .awaitAll()
+        // 未启用渐进（无回调）时保持原行为，等全部源完成，避免调用方漏数据
+        if (onLate == null) {
+            val results = coroutineScope {
+                sources.map { ref ->
+                    async { loadOne(ref) }
+                }.awaitAll()
+            }
+            return@withContext results.flatten().distinctBy { it.seriesId }.take(limit)
         }
-        results.flatten().distinctBy { it.seriesId }.take(limit)
+
+        val total = sources.size
+        val channel = Channel<Pair<String, List<DramaCandidate>>>(Channel.UNLIMITED)
+        // 独立 supervisor 作用域：首屏返回后慢源协程继续跑完，不受本次 withContext 取消影响
+        val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        sources.forEach { ref ->
+            workerScope.launch {
+                val items = runCatching { loadOne(ref) }.getOrDefault(emptyList())
+                channel.send(ref.id to items)
+            }
+        }
+
+        val head = LinkedHashMap<String, List<DramaCandidate>>()
+        val deadline = System.currentTimeMillis() + FIRST_BATCH_DEADLINE_MS
+        var received = 0
+        while (received < total) {
+            val remainMs = deadline - System.currentTimeMillis()
+            // 已达到最少源数且过了软截止 → 先返回首屏
+            if (head.size >= FIRST_BATCH_MIN_SOURCES && remainMs <= 0) break
+            val chunk = if (remainMs > 0) {
+                withTimeoutOrNull(remainMs) { channel.receive() }
+            } else {
+                // 已超时但首屏源数不足，仍阻塞等一个，保证首屏不空
+                channel.receive()
+            } ?: break
+            head[chunk.first] = chunk.second
+            received++
+        }
+
+        // 剩余慢源：开一个协程持续接收并通过回调追加，之后关闭 channel 与 scope
+        if (received < total) {
+            workerScope.launch {
+                var left = total - received
+                while (left > 0) {
+                    val chunk = runCatching { channel.receive() }.getOrNull() ?: break
+                    runCatching { onLate(chunk.second) }
+                    left--
+                }
+                channel.close()
+            }
+        } else {
+            channel.close()
+        }
+
+        head.values.flatten().distinctBy { it.seriesId }.take(limit)
+    }
+
+    /** 单个源的候选加载分派。 */
+    private suspend fun loadOne(ref: DramaSourceRef): List<DramaCandidate> = when (ref.kind) {
+        DramaSourceKind.PY, DramaSourceKind.TVBOX -> loadVideoSource(ref)
+        DramaSourceKind.RSS -> loadRssSource(ref)
+        DramaSourceKind.BOOK -> loadBookSource(ref)
     }
 
     /** 关键字搜索：并行搜索所有已选源，按 seriesId 去重后截断。 */

@@ -97,9 +97,10 @@ object ShortDramaRecommendEngine {
         rng: Random? = null,
     ): List<DramaCandidate> {
         if (limit <= 0) return emptyList()
-        // 同分时按 seriesId 排序会让每次刷新的首批完全一致，用随机抖动打散
+        // 同分时按 seriesId 排序会让每次刷新的首批完全一致；用小幅随机抖动打散即可，
+        // 幅度过大会盖过真实偏好差异（score 满分才 1.0，底分 0.15），这里限制在 0.06 内
         val scored = candidates
-            .map { it to (score(it, snapshot, now) + (rng?.nextDouble(0.0, 0.25) ?: 0.0)) }
+            .map { it to (score(it, snapshot, now) + (rng?.nextDouble(0.0, 0.06) ?: 0.0)) }
             .sortedWith(
                 compareByDescending<Pair<DramaCandidate, Double>> { it.second }
                     .thenBy { it.first.seriesId }
@@ -126,7 +127,8 @@ object ShortDramaRecommendEngine {
             val sourceId = candidate.source.id
             if ((sourceCount[sourceId] ?: 0) >= perSourceCap) continue
             if (sourceId == lastSource && sameSourceRun >= MAX_SAME_SOURCE_IN_A_ROW) continue
-            val primaryTag = candidate.tags.firstOrNull().orEmpty()
+            // 用最高偏好标签做多样性判断，与打分口径一致，避免"首标签不同但高偏好标签相同"被误判为多样
+            val primaryTag = primaryInterestTag(candidate, snapshot.preferences)
             if (primaryTag.isNotEmpty() && primaryTag == lastTag &&
                 (tagRun[primaryTag] ?: 0) >= MAX_SAME_TAG_IN_A_ROW
             ) continue
@@ -171,10 +173,39 @@ object ShortDramaRecommendEngine {
         normalizeTitle(raw).takeIf { it.isNotBlank() }?.let { into.add(it) }
     }
 
+    /**
+     * 多标签偏好加权：最高分标签占 0.75，次高占 0.25。
+     * 相比只用 maxOf，能利用"一部剧命中多个兴趣标签"的叠加信号，减少单标签偶然高分的主导。
+     */
+    private fun tagPreference(tags: List<String>, preferences: Map<String, Double>): Double {
+        if (tags.isEmpty()) return 0.0
+        val sorted = tags.asSequence()
+            .map { preferences[it] ?: 0.0 }
+            .filter { it > 0.0 }
+            .sortedDescending()
+            .take(2)
+            .toList()
+        if (sorted.isEmpty()) return 0.0
+        return if (sorted.size >= 2) {
+            (0.75 * sorted[0] + 0.25 * sorted[1]).coerceIn(0.0, 1.0)
+        } else {
+            sorted[0].coerceIn(0.0, 1.0)
+        }
+    }
+
+    /** 取候选的最高偏好标签，供多样性约束使用（与打分口径一致）。 */
+    private fun primaryInterestTag(candidate: DramaCandidate, preferences: Map<String, Double>): String {
+        val best = candidate.tags.maxByOrNull { preferences[it] ?: 0.0 }
+        return if (best != null && (preferences[best] ?: 0.0) > 0.0) {
+            best
+        } else {
+            candidate.tags.firstOrNull().orEmpty()
+        }
+    }
+
     /** 0~1 归一化分数，权重 0.5 / 0.2 / 0.15 / 0.15。 */
     fun score(candidate: DramaCandidate, snapshot: DramaHistorySnapshot = DramaHistorySnapshot.EMPTY, now: Long = System.currentTimeMillis()): Double {
-        val pref = if (candidate.tags.isEmpty()) 0.0
-        else candidate.tags.maxOf { snapshot.preferences[it] ?: 0.0 }.coerceIn(0.0, 1.0)
+        val pref = tagPreference(candidate.tags, snapshot.preferences)
 
         val freshness = when {
             candidate.publishedAt <= 0L -> 0.5
