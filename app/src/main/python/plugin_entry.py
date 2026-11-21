@@ -366,6 +366,14 @@ def _normalize_detail(raw, fallback_id):
         "desc": detail.get("vod_content", detail.get("desc", "")),
         "play_urls": play_urls,
     }
+    director = detail.get("vod_director", detail.get("director", ""))
+    if director:
+        result["director"] = str(director)
+    actor = detail.get(
+        "vod_actor", detail.get("vod_starring", detail.get("starring", detail.get("actor", "")))
+    )
+    if actor:
+        result["actor"] = str(actor)
     for key in ("vod_play_from", "vod_play_url", "play_lines", "play_urls"):
         if key in detail:
             result[key] = detail[key]

@@ -170,14 +170,46 @@ object ShortDramaPlaybackResolver {
         }.getOrNull()
     }
 
-    /** 取整部剧的直链章节列表（供选集弹窗/下一集/续播用），仅书源有目录概念。 */
+    /** 取整部剧的选集列表（供选集弹窗/下一集/续播用）。按源类别分派。 */
     suspend fun resolveEpisodes(candidate: DramaCandidate): List<DramaEpisode> =
         withContext(Dispatchers.IO) {
-            if (candidate.source.kind != DramaSourceKind.BOOK || candidate.pageUrl.isBlank()) {
-                return@withContext emptyList()
+            when (candidate.source.kind) {
+                DramaSourceKind.PY, DramaSourceKind.TVBOX -> resolveVideoEpisodes(candidate)
+                DramaSourceKind.BOOK -> resolveBookEpisodes(candidate)
+                DramaSourceKind.RSS -> emptyList()
+            }
+        }
+
+    /** PY/TVBOX 源：detail() 取 playLines，每集 url 保留中间 id（vid_qkey），flag 供播放时解析。 */
+    private suspend fun resolveVideoEpisodes(candidate: DramaCandidate): List<DramaEpisode> {
+        return runCatching {
+            withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
+                val info = VideoSourceRegistry.getSourceInfo(candidate.source.key)
+                    ?: return@withTimeoutOrNull emptyList()
+                val source = VideoSourceRegistry.createSource(info)
+                    ?: return@withTimeoutOrNull emptyList()
+                val detail = source.detail(candidate.itemId.ifBlank { candidate.pageUrl })
+                detail.playLines.mapIndexed { i, line ->
+                    DramaEpisode(
+                        index = i,
+                        title = line.name.ifBlank { "第${i + 1}集" },
+                        url = line.url,
+                        flag = line.flag,
+                    )
+                }
+            }
+        }.onFailure {
+            AppLog.put("ShortDramaPlaybackResolver.resolveVideoEpisodes failed", it)
+        }.getOrDefault(emptyList()).orEmpty()
+    }
+
+    /** 书源：取详情/目录章节，仅保留直链章节。 */
+    private suspend fun resolveBookEpisodes(candidate: DramaCandidate): List<DramaEpisode> {
+            if (candidate.pageUrl.isBlank()) {
+                return emptyList()
             }
             val source = appDb.bookSourceDao.getBookSource(candidate.source.key)
-                ?: return@withContext emptyList()
+                ?: return emptyList()
             val book = appDb.searchBookDao.getSearchBook(candidate.pageUrl)?.toBook()
                 ?: Book(
                     bookUrl = candidate.pageUrl,
@@ -188,7 +220,7 @@ object ShortDramaPlaybackResolver {
                     type = BookType.video,
                 )
             val sid = candidate.seriesId
-            runCatching {
+            return runCatching {
                 withTimeoutOrNull(RESOLVE_PAGE_TIMEOUT_MS) {
                     runCatching { WebBook.getBookInfoAwait(source, book, canReName = false) }
                         .onFailure { AppLog.put("ShortDrama[$sid] resolveEpisodes bookInfo failed: ${it.message}") }
@@ -207,5 +239,47 @@ object ShortDramaPlaybackResolver {
             }.onFailure {
                 AppLog.put("ShortDrama[$sid] resolveEpisodes failed", it)
             }.getOrDefault(emptyList()).orEmpty()
+    }
+
+    /**
+     * 把某集解析成可直接播放的直链。
+     * PY/TVBOX 的选集 url 是中间 id（vid_qkey），经 source.play(url, flag) 换直链；
+     * 其它源（书源）选集已是直链，原样返回。
+     */
+    suspend fun resolveEpisodePlayable(
+        candidate: DramaCandidate,
+        episode: DramaEpisode,
+    ): DramaPlayable? = withContext(Dispatchers.IO) {
+        when (candidate.source.kind) {
+            DramaSourceKind.PY, DramaSourceKind.TVBOX -> runCatching {
+                withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
+                    val info = VideoSourceRegistry.getSourceInfo(candidate.source.key)
+                        ?: return@withTimeoutOrNull null
+                    val source = VideoSourceRegistry.createSource(info)
+                        ?: return@withTimeoutOrNull null
+                    val result = runCatching { source.play(episode.url, episode.flag) }
+                        .getOrElse { source.play(episode.url) }
+                    if (result.url.isBlank()) {
+                        null
+                    } else {
+                        DramaPlayable(
+                            url = result.url,
+                            headers = result.headers,
+                            title = episode.title.ifBlank { candidate.title },
+                        )
+                    }
+                }
+            }.onFailure {
+                AppLog.put("ShortDramaPlaybackResolver.resolveEpisodePlayable failed", it)
+            }.getOrNull()
+            else -> if (episode.url.isBlank()) {
+                null
+            } else {
+                DramaPlayable(
+                    url = episode.url,
+                    title = episode.title.ifBlank { candidate.title },
+                )
+            }
         }
+    }
 }

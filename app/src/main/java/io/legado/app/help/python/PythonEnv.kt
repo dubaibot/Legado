@@ -29,6 +29,16 @@ object PythonEnv {
     @Volatile
     private var pluginResolver: ((String) -> PyObject?)? = null
 
+    /**
+     * 影视壳风格环境变量：插件在顶层用 os.environ.get 读取的功能开关。
+     * FongMi/TVBox 会在加载插件前把站点配置里的环境变量注入解释器，这里补齐默认值。
+     * 新增开关在此 map 里加一行即可（集中配置点）。
+     */
+    private val shellEnvVars: Map<String, String> = mapOf(
+        // 红果等 py 源默认关闭首页推荐区，设为 1 恢复「热门推荐」
+        "HG_HOME_REC" to "1",
+    )
+
     /** 设置插件解析器，由 PyLoader 在 reload 后注册 */
     fun setPluginResolver(resolver: (String) -> PyObject?) {
         pluginResolver = resolver
@@ -42,12 +52,29 @@ object PythonEnv {
             try {
                 Python.start(AndroidPlatform(appCtx))
                 python = Python.getInstance()
+                injectShellEnvVars()
                 started = true
                 return true
             } catch (e: Exception) {
                 LogUtils.d("PythonEnv", "Python.start failed: ${e.message}")
                 return false
             }
+        }
+    }
+
+    /**
+     * 把 [shellEnvVars] 注入 os.environ。
+     * 用 setdefault 只补默认值，不覆盖插件自行设置的值；失败只记日志，不影响启动。
+     */
+    private fun injectShellEnvVars() {
+        val py = python ?: return
+        try {
+            val environ = py.getModule("os")?.get("environ") ?: return
+            shellEnvVars.forEach { (key, value) ->
+                environ.callAttr("setdefault", key, value)
+            }
+        } catch (e: Exception) {
+            LogUtils.d("PythonEnv", "inject shell env failed: ${e.message}")
         }
     }
 

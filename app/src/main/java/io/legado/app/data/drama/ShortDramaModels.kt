@@ -56,6 +56,8 @@ data class DramaEpisode(
     val index: Int,
     val title: String,
     val url: String,
+    /** 视频源播放线路名（PY/TVBOX 源 play(url, flag) 需要；书源为空） */
+    val flag: String = "",
 )
 
 /** 某部剧的整季选集列表。 */

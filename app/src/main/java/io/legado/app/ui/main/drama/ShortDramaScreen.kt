@@ -154,6 +154,7 @@ fun ShortDramaScreen(
                 onSkip = viewModel::onSkip,
                 onResolve = viewModel::resolvePlayable,
                 onResolveEpisodes = viewModel::resolveEpisodes,
+                onResolveEpisodePlayable = viewModel::resolveEpisodePlayable,
                 onLoadPlaylist = viewModel::loadPlaylist,
                 onSelectEpisode = viewModel::selectEpisode,
                 onNextEpisode = viewModel::nextEpisode,
@@ -182,6 +183,7 @@ private fun DramaFeed(
     onSkip: (DramaCandidate) -> Unit,
     onResolve: suspend (DramaCandidate) -> DramaPlayable?,
     onResolveEpisodes: suspend (DramaCandidate) -> List<DramaEpisode>,
+    onResolveEpisodePlayable: suspend (DramaCandidate, DramaEpisode) -> DramaPlayable?,
     onLoadPlaylist: (DramaCandidate) -> Unit,
     onSelectEpisode: (DramaCandidate, Int) -> Unit,
     onNextEpisode: (DramaCandidate) -> Boolean,
@@ -235,6 +237,7 @@ private fun DramaFeed(
                 onSkip = { onSkip(candidate) },
                 onResolve = onResolve,
                 onResolveEpisodes = onResolveEpisodes,
+                onResolveEpisodePlayable = { episode -> onResolveEpisodePlayable(candidate, episode) },
                 onLoadPlaylist = { onLoadPlaylist(candidate) },
                 onSelectEpisode = { index -> onSelectEpisode(candidate, index) },
                 onEpisodeEnd = { handleEpisodeEnd(candidate) },
@@ -271,6 +274,7 @@ private fun DramaPage(
     onSkip: () -> Unit,
     onResolve: suspend (DramaCandidate) -> DramaPlayable?,
     onResolveEpisodes: suspend (DramaCandidate) -> List<DramaEpisode>,
+    onResolveEpisodePlayable: suspend (DramaEpisode) -> DramaPlayable?,
     onLoadPlaylist: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onEpisodeEnd: () -> Unit,
@@ -297,6 +301,24 @@ private fun DramaPage(
     var episodesLoading by remember(candidate.seriesId) { mutableStateOf(false) }
     var episodesFailed by remember(candidate.seriesId) { mutableStateOf(false) }
     var episodeEnded by remember(candidate.seriesId) { mutableStateOf(false) }
+    // 已解析起播的集标识（seriesId:index:url），避免同一集重复请求直链
+    var resolvedEpisodeKey by remember(candidate.seriesId) { mutableStateOf("") }
+
+    fun episodeKey(episode: DramaEpisode) =
+        "${candidate.seriesId}:${episode.index}:${episode.url}"
+
+    // 选集/续播统一出口：先把中间 id/time 解析成直链再交给播放器
+    suspend fun applyEpisode(episode: DramaEpisode) {
+        val key = episodeKey(episode)
+        if (resolvedEpisodeKey == key) return
+        resolvedEpisodeKey = key
+        val fallbackHeaders = mapOf("Referer" to episode.url)
+        val resolved = onResolveEpisodePlayable(episode)
+        playable = resolved?.copy(headers = resolved.headers.ifEmpty { fallbackHeaders })
+            ?: DramaPlayable(url = episode.url, headers = fallbackHeaders, title = episode.title)
+        playFailed = false
+        episodeEnded = false
+    }
 
     val playlist = state.playlist?.takeIf { it.seriesId == candidate.seriesId }
     val chapterTitle = playlist?.episodes?.getOrNull(playlist.currentIndex)?.title
@@ -306,20 +328,17 @@ private fun DramaPage(
         episodeEnded = false
     }
 
-    // 选集/自动续播改变当前集时，把播放器切到该集直链（仅激活页）
+    // 选集/自动续播改变当前集时，解析成直链后切播（仅激活页）
     LaunchedEffect(active, playlist?.seriesId, playlist?.currentIndex) {
         if (!active) return@LaunchedEffect
         val current = playlist ?: return@LaunchedEffect
         val episode = current.episodes.getOrNull(current.currentIndex) ?: return@LaunchedEffect
-        if (playable?.url != episode.url) {
-            playable = DramaPlayable(
-                url = episode.url,
-                headers = mapOf("Referer" to episode.url),
-                title = episode.title,
-            )
-            playFailed = false
-            episodeEnded = false
+        // 首集已由 resolve() 起播：仅标记去重，避免重复请求
+        if (current.currentIndex == 0 && playable != null && resolvedEpisodeKey.isEmpty()) {
+            resolvedEpisodeKey = episodeKey(episode)
+            return@LaunchedEffect
         }
+        applyEpisode(episode)
     }
 
     LaunchedEffect(active, candidate.seriesId) {
@@ -484,12 +503,7 @@ private fun DramaPage(
                 val episode = episodes.getOrNull(index)
                 onSelectEpisode(index)
                 if (episode != null) {
-                    playable = DramaPlayable(
-                        url = episode.url,
-                        headers = mapOf("Referer" to episode.url),
-                        title = episode.title,
-                    )
-                    playFailed = false
+                    scope.launch { applyEpisode(episode) }
                 }
                 showEpisodes = false
             },

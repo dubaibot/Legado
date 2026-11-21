@@ -55,6 +55,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssEpisode
 import io.legado.app.data.entities.RssRoute
 import io.legado.app.data.entities.RssSource
+import io.legado.app.data.video.PlayLine
 import io.legado.app.data.video.VideoItem
 import io.legado.app.data.video.VideoSource
 import io.legado.app.data.video.VideoSourceRegistry
@@ -642,19 +643,17 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                                 VideoPlay.singleUrl = true
                                 PngStripDataSourceFactory.PngStripDataSource.enabled =
                                     (source.sourceType == io.legado.app.data.video.SourceType.JAR)
-                                val episodes = playLines.map { line ->
-                                    RssEpisode(
-                                        title = line.name,
-                                        url = line.url,
-                                        duration = 0L,
-                                        cover = "",
-                                        flag = line.flag,
-                                    )
-                                }
-                                VideoPlay.rssEpisodes = episodes
+                                // 按 flag（线路名）归组，保留多清晰度线路结构；线路 Tab 依赖 rssRoutes
+                                val routes = groupPyPlayLines(playLines)
+                                VideoPlay.rssRoutes = routes
+                                VideoPlay.rssRouteIndex = 0
+                                VideoPlay.rssEpisodes = routes.firstOrNull()?.episodes ?: emptyList()
                                 VideoPlay.rssEpisodeIndex = 0
                                 VideoPlay.pyEpisodesPluginId = pluginId
-                                AppLog.put("initSourceJob: py source resolved, episodes=${episodes.size}, url=${resolvedUrl.take(40)}")
+                                AppLog.put(
+                                    "initSourceJob: py source resolved, routes=${routes.size}, " +
+                                        "episodes=${VideoPlay.rssEpisodes?.size}, url=${resolvedUrl.take(40)}"
+                                )
                             }
                         } catch (e: Exception) {
                             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1073,6 +1072,31 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         isEntryBinding = false
     }
 
+    /**
+     * 把 py 源的扁平 PlayLine 按 flag（线路名，空则回退 name 的「·」前缀）归组为多线路。
+     * 每组一条 RssRoute，集数 title 去掉线路名前缀；flag 透传给 RssEpisode，切线路/选集经 play(url, flag) 解析。
+     */
+    private fun groupPyPlayLines(lines: List<PlayLine>): List<RssRoute> {
+        if (lines.isEmpty()) return emptyList()
+        val grouped = LinkedHashMap<String, MutableList<RssEpisode>>()
+        lines.forEachIndexed { index, line ->
+            val routeName = line.flag.takeIf { it.isNotBlank() }
+                ?: line.name.substringBefore("·").takeIf { it.isNotBlank() && it != line.name }
+                ?: "线路${index + 1}"
+            val title = line.name.substringAfter("·", line.name).ifBlank { line.name }
+            grouped.getOrPut(routeName) { mutableListOf() }.add(
+                RssEpisode(
+                    title = title,
+                    url = line.url,
+                    duration = 0L,
+                    cover = "",
+                    flag = line.flag,
+                )
+            )
+        }
+        return grouped.map { (name, episodes) -> RssRoute(name = name, episodes = episodes) }
+    }
+
     /** 从文本中解析视频元数据（导演、演员、年份、地区、类型等） */
     private data class VideoMeta(
         val director: String? = null,
@@ -1093,15 +1117,34 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             tvName.text = title?.takeIf { it.isNotBlank() } ?: unknown
             tvRemark.visible()
             tvRemark.text = getString(R.string.lasted_show, latest?.takeIf { it.isNotBlank() } ?: unknown)
-            tvDirector.visible()
-            tvDirector.text = getString(R.string.video_director_label, meta.director?.takeIf { it.isNotBlank() } ?: unknown)
-            tvActor.visible()
-            tvActor.text = getString(R.string.video_actor_label, meta.actor?.takeIf { it.isNotBlank() } ?: unknown)
+            val director = meta.director?.takeIf { it.isNotBlank() }
+            if (director != null) {
+                tvDirector.visible()
+                tvDirector.text = getString(R.string.video_director_label, director)
+            } else {
+                tvDirector.gone()
+            }
+            val actor = meta.actor?.takeIf { it.isNotBlank() }
+            if (actor != null) {
+                tvActor.visible()
+                tvActor.text = getString(R.string.video_actor_label, actor)
+            } else {
+                tvActor.gone()
+            }
         }
     }
 
-    private fun parseVideoMeta(text: String?): VideoMeta {
-        if (text.isNullOrBlank()) return VideoMeta()
+    private fun parseVideoMeta(
+        text: String?,
+        preferredDirector: String? = null,
+        preferredActor: String? = null,
+    ): VideoMeta {
+        // 结构化字段（源直接提供）优先，desc 正则只做兜底
+        val preferred = VideoMeta(
+            director = preferredDirector?.takeIf { it.isNotBlank() },
+            actor = preferredActor?.takeIf { it.isNotBlank() },
+        )
+        if (text.isNullOrBlank()) return preferred
         val plain = text.replace(Regex("(?i)<br\\s*/?>|</p>|</div>"), "\n")
             .replace(Regex("<[^>]*>"), " ").trim()
         fun extract(pattern: Regex): String? {
@@ -1109,8 +1152,10 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             return match?.groupValues?.get(1)?.takeIf { it.isNotBlank() }?.trim()
         }
         return VideoMeta(
-            director = extract(Regex("导演[：:]\\s*(.+?)(?=\\s*(?:演员|主演|年份|年代|地区|类型|简介)[：:]|[\\r\\n；;]|$)")),
-            actor = extract(Regex("(?:演员|主演)[：:]\\s*(.+?)(?=\\s*(?:导演|年份|年代|地区|类型|简介)[：:]|[\\r\\n；;]|$)")),
+            director = preferred.director
+                ?: extract(Regex("导演[：:]\\s*(.+?)(?=\\s*(?:演员|主演|年份|年代|地区|类型|简介)[：:]|[\\r\\n；;]|$)")),
+            actor = preferred.actor
+                ?: extract(Regex("(?:演员|主演)[：:]\\s*(.+?)(?=\\s*(?:导演|年份|年代|地区|类型|简介)[：:]|[\\r\\n；;]|$)")),
             year = extract(Regex("(?:年份|年代)[：:]\\s*(\\d{4})")),
             region = extract(Regex("(?:地区|区域)[：:]\\s*([^，,、。；;]+)")),
             genre = extract(Regex("(?:类型|分类)[：:]\\s*([^，,、。；;]+)"))
@@ -1139,7 +1184,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             ?: sourceDetail?.desc?.takeIf { it.isNotBlank() }
             ?: VideoPlay.videoDescription?.takeIf { it.isNotBlank() }
             ?: article?.content?.takeIf { it.isNotBlank() }
-        val meta = parseVideoMeta(metaText)
+        val meta = parseVideoMeta(metaText, sourceDetail?.director, sourceDetail?.actor)
         val latest = VideoPlay.rssEpisodes?.lastOrNull()?.title?.takeIf { it.isNotBlank() }
             ?: VideoPlay.rssRoutes?.getOrNull(VideoPlay.rssRouteIndex)?.episodes
                 ?.lastOrNull()?.title?.takeIf { it.isNotBlank() }

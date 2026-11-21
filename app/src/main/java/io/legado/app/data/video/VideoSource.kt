@@ -58,6 +58,8 @@ data class VideoDetail(
     val pic: String = "",
     val desc: String = "",
     val playLines: List<PlayLine> = emptyList(),
+    val director: String = "",
+    val actor: String = "",
 )
 
 /** 弹幕条目 */

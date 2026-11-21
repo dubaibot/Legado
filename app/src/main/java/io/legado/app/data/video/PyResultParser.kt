@@ -87,6 +87,8 @@ object PyResultParser {
             pic = str(video, "pic", "vod_pic", "cover"),
             desc = str(video, "desc", "vod_content", "description", "remark"),
             playLines = TvBoxResultParser.parsePlayLines(video),
+            director = str(video, "director", "vod_director"),
+            actor = str(video, "actor", "vod_actor", "vod_starring", "starring"),
         )
     }
 

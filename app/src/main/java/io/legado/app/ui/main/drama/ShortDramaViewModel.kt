@@ -214,6 +214,12 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     suspend fun resolveEpisodes(candidate: DramaCandidate): List<DramaEpisode> =
         ShortDramaPlaybackResolver.resolveEpisodes(candidate)
 
+    /** 把选中集的中间 id 解析为可播放直链（PY/TVBOX 需经源 play 转换）。 */
+    suspend fun resolveEpisodePlayable(
+        candidate: DramaCandidate,
+        episode: DramaEpisode,
+    ): DramaPlayable? = ShortDramaPlaybackResolver.resolveEpisodePlayable(candidate, episode)
+
     /** 加载整部剧的直链章节列表，供选集弹窗/下一集/续播用。失败保持 null（单集兜底）。 */
     fun loadPlaylist(candidate: DramaCandidate) {
         viewModelScope.launch {
