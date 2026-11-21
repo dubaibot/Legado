@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -576,6 +577,11 @@ private fun DramaPage(
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(30.dp))
             }
         }
+        val openEpisodes = {
+            selectedRoute = playlist?.episodes
+                ?.getOrNull(playlist.currentIndex)?.route.orEmpty()
+            showEpisodes = true
+        }
         if (!state.cleanScreen) {
             DramaActionRail(
                 modifier = Modifier
@@ -595,8 +601,9 @@ private fun DramaPage(
                     onToggleBookshelf(add)
                     toast(if (add) "已加入书架" else "已移出书架")
                 },
-                onMore = { showMore = true },
                 onSkip = onSkip,
+                onShowEpisodes = openEpisodes,
+                onMore = { showMore = true },
             )
             DramaInfoPanel(
                 modifier = Modifier
@@ -605,6 +612,7 @@ private fun DramaPage(
                 candidate = candidate,
                 active = active,
                 chapterTitle = chapterTitle,
+                currentEpisode = (playlist?.currentIndex ?: 0) + 1,
                 episodeCount = playlist?.episodes?.size ?: candidate.episodeCount,
                 bottomPaddingDp = bottomPaddingDp,
                 playPositionMs = playPositionMs,
@@ -613,11 +621,6 @@ private fun DramaPage(
                 playFailed = playFailed,
                 playingInline = playingInline,
                 onOpenDetail = onPlay,
-                onShowEpisodes = {
-                    selectedRoute = playlist?.episodes
-                        ?.getOrNull(playlist.currentIndex)?.route.orEmpty()
-                    showEpisodes = true
-                },
                 onNext = {
                     episodeEnded = false
                     onEpisodeEnd()
@@ -828,8 +831,9 @@ private fun DramaActionRail(
     inBookshelf: Boolean,
     onLike: () -> Unit,
     onBookshelf: () -> Unit,
-    onMore: () -> Unit,
     onSkip: () -> Unit,
+    onShowEpisodes: () -> Unit,
+    onMore: () -> Unit,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         RailAction(
@@ -847,17 +851,24 @@ private fun DramaActionRail(
         )
         Spacer(Modifier.height(18.dp))
         RailAction(
-            icon = Icons.Filled.MoreVert,
-            label = "更多",
-            tint = Color.White,
-            onClick = onMore,
-        )
-        Spacer(Modifier.height(18.dp))
-        RailAction(
             icon = Icons.Filled.Cancel,
             label = "不感兴趣",
             tint = Color.White,
             onClick = onSkip,
+        )
+        Spacer(Modifier.height(18.dp))
+        RailAction(
+            icon = Icons.Filled.ViewList,
+            label = "选集",
+            tint = Color.White,
+            onClick = onShowEpisodes,
+        )
+        Spacer(Modifier.height(18.dp))
+        RailAction(
+            icon = Icons.Filled.MoreVert,
+            label = "更多",
+            tint = Color.White,
+            onClick = onMore,
         )
     }
 }
@@ -885,6 +896,7 @@ private fun DramaInfoPanel(
     active: Boolean,
     countdownActive: Boolean,
     chapterTitle: String,
+    currentEpisode: Int,
     episodeCount: Int,
     bottomPaddingDp: Dp,
     playPositionMs: Long,
@@ -892,7 +904,6 @@ private fun DramaInfoPanel(
     playFailed: Boolean,
     playingInline: Boolean,
     onOpenDetail: () -> Unit,
-    onShowEpisodes: () -> Unit,
     onNext: () -> Unit,
 ) {
     var expanded by remember(candidate.seriesId) { mutableStateOf(false) }
@@ -912,69 +923,59 @@ private fun DramaInfoPanel(
         onNext()
     }
 
+    val tags = buildList {
+        if (candidate.source.name.isNotBlank()) add(candidate.source.name)
+        add("第${currentEpisode}集")
+        if (episodeCount > 0) add("共 $episodeCount 集")
+        addAll(candidate.tags)
+    }
+
     Column(
         modifier = modifier.padding(
             start = 20.dp,
             end = 72.dp,
-            bottom = 40.dp + bottomPaddingDp + 12.dp,
+            bottom = bottomPaddingDp + 12.dp,
         ),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onOpenDetail)) {
-            GlideImage(
-                model = candidate.cover,
-                contentDescription = candidate.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "${candidate.title} >",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "新剧",
-                color = Color.White,
-                fontSize = 11.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFE91E63))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
-            if (episodeCount > 1) {
-                Text("共 $episodeCount 集", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
-            }
-            candidate.tags.take(2).forEach { tag ->
+        Text(
+            text = candidate.title,
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenDetail),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            tags.forEachIndexed { index, tag ->
                 Text(
                     text = tag,
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 12.sp,
+                    color = if (index == 0) Color.White else Color.White.copy(alpha = 0.8f),
+                    fontSize = 11.sp,
                     maxLines = 1,
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
+                        .background(
+                            if (index == 0) Color(0xFFE91E63)
+                            else Color.White.copy(alpha = 0.12f)
+                        )
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
-        val introText = buildString {
-            if (chapterTitle.isNotBlank()) append(chapterTitle)
-            if (isNotBlank() && candidate.intro.isNotBlank()) append("｜")
-            append(candidate.intro)
-        }
-        if (introText.isNotBlank()) {
+        if (candidate.intro.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = introText,
+                text = candidate.intro,
                 color = Color.White.copy(alpha = 0.9f),
                 fontSize = 13.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 2,
@@ -1008,14 +1009,6 @@ private fun DramaInfoPanel(
                 fontSize = 12.sp,
             )
         }
-        if (!playingInline) {
-            Spacer(Modifier.height(10.dp))
-            Button(onClick = onOpenDetail) { Text("立即观看") }
-        }
-        if (!playFailed) {
-            Spacer(Modifier.height(12.dp))
-            Button(onClick = onShowEpisodes) { Text("观看全集") }
-        }
         if (countdownActive) {
             Spacer(Modifier.height(4.dp))
             Text(
@@ -1024,12 +1017,6 @@ private fun DramaInfoPanel(
                 fontSize = 12.sp,
             )
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "作者声明：内容由 AI 生成",
-            color = Color.White.copy(alpha = 0.5f),
-            fontSize = 11.sp,
-        )
     }
 }
 
