@@ -3,6 +3,7 @@ package io.legado.app.ui.main.drama
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.drama.DramaCandidate
+import io.legado.app.data.drama.DramaSourceKind
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.SourceGroupTagLinker
@@ -38,6 +39,17 @@ object ShortDramaBookshelf {
                     kind = candidate.tags.joinToString(",").takeIf { it.isNotBlank() },
                     intro = candidate.intro.takeIf { it.isNotBlank() },
                     type = BookType.video,
+                )
+            }
+            // 关键：写入外部视频源标识。书架/发现列表打开视频书时会读取
+            // videoSourceId 决定走 pyPluginId 播放链路；缺失会退化成书源路径并提示“未找到源”。
+            if (candidate.source.kind == DramaSourceKind.PY ||
+                candidate.source.kind == DramaSourceKind.TVBOX
+            ) {
+                book.putVariable("videoSourceId", candidate.source.key)
+                book.putVariable(
+                    "videoItemId",
+                    candidate.itemId.ifBlank { candidate.pageUrl },
                 )
             }
             book.removeType(BookType.notShelf)

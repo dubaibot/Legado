@@ -5,8 +5,10 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,19 +19,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
@@ -41,16 +49,20 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,8 +79,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -135,15 +151,17 @@ fun ShortDramaScreen(
                 onPickSources = openSources,
                 onRefresh = viewModel::onSourcesMaybeChanged,
             )
+            state.searching && state.feed.isEmpty() -> CenterHint(text = "正在搜索…", showLoading = true)
             state.feed.isEmpty() -> EmptySources(
                 error = state.error ?: "暂无短剧内容",
                 onPickSources = openSources,
-                onRefresh = viewModel::refresh,
+                onRefresh = { viewModel.refresh() },
             )
             else -> DramaFeed(
                 state = state,
                 scrollToTopTick = scrollToTopTick,
                 hostVisible = hostVisible,
+                bottomPaddingPx = bottomPaddingPx,
                 onShown = viewModel::onPageShown,
                 onPlay = { candidate ->
                     viewModel.onPlay(candidate)
@@ -167,8 +185,94 @@ fun ShortDramaScreen(
                 onSetCleanScreen = viewModel::setCleanScreen,
                 onSetAutoSlide = viewModel::setAutoSlide,
                 onSetAutoNext = viewModel::setAutoNext,
+            )
+        }
+        if (!state.cleanScreen && !state.needsSource) {
+            DramaTopBar(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(),
+                searchQuery = state.searchQuery,
+                searching = state.searching,
+                onSearch = viewModel::search,
+                onClearSearch = viewModel::clearSearch,
                 onOpenSources = openSources,
             )
+        }
+    }
+}
+
+/** 顶部搜索栏：关键字搜索短剧，常驻信息流之上。 */
+@Composable
+private fun DramaTopBar(
+    modifier: Modifier = Modifier,
+    searchQuery: String,
+    searching: Boolean,
+    onSearch: (String) -> Unit,
+    onClearSearch: () -> Unit,
+    onOpenSources: () -> Unit,
+) {
+    var keyword by remember(searchQuery) { mutableStateOf(searchQuery) }
+    val focusManager = LocalFocusManager.current
+    Row(
+        modifier = modifier
+            .statusBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextField(
+            value = keyword,
+            onValueChange = { keyword = it },
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            placeholder = { Text("搜索短剧", fontSize = 13.sp) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            trailingIcon = {
+                if (keyword.isNotEmpty()) {
+                    IconButton(onClick = {
+                        keyword = ""
+                        onClearSearch()
+                    }) {
+                        Icon(Icons.Filled.Cancel, contentDescription = "清空")
+                    }
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = {
+                focusManager.clearFocus()
+                onSearch(keyword)
+            }),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Black.copy(alpha = 0.45f),
+                unfocusedContainerColor = Color.Black.copy(alpha = 0.35f),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                focusedPlaceholderColor = Color.White.copy(alpha = 0.6f),
+                unfocusedPlaceholderColor = Color.White.copy(alpha = 0.6f),
+                focusedLeadingIconColor = Color.White.copy(alpha = 0.8f),
+                unfocusedLeadingIconColor = Color.White.copy(alpha = 0.8f),
+                focusedTrailingIconColor = Color.White,
+                unfocusedTrailingIconColor = Color.White,
+                cursorColor = Color.White,
+            ),
+            shape = RoundedCornerShape(20.dp),
+        )
+        if (searching) {
+            CircularProgressIndicator(
+                color = Color.White,
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            IconButton(
+                onClick = onOpenSources,
+                modifier = Modifier.background(Color.Black.copy(alpha = 0.35f), CircleShape),
+            ) {
+                Icon(Icons.Filled.Tune, contentDescription = "短剧源管理", tint = Color.White)
+            }
         }
     }
 }
@@ -178,6 +282,7 @@ private fun DramaFeed(
     state: ShortDramaViewModel.UiState,
     scrollToTopTick: Int,
     hostVisible: Boolean,
+    bottomPaddingPx: Int,
     onShown: (DramaCandidate, Int) -> Unit,
     onPlay: (DramaCandidate) -> Unit,
     onSkip: (DramaCandidate) -> Unit,
@@ -196,10 +301,10 @@ private fun DramaFeed(
     onSetCleanScreen: (Boolean) -> Unit,
     onSetAutoSlide: (Boolean) -> Unit,
     onSetAutoNext: (Boolean) -> Unit,
-    onOpenSources: () -> Unit,
 ) {
     val pagerState = rememberPagerState(pageCount = { state.feed.size })
     val scope = rememberCoroutineScope()
+    val bottomPaddingDp = with(LocalDensity.current) { bottomPaddingPx.toDp() }
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { index ->
@@ -233,6 +338,7 @@ private fun DramaFeed(
                 candidate = candidate,
                 active = pagerState.currentPage == page && hostVisible,
                 state = state,
+                bottomPaddingDp = bottomPaddingDp,
                 onPlay = { onPlay(candidate) },
                 onSkip = { onSkip(candidate) },
                 onResolve = onResolve,
@@ -252,15 +358,6 @@ private fun DramaFeed(
                 onSetAutoNext = onSetAutoNext,
             )
         }
-        IconButton(
-            onClick = onOpenSources,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 12.dp, end = 8.dp)
-                .background(Color.Black.copy(alpha = 0.35f), CircleShape),
-        ) {
-            Icon(Icons.Filled.Tune, contentDescription = "短剧源管理", tint = Color.White)
-        }
     }
 }
 
@@ -270,6 +367,7 @@ private fun DramaPage(
     candidate: DramaCandidate,
     active: Boolean,
     state: ShortDramaViewModel.UiState,
+    bottomPaddingDp: Dp,
     onPlay: () -> Unit,
     onSkip: () -> Unit,
     onResolve: suspend (DramaCandidate) -> DramaPlayable?,
@@ -300,9 +398,16 @@ private fun DramaPage(
     var episodes by remember(candidate.seriesId) { mutableStateOf<List<DramaEpisode>>(emptyList()) }
     var episodesLoading by remember(candidate.seriesId) { mutableStateOf(false) }
     var episodesFailed by remember(candidate.seriesId) { mutableStateOf(false) }
+    var selectedRoute by remember(candidate.seriesId) { mutableStateOf("") }
     var episodeEnded by remember(candidate.seriesId) { mutableStateOf(false) }
     // 已解析起播的集标识（seriesId:index:url），避免同一集重复请求直链
     var resolvedEpisodeKey by remember(candidate.seriesId) { mutableStateOf("") }
+    // 长按 3 倍速：按住临时提速，松开还原
+    var speedBeforeLongPress by remember(candidate.seriesId) { mutableStateOf<Float?>(null) }
+    var longPressing by remember(candidate.seriesId) { mutableStateOf(false) }
+    // 播放进度（每秒 2 次刷新，用于信息面板进度条）
+    var playPositionMs by remember(candidate.seriesId) { mutableLongStateOf(0L) }
+    var playDurationMs by remember(candidate.seriesId) { mutableLongStateOf(0L) }
 
     fun episodeKey(episode: DramaEpisode) =
         "${candidate.seriesId}:${episode.index}:${episode.url}"
@@ -326,6 +431,15 @@ private fun DramaPage(
 
     LaunchedEffect(playable?.url) {
         episodeEnded = false
+        playPositionMs = 0L
+        playDurationMs = 0L
+    }
+
+    LaunchedEffect(longPressing) {
+        if (longPressing) return@LaunchedEffect
+        val previous = speedBeforeLongPress ?: return@LaunchedEffect
+        speedBeforeLongPress = null
+        onSetSpeed(previous)
     }
 
     // 选集/自动续播改变当前集时，解析成直链后切播（仅激活页）
@@ -413,6 +527,18 @@ private fun DramaPage(
                 onProgress = { pos, dur ->
                     onRecordProgress(playable?.url.orEmpty(), pos, dur)
                 },
+                onTick = { pos, dur ->
+                    playPositionMs = pos
+                    playDurationMs = dur
+                },
+                onLongPressStart = {
+                    if (speedBeforeLongPress == null && state.speed != 3f) {
+                        speedBeforeLongPress = state.speed
+                        onSetSpeed(3f)
+                    }
+                    longPressing = true
+                },
+                onLongPressEnd = { longPressing = false },
             )
         } else if (candidate.cover.isNotBlank()) {
             GlideImage(
@@ -468,12 +594,18 @@ private fun DramaPage(
                 active = active,
                 chapterTitle = chapterTitle,
                 episodeCount = playlist?.episodes?.size ?: candidate.episodeCount,
-                hasPlaylist = !playlist?.episodes.isNullOrEmpty(),
+                bottomPaddingDp = bottomPaddingDp,
+                playPositionMs = playPositionMs,
+                playDurationMs = playDurationMs,
                 countdownActive = episodeEnded,
                 playFailed = playFailed,
                 playingInline = playingInline,
                 onOpenDetail = onPlay,
-                onShowEpisodes = { showEpisodes = true },
+                onShowEpisodes = {
+                    selectedRoute = playlist?.episodes
+                        ?.getOrNull(playlist.currentIndex)?.route.orEmpty()
+                    showEpisodes = true
+                },
                 onNext = {
                     episodeEnded = false
                     onEpisodeEnd()
@@ -486,9 +618,12 @@ private fun DramaPage(
         DramaEpisodeSheet(
             title = candidate.title,
             episodes = episodes,
+            routes = episodes.mapNotNull { it.route.takeIf(String::isNotBlank) }.distinct(),
+            selectedRoute = selectedRoute,
             currentIndex = playlist?.currentIndex ?: 0,
             loading = episodesLoading,
             failed = episodesFailed,
+            onSelectRoute = { selectedRoute = it },
             onDismiss = { showEpisodes = false },
             onReload = {
                 scope.launch {
@@ -537,11 +672,15 @@ private fun DramaVideoPlayer(
     onPlaybackError: () -> Unit,
     onEpisodeEnd: () -> Unit,
     onProgress: (Long, Long) -> Unit,
+    onTick: (Long, Long) -> Unit,
+    onLongPressStart: () -> Unit,
+    onLongPressEnd: () -> Unit,
 ) {
     val context = LocalContext.current
     val currentOnError by rememberUpdatedState(onPlaybackError)
     val currentOnEnd by rememberUpdatedState(onEpisodeEnd)
     val currentOnProgress by rememberUpdatedState(onProgress)
+    val currentOnTick by rememberUpdatedState(onTick)
     val exoPlayer = remember(playable.url, playable.headers) {
         val requestHeaders = HashMap(playable.headers)
         if (requestHeaders.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
@@ -591,11 +730,16 @@ private fun DramaVideoPlayer(
         exoPlayer.setPlaybackSpeed(speed)
     }
     LaunchedEffect(active, playable.url) {
+        var tick = 0
         while (active) {
-            delay(5_000L)
+            delay(500L)
             val duration = exoPlayer.duration
             if (duration != C.TIME_UNSET && duration > 0) {
-                currentOnProgress(exoPlayer.currentPosition, duration)
+                val position = exoPlayer.currentPosition
+                currentOnTick(position, duration)
+                tick++
+                // 每 10 个 tick（5 秒）落一次进度
+                if (tick % 10 == 0) currentOnProgress(position, duration)
             }
         }
     }
@@ -616,20 +760,38 @@ private fun DramaVideoPlayer(
         if (active) exoPlayer.playWhenReady = true
     }
 
-    AndroidView(
-        factory = {
-            PlayerView(it).apply {
-                useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                player = exoPlayer
-                setOnClickListener {
-                    exoPlayer.playWhenReady = !exoPlayer.playWhenReady
+    val currentLongPressStart by rememberUpdatedState(onLongPressStart)
+    val currentLongPressEnd by rememberUpdatedState(onLongPressEnd)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = {
+                PlayerView(it).apply {
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    player = exoPlayer
                 }
-            }
-        },
-        modifier = Modifier.fillMaxSize(),
-    )
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(exoPlayer) {
+                    detectTapGestures(
+                        onTap = {
+                            exoPlayer.playWhenReady = !exoPlayer.playWhenReady
+                        },
+                        onLongPress = { currentLongPressStart() },
+                        onPress = {
+                            tryAwaitRelease()
+                            currentLongPressEnd()
+                        },
+                    )
+                },
+        )
+    }
 }
 
 /** 右侧竖排操作栏：爱心（加权）/ 收藏（加书架）/ 更多。 */
@@ -666,7 +828,7 @@ private fun DramaActionRail(
         )
         Spacer(Modifier.height(18.dp))
         RailAction(
-            icon = Icons.Filled.Close,
+            icon = Icons.Filled.Cancel,
             label = "不感兴趣",
             tint = Color.White,
             onClick = onSkip,
@@ -698,7 +860,9 @@ private fun DramaInfoPanel(
     countdownActive: Boolean,
     chapterTitle: String,
     episodeCount: Int,
-    hasPlaylist: Boolean,
+    bottomPaddingDp: Dp,
+    playPositionMs: Long,
+    playDurationMs: Long,
     playFailed: Boolean,
     playingInline: Boolean,
     onOpenDetail: () -> Unit,
@@ -723,7 +887,11 @@ private fun DramaInfoPanel(
     }
 
     Column(
-        modifier = modifier.padding(start = 20.dp, end = 72.dp, bottom = 40.dp),
+        modifier = modifier.padding(
+            start = 20.dp,
+            end = 72.dp,
+            bottom = 40.dp + bottomPaddingDp + 12.dp,
+        ),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onOpenDetail)) {
             GlideImage(
@@ -793,6 +961,19 @@ private fun DramaInfoPanel(
                 modifier = Modifier.clickable { expanded = !expanded },
             )
         }
+        if (playingInline && playDurationMs > 0) {
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = {
+                    (playPositionMs.toFloat() / playDurationMs.toFloat()).coerceIn(0f, 1f)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = Color.White,
+                trackColor = Color.White.copy(alpha = 0.25f),
+            )
+        }
         if (playFailed) {
             Spacer(Modifier.height(6.dp))
             Text(
@@ -805,18 +986,17 @@ private fun DramaInfoPanel(
             Spacer(Modifier.height(10.dp))
             Button(onClick = onOpenDetail) { Text("立即观看") }
         }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (!playFailed) {
+            Spacer(Modifier.height(12.dp))
             Button(onClick = onShowEpisodes) { Text("观看全集") }
-            OutlinedButton(
-                onClick = onNext,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color.White.copy(alpha = 0.9f)
-                ),
-                enabled = hasPlaylist,
-            ) {
-                Text(if (countdownActive) "下一集($countdown)" else "下一集")
-            }
+        }
+        if (countdownActive) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "${countdown} 秒后自动播放下一集",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 12.sp,
+            )
         }
         Spacer(Modifier.height(8.dp))
         Text(
@@ -833,13 +1013,20 @@ private fun DramaInfoPanel(
 private fun DramaEpisodeSheet(
     title: String,
     episodes: List<DramaEpisode>,
+    routes: List<String>,
+    selectedRoute: String,
     currentIndex: Int,
     loading: Boolean,
     failed: Boolean,
+    onSelectRoute: (String) -> Unit,
     onDismiss: () -> Unit,
     onReload: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
+    val visible = remember(episodes, selectedRoute) {
+        if (selectedRoute.isBlank()) episodes.withIndex().toList()
+        else episodes.withIndex().filter { it.value.route == selectedRoute || it.value.route.isBlank() }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -856,6 +1043,21 @@ private fun DramaEpisodeSheet(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (routes.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    routes.forEach { route ->
+                        FilterChip(
+                            selected = route == selectedRoute,
+                            onClick = { onSelectRoute(route) },
+                            label = { Text(route, fontSize = 12.sp, maxLines = 1) },
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(12.dp))
             when {
                 loading -> Box(
@@ -873,12 +1075,13 @@ private fun DramaEpisodeSheet(
                     Button(onClick = onReload) { Text("重试") }
                 }
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(5),
+                    columns = GridCells.Fixed(4),
                     modifier = Modifier.fillMaxWidth().height(360.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(episodes.size) { index ->
+                    items(visible.size) { position ->
+                        val (index, episode) = visible[position]
                         val selected = index == currentIndex
                         Button(
                             onClick = { onSelect(index) },
@@ -893,9 +1096,10 @@ private fun DramaEpisodeSheet(
                             },
                         ) {
                             Text(
-                                text = "第${index + 1}集",
+                                text = episode.title.ifBlank { "第${index + 1}集" },
                                 fontSize = 12.sp,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }

@@ -58,6 +58,8 @@ data class DramaEpisode(
     val url: String,
     /** 视频源播放线路名（PY/TVBOX 源 play(url, flag) 需要；书源为空） */
     val flag: String = "",
+    /** 所属线路名，供选集弹窗按线路分组/切换；无多线路时为空。 */
+    val route: String = "",
 )
 
 /** 某部剧的整季选集列表。 */

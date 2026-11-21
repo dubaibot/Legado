@@ -31,7 +31,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 object ShortDramaCandidateProvider {
 
-    private const val SOURCE_TIMEOUT_MS = 15_000L
+    // 单源拉取超时：过长会让“正在准备短剧”卡住，9s 足够 home()/explore 首屏返回
+    private const val SOURCE_TIMEOUT_MS = 9_000L
     private const val RSS_PER_SOURCE = 10
     private const val VIDEO_PER_SOURCE = 20
     private const val BOOK_PER_SOURCE = 20
@@ -54,6 +55,80 @@ object ShortDramaCandidateProvider {
                 .awaitAll()
         }
         results.flatten().distinctBy { it.seriesId }.take(limit)
+    }
+
+    /** 关键字搜索：并行搜索所有已选源，按 seriesId 去重后截断。 */
+    suspend fun search(
+        keyword: String,
+        sources: List<DramaSourceRef>,
+        limit: Int = 60,
+    ): List<DramaCandidate> = withContext(Dispatchers.IO) {
+        val key = keyword.trim()
+        if (key.isBlank() || sources.isEmpty()) return@withContext emptyList()
+        val results = coroutineScope {
+            sources.flatMap { ref ->
+                when (ref.kind) {
+                    DramaSourceKind.PY, DramaSourceKind.TVBOX -> listOf(async { searchVideoSource(ref, key) })
+                    DramaSourceKind.BOOK -> listOf(async { searchBookSource(ref, key) })
+                    DramaSourceKind.RSS -> listOf(async { searchRssSource(ref, key) })
+                }
+            }.awaitAll()
+        }
+        results.flatten().distinctBy { it.seriesId }.take(limit)
+    }
+
+    private suspend fun searchVideoSource(ref: DramaSourceRef, key: String): List<DramaCandidate> {
+        return runCatching {
+            withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                val info = VideoSourceRegistry.getSourceInfo(ref.key) ?: return@withTimeoutOrNull emptyList()
+                val source = VideoSourceRegistry.createSource(info) ?: return@withTimeoutOrNull emptyList()
+                source.search(key, 1).take(VIDEO_PER_SOURCE).map { it.toCandidate(ref, emptyList()) }
+            } ?: emptyList()
+        }.onFailure {
+            LogUtils.d("ShortDramaProvider", "searchVideoSource(${ref.key}) failed: ${it.message}")
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun searchBookSource(ref: DramaSourceRef, key: String): List<DramaCandidate> {
+        return runCatching {
+            withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                val source = appDb.bookSourceDao.getBookSource(ref.key) ?: return@withTimeoutOrNull emptyList()
+                if (source.bookSourceType != BookSourceType.video) return@withTimeoutOrNull emptyList()
+                WebBook.searchBookAwait(source, key, 1)
+                    .take(BOOK_PER_SOURCE)
+                    .map { book ->
+                        DramaCandidate(
+                            seriesId = "book:${ref.key}:${book.bookUrl}",
+                            source = ref,
+                            title = book.name,
+                            author = book.author,
+                            cover = book.coverUrl.orEmpty(),
+                            intro = book.intro.orEmpty(),
+                            tags = book.kind?.split(',', '，', '/')
+                                ?.map { it.trim() }
+                                ?.filter { it.isNotEmpty() }
+                                ?.take(4) ?: emptyList(),
+                            pageUrl = book.bookUrl,
+                            publishedAt = 0L,
+                        )
+                    }
+            } ?: emptyList()
+        }.onFailure {
+            LogUtils.d("ShortDramaProvider", "searchBookSource(${ref.key}) failed: ${it.message}")
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun searchRssSource(ref: DramaSourceRef, key: String): List<DramaCandidate> {
+        return runCatching {
+            withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                appDb.rssArticleDao.getLatestByOrigin(ref.key, 200)
+                    .filter { it.title.contains(key, ignoreCase = true) }
+                    .take(RSS_PER_SOURCE)
+                    .map { it.toCandidate(ref) }
+            } ?: emptyList()
+        }.onFailure {
+            LogUtils.d("ShortDramaProvider", "searchRssSource(${ref.key}) failed: ${it.message}")
+        }.getOrDefault(emptyList())
     }
 
     private suspend fun loadVideoSource(ref: DramaSourceRef): List<DramaCandidate> {

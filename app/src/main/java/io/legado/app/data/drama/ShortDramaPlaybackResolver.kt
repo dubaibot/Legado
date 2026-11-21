@@ -190,11 +190,19 @@ object ShortDramaPlaybackResolver {
                     ?: return@withTimeoutOrNull emptyList()
                 val detail = source.detail(candidate.itemId.ifBlank { candidate.pageUrl })
                 detail.playLines.mapIndexed { i, line ->
+                    // 线路名：优先取 flag，其次取 name 中「·」前缀（与主播放器 groupPyPlayLines 一致）
+                    val route = line.flag.takeIf { it.isNotBlank() }
+                        ?: line.name.substringBefore("·")
+                            .takeIf { it.isNotBlank() && it != line.name }
+                        ?: "线路1"
+                    val title = line.name.substringAfter("·", line.name)
+                        .ifBlank { "第${i + 1}集" }
                     DramaEpisode(
                         index = i,
-                        title = line.name.ifBlank { "第${i + 1}集" },
+                        title = title,
                         url = line.url,
                         flag = line.flag,
+                        route = route,
                     )
                 }
             }

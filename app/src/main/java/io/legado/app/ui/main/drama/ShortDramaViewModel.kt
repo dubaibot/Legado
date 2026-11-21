@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.legado.app.data.drama.DramaCandidate
 import io.legado.app.data.drama.DramaEpisode
+import io.legado.app.data.drama.DramaHistorySnapshot
 import io.legado.app.data.drama.DramaPlayable
 import io.legado.app.data.drama.DramaSeriesPlaylist
 import io.legado.app.data.drama.DramaSourceRef
@@ -45,6 +46,8 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         val cleanScreen: Boolean = false,
         val autoSlide: Boolean = true,
         val autoNext: Boolean = true,
+        val searchQuery: String = "",
+        val searching: Boolean = false,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -54,6 +57,13 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     private val sessionSkips = HashSet<String>()
     private var candidatePool: List<DramaCandidate> = emptyList()
     private var loadJob: Job? = null
+    private var searchJob: Job? = null
+
+    // 候选池缓存：同一批源短时间内复用，避免每次进入都重新拉取
+    private var cachedPool: List<DramaCandidate> = emptyList()
+    private var cachedPoolSignature: String = ""
+    private var cachedPoolAt: Long = 0L
+    private val poolCacheTtlMs = 60_000L
 
     /** 页内播放解析缓存：key = seriesId；解析失败不缓存，滑动回来可重试 */
     private val playableCache = HashMap<String, DramaPlayable>()
@@ -71,10 +81,16 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
 
     fun ensureLoaded() {
         if (_state.value.loading) return
-        if (_state.value.feed.isEmpty()) refresh()
+        if (_state.value.feed.isEmpty()) refresh(force = false)
     }
 
-    fun refresh() {
+    fun refresh() = refresh(force = true)
+
+    private fun refresh(force: Boolean) {
+        if (force) {
+            searchJob?.cancel()
+            searchJob = null
+        }
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, ended = false) }
@@ -85,7 +101,19 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 return@launch
             }
-            val pool = ShortDramaCandidateProvider.load(sources)
+            val signature = sources.joinToString("|") { it.id }
+            val now = System.currentTimeMillis()
+            val usableCache = !force && signature == cachedPoolSignature &&
+                now - cachedPoolAt < poolCacheTtlMs && cachedPool.isNotEmpty()
+            val pool = if (usableCache) {
+                cachedPool
+            } else {
+                ShortDramaCandidateProvider.load(sources).also {
+                    cachedPool = it
+                    cachedPoolSignature = signature
+                    cachedPoolAt = System.currentTimeMillis()
+                }
+            }
             candidatePool = pool
             sessionExposed.clear()
             sessionSkips.clear()
@@ -125,6 +153,7 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
 
     fun loadMore() {
         val current = _state.value
+        if (current.searchQuery.isNotEmpty()) return
         if (current.loading || current.loadingMore || current.ended) return
         if (candidatePool.isEmpty()) return
         viewModelScope.launch {
@@ -150,6 +179,45 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+    }
+
+    /** 关键字搜索：替换信息流为搜索结果；清空后恢复推荐。 */
+    fun search(keyword: String) {
+        val key = keyword.trim()
+        if (key.isEmpty()) {
+            clearSearch()
+            return
+        }
+        loadJob?.cancel()
+        searchJob?.cancel()
+        _state.update { it.copy(searchQuery = key, searching = true, error = null) }
+        searchJob = viewModelScope.launch {
+            val sources = ShortDramaSourceStore.enabled()
+            val results = ShortDramaCandidateProvider.search(key, sources)
+            val ranked = ShortDramaRecommendEngine.rank(
+                candidates = results,
+                snapshot = DramaHistorySnapshot.EMPTY,
+                sessionExposed = emptyList(),
+                currentFeed = emptyList(),
+                limit = results.size.coerceAtLeast(1),
+            )
+            _state.update {
+                it.copy(
+                    searching = false,
+                    feed = ranked.candidates,
+                    ended = true,
+                    error = if (ranked.candidates.isEmpty()) "没有找到相关短剧" else null,
+                )
+            }
+        }
+    }
+
+    fun clearSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        if (_state.value.searchQuery.isEmpty() && !_state.value.searching) return
+        _state.update { it.copy(searchQuery = "", searching = false, error = null) }
+        refresh(force = false)
     }
 
     fun onPageShown(candidate: DramaCandidate, index: Int) {

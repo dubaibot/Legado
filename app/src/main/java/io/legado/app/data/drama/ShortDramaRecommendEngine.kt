@@ -60,7 +60,10 @@ object ShortDramaRecommendEngine {
         }
         // 软约束：24 小时窗口，仅当严格轮取不到内容时放宽
         val strict = filter(candidates, snapshot.recentSeries, seenSeries)
-        val picked = pick(strict, limit, snapshot, now)
+        // 标题去重：当前 feed 已有标题视为重复，两轮 pick 共用同一集合
+        val seenTitles = LinkedHashSet<String>()
+        currentFeed.forEach { persistTitle(it.title, seenTitles) }
+        val picked = pick(strict, limit, snapshot, now, seenTitles)
         picked.forEach { seenSeries.add(it.seriesId) }
 
         if (picked.size >= limit) {
@@ -68,7 +71,7 @@ object ShortDramaRecommendEngine {
         }
 
         val relaxedPool = filter(candidates, emptySet(), seenSeries)
-        val relaxed = pick(relaxedPool, limit - picked.size, snapshot, now)
+        val relaxed = pick(relaxedPool, limit - picked.size, snapshot, now, seenTitles)
         return DramaRankResult(picked + relaxed, supplement = relaxed.isNotEmpty())
     }
 
@@ -87,6 +90,7 @@ object ShortDramaRecommendEngine {
         limit: Int,
         snapshot: DramaHistorySnapshot,
         now: Long,
+        seenTitles: LinkedHashSet<String> = LinkedHashSet(),
     ): List<DramaCandidate> {
         if (limit <= 0) return emptyList()
         val scored = candidates
@@ -97,6 +101,7 @@ object ShortDramaRecommendEngine {
             )
 
         val result = ArrayList<DramaCandidate>(limit)
+        val addedTitles = seenTitles
         val sourceCount = HashMap<String, Int>()
         val perSourceCap = (limit * MAX_PER_SOURCE_RATIO).toInt().coerceAtLeast(1)
         var lastSource = ""
@@ -120,8 +125,11 @@ object ShortDramaRecommendEngine {
             if (primaryTag.isNotEmpty() && primaryTag == lastTag &&
                 (tagRun[primaryTag] ?: 0) >= MAX_SAME_TAG_IN_A_ROW
             ) continue
+            val titleKey = normalizeTitle(candidate.title)
+            if (titleKey.isNotBlank() && titleKey in addedTitles) continue
 
             result.add(candidate)
+            if (titleKey.isNotBlank()) addedTitles.add(titleKey)
             sourceCount[sourceId] = (sourceCount[sourceId] ?: 0) + 1
             if (sourceId == lastSource) sameSourceRun++ else { lastSource = sourceId; sameSourceRun = 1 }
             if (primaryTag.isNotEmpty()) {
@@ -135,10 +143,27 @@ object ShortDramaRecommendEngine {
             for ((candidate, _) in scored) {
                 if (result.size >= limit) break
                 if (result.any { it.seriesId == candidate.seriesId }) continue
+                val titleKey = normalizeTitle(candidate.title)
+                if (titleKey.isNotBlank() && titleKey in addedTitles) continue
                 result.add(candidate)
+                if (titleKey.isNotBlank()) addedTitles.add(titleKey)
             }
         }
         return result
+    }
+
+    /** 标题归一化：小写、去标点空白、去集数/画质等噪声，截断 24 字，用于跨条目去重。 */
+    private fun normalizeTitle(raw: String): String {
+        if (raw.isBlank()) return ""
+        return raw.lowercase()
+            .replace(Regex("[\\s\\p{P}\\p{S}]+"), "")
+            .replace(Regex("第?\\d+集?"), "")
+            .replace(Regex("全集|完整版|电影版|高清|国语|粤语"), "")
+            .take(24)
+    }
+
+    private fun persistTitle(raw: String, into: MutableSet<String>) {
+        normalizeTitle(raw).takeIf { it.isNotBlank() }?.let { into.add(it) }
     }
 
     /** 0~1 归一化分数，权重 0.5 / 0.2 / 0.15 / 0.15。 */
