@@ -1,5 +1,7 @@
 package io.legado.app.data.drama
 
+import kotlin.random.Random
+
 /**
  * 浏览历史快照，由 DAO 数据聚合而来，供纯函数引擎使用。
  *
@@ -52,6 +54,7 @@ object ShortDramaRecommendEngine {
         currentFeed: List<DramaCandidate>,
         limit: Int = BATCH_SIZE,
         now: Long = System.currentTimeMillis(),
+        rng: Random? = null,
     ): DramaRankResult {
         // 硬约束：本会话已曝光、当前信息流、本批次内均不得重复
         val seenSeries = LinkedHashSet<String>().apply {
@@ -63,7 +66,7 @@ object ShortDramaRecommendEngine {
         // 标题去重：当前 feed 已有标题视为重复，两轮 pick 共用同一集合
         val seenTitles = LinkedHashSet<String>()
         currentFeed.forEach { persistTitle(it.title, seenTitles) }
-        val picked = pick(strict, limit, snapshot, now, seenTitles)
+        val picked = pick(strict, limit, snapshot, now, seenTitles, rng)
         picked.forEach { seenSeries.add(it.seriesId) }
 
         if (picked.size >= limit) {
@@ -71,7 +74,7 @@ object ShortDramaRecommendEngine {
         }
 
         val relaxedPool = filter(candidates, emptySet(), seenSeries)
-        val relaxed = pick(relaxedPool, limit - picked.size, snapshot, now, seenTitles)
+        val relaxed = pick(relaxedPool, limit - picked.size, snapshot, now, seenTitles, rng)
         return DramaRankResult(picked + relaxed, supplement = relaxed.isNotEmpty())
     }
 
@@ -91,10 +94,12 @@ object ShortDramaRecommendEngine {
         snapshot: DramaHistorySnapshot,
         now: Long,
         seenTitles: LinkedHashSet<String> = LinkedHashSet(),
+        rng: Random? = null,
     ): List<DramaCandidate> {
         if (limit <= 0) return emptyList()
+        // 同分时按 seriesId 排序会让每次刷新的首批完全一致，用随机抖动打散
         val scored = candidates
-            .map { it to score(it, snapshot, now) }
+            .map { it to (score(it, snapshot, now) + (rng?.nextDouble(0.0, 0.25) ?: 0.0)) }
             .sortedWith(
                 compareByDescending<Pair<DramaCandidate, Double>> { it.second }
                     .thenBy { it.first.seriesId }

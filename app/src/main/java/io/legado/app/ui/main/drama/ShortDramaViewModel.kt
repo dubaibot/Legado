@@ -14,6 +14,7 @@ import io.legado.app.data.drama.ShortDramaHistoryStore
 import io.legado.app.data.drama.ShortDramaPlaybackResolver
 import io.legado.app.data.drama.ShortDramaRecommendEngine
 import io.legado.app.data.drama.ShortDramaSourceStore
+import kotlin.random.Random
 import io.legado.app.data.entities.ShortDramaAction
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +94,7 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         }
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
+            val previousFeed = _state.value.feed
             _state.update { it.copy(loading = true, error = null, ended = false) }
             val sources = ShortDramaSourceStore.enabled()
             if (sources.isEmpty()) {
@@ -130,12 +132,23 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 return@launch
             }
             val snapshot = ShortDramaHistoryStore.snapshot()
-            val ranked = ShortDramaRecommendEngine.rank(
+            // 手动刷新时排除当前这批，避免每次都看到同样几部剧
+            var ranked = ShortDramaRecommendEngine.rank(
                 candidates = pool,
                 snapshot = snapshot,
                 sessionExposed = emptyList(),
-                currentFeed = emptyList(),
+                currentFeed = if (force) previousFeed else emptyList(),
+                rng = Random.Default,
             )
+            if (ranked.candidates.isEmpty() && force && previousFeed.isNotEmpty()) {
+                ranked = ShortDramaRecommendEngine.rank(
+                    candidates = pool,
+                    snapshot = snapshot,
+                    sessionExposed = emptyList(),
+                    currentFeed = emptyList(),
+                    rng = Random.Default,
+                )
+            }
             _state.update {
                 it.copy(
                     loading = false,
@@ -166,6 +179,7 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 snapshot = snapshot,
                 sessionExposed = sessionExposed.toList(),
                 currentFeed = current.feed,
+                rng = Random.Default,
             )
             if (ranked.candidates.isEmpty()) {
                 _state.update { it.copy(loadingMore = false, ended = true) }
@@ -223,7 +237,9 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     fun onPageShown(candidate: DramaCandidate, index: Int) {
         if (candidate.seriesId in sessionExposed) return
         viewModelScope.launch { recordExposure(candidate, index) }
-        if (index >= _state.value.feed.size - 3) loadMore()
+        // 滑过当前批次一半就预取下一批
+        val size = _state.value.feed.size
+        if (size > 0 && index >= (size + 1) / 2) loadMore()
     }
 
     private suspend fun recordExposure(candidate: DramaCandidate, index: Int) {

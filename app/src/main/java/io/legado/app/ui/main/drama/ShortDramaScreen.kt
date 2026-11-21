@@ -585,8 +585,8 @@ private fun DramaPage(
         if (!state.cleanScreen) {
             DramaActionRail(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = bottomPaddingDp + 12.dp),
                 liked = liked,
                 inBookshelf = inBookshelf,
                 onLike = {
