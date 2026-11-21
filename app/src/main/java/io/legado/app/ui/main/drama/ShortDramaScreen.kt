@@ -681,7 +681,13 @@ private fun DramaVideoPlayer(
     val currentOnEnd by rememberUpdatedState(onEpisodeEnd)
     val currentOnProgress by rememberUpdatedState(onProgress)
     val currentOnTick by rememberUpdatedState(onTick)
-    val exoPlayer = remember(playable.url, playable.headers) {
+    // 播放器实例按页持有，切集时只替换 MediaSource：
+    // 避免新建 ExoPlayer 导致 PlayerView 仍挂在旧实例上（有声音无画面）以及新实例不自动起播。
+    val exoPlayer = remember(context) {
+        ExoPlayer.Builder(context).build()
+    }
+
+    LaunchedEffect(playable.url, playable.headers) {
         val requestHeaders = HashMap(playable.headers)
         if (requestHeaders.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
             requestHeaders["User-Agent"] = ExoPlayerHelper.BROWSER_UA
@@ -698,12 +704,12 @@ private fun DramaVideoPlayer(
         } else {
             ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
         }
-        ExoPlayer.Builder(context).build().apply {
-            setMediaSource(mediaSource)
-            repeatMode = if (autoNext) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
-            setPlaybackSpeed(speed)
-            prepare()
-        }
+        exoPlayer.setMediaSource(mediaSource)
+        exoPlayer.repeatMode = if (autoNext) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
+        exoPlayer.setPlaybackSpeed(speed)
+        exoPlayer.prepare()
+        // 切集后 active 不变，负责起播的就只能是这里
+        exoPlayer.playWhenReady = active
     }
 
     DisposableEffect(exoPlayer) {
@@ -772,6 +778,9 @@ private fun DramaVideoPlayer(
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
                     player = exoPlayer
                 }
+            },
+            update = { view ->
+                if (view.player !== exoPlayer) view.player = exoPlayer
             },
             modifier = Modifier.fillMaxSize(),
         )
