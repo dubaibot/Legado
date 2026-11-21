@@ -174,6 +174,7 @@ fun ShortDramaScreen(
                 onResolveEpisodes = viewModel::resolveEpisodes,
                 onResolveEpisodePlayable = viewModel::resolveEpisodePlayable,
                 onLoadPlaylist = viewModel::loadPlaylist,
+                onCacheEpisodes = viewModel::cacheEpisodes,
                 onSelectEpisode = viewModel::selectEpisode,
                 onNextEpisode = viewModel::nextEpisode,
                 onRecordProgress = viewModel::recordProgress,
@@ -290,6 +291,7 @@ private fun DramaFeed(
     onResolveEpisodes: suspend (DramaCandidate) -> List<DramaEpisode>,
     onResolveEpisodePlayable: suspend (DramaCandidate, DramaEpisode) -> DramaPlayable?,
     onLoadPlaylist: (DramaCandidate) -> Unit,
+    onCacheEpisodes: (DramaCandidate, List<DramaEpisode>) -> Unit,
     onSelectEpisode: (DramaCandidate, Int) -> Unit,
     onNextEpisode: (DramaCandidate) -> Boolean,
     onRecordProgress: (DramaCandidate, String, Long, Long) -> Unit,
@@ -318,12 +320,13 @@ private fun DramaFeed(
         }
     }
 
-    // 一集播完：autoNext 有下一集就切集，否则 autoSlide 滑到下一部
+    // 一集播完：自动续播只切本剧下一集，本剧没有下一集就停住；
+    // 只有关闭自动续播时，自动上滑才切到下一部短剧。
     val handleEpisodeEnd: (DramaCandidate) -> Unit = { candidate ->
-        if (!state.autoNext || !onNextEpisode(candidate)) {
-            if (state.autoSlide && pagerState.currentPage < state.feed.size - 1) {
-                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-            }
+        if (state.autoNext) {
+            onNextEpisode(candidate)
+        } else if (state.autoSlide && pagerState.currentPage < state.feed.size - 1) {
+            scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
         }
     }
 
@@ -345,6 +348,7 @@ private fun DramaFeed(
                 onResolveEpisodes = onResolveEpisodes,
                 onResolveEpisodePlayable = { episode -> onResolveEpisodePlayable(candidate, episode) },
                 onLoadPlaylist = { onLoadPlaylist(candidate) },
+                onCacheEpisodes = { eps -> onCacheEpisodes(candidate, eps) },
                 onSelectEpisode = { index -> onSelectEpisode(candidate, index) },
                 onEpisodeEnd = { handleEpisodeEnd(candidate) },
                 onRecordProgress = { id, pos, dur -> onRecordProgress(candidate, id, pos, dur) },
@@ -374,6 +378,7 @@ private fun DramaPage(
     onResolveEpisodes: suspend (DramaCandidate) -> List<DramaEpisode>,
     onResolveEpisodePlayable: suspend (DramaEpisode) -> DramaPlayable?,
     onLoadPlaylist: () -> Unit,
+    onCacheEpisodes: (List<DramaEpisode>) -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onEpisodeEnd: () -> Unit,
     onRecordProgress: (String, Long, Long) -> Unit,
@@ -479,6 +484,7 @@ private fun DramaPage(
         episodesFailed = false
         val loaded = onResolveEpisodes(candidate)
         episodes = loaded
+        if (loaded.isNotEmpty()) onCacheEpisodes(loaded)
         episodesLoading = false
         episodesFailed = loaded.isEmpty()
     }
@@ -517,12 +523,18 @@ private fun DramaPage(
                 active = active,
                 speed = state.speed,
                 autoNext = state.autoNext,
+                autoSlide = state.autoSlide,
                 onPlaybackError = {
                     playable = null
                     playFailed = true
                 },
                 onEpisodeEnd = {
-                    if (state.autoNext || state.autoSlide) episodeEnded = true
+                    // 自动续播：倒计时后切本剧下一集；仅自动上滑时直接翻到下一部
+                    if (state.autoNext) {
+                        episodeEnded = true
+                    } else if (state.autoSlide) {
+                        onEpisodeEnd()
+                    }
                 },
                 onProgress = { pos, dur ->
                     onRecordProgress(playable?.url.orEmpty(), pos, dur)
@@ -630,6 +642,7 @@ private fun DramaPage(
                     episodesLoading = true
                     episodesFailed = false
                     episodes = onResolveEpisodes(candidate)
+                    if (episodes.isNotEmpty()) onCacheEpisodes(episodes)
                     episodesLoading = false
                     episodesFailed = episodes.isEmpty()
                 }
@@ -669,6 +682,7 @@ private fun DramaVideoPlayer(
     active: Boolean,
     speed: Float,
     autoNext: Boolean,
+    autoSlide: Boolean,
     onPlaybackError: () -> Unit,
     onEpisodeEnd: () -> Unit,
     onProgress: (Long, Long) -> Unit,
@@ -705,7 +719,9 @@ private fun DramaVideoPlayer(
             ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
         }
         exoPlayer.setMediaSource(mediaSource)
-        exoPlayer.repeatMode = if (autoNext) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
+        // 续播或上滑任一开启都不能循环单集，否则播完不出结束事件
+        exoPlayer.repeatMode =
+            if (autoNext || autoSlide) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
         exoPlayer.setPlaybackSpeed(speed)
         exoPlayer.prepare()
         // 切集后 active 不变，负责起播的就只能是这里
@@ -729,8 +745,9 @@ private fun DramaVideoPlayer(
         }
     }
 
-    LaunchedEffect(autoNext) {
-        exoPlayer.repeatMode = if (autoNext) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
+    LaunchedEffect(autoNext, autoSlide) {
+        exoPlayer.repeatMode =
+            if (autoNext || autoSlide) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
     }
     LaunchedEffect(speed) {
         exoPlayer.setPlaybackSpeed(speed)

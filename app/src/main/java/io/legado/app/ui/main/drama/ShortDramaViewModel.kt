@@ -297,6 +297,17 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /** 选集弹窗解析成功后回填选集，保证「下一集/自动续播」与弹窗共用同一份列表。 */
+    fun cacheEpisodes(candidate: DramaCandidate, episodes: List<DramaEpisode>) {
+        if (episodes.isEmpty()) return
+        val current = _state.value.playlist?.takeIf { it.seriesId == candidate.seriesId }
+        if (current != null && current.episodes.size >= episodes.size) return
+        val index = (current?.currentIndex ?: 0).coerceIn(0, episodes.lastIndex)
+        _state.update {
+            it.copy(playlist = DramaSeriesPlaylist(candidate.seriesId, episodes, index))
+        }
+    }
+
     /** 选中某集：更新当前集、回填集标题、记 START（带 episodeId）。 */
     fun selectEpisode(candidate: DramaCandidate, index: Int) {
         val playlist = _state.value.playlist?.takeIf { it.seriesId == candidate.seriesId } ?: return
