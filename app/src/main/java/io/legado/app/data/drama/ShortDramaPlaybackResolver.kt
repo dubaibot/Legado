@@ -9,11 +9,7 @@ import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.help.video.VideoUrlExtractor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.data.video.VideoDetail
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -29,89 +25,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 object ShortDramaPlaybackResolver {
 
     private const val RESOLVE_TIMEOUT_MS = 10_000L
-    /** 订阅/书源整页解析+嗅探超时：25s 过长会让首集起播久等，15s 足够覆盖绝大多数可用源 */
-    private const val RESOLVE_PAGE_TIMEOUT_MS = 15_000L
-    /** detail 缓存有效期：playLines 中间 id 短期内稳定，10 分钟内复用可省一次网络往返 */
-    private const val DETAIL_CACHE_TTL_MS = 10L * 60 * 1000
-    private const val DETAIL_CACHE_MAX = 200
-
-    private data class DetailEntry(val detail: VideoDetail?, val at: Long)
-    /** 值可能是已完成的详情，也可能是进行中的 single-flight 请求。 */
-    private val detailCache = HashMap<String, DetailEntry>()
-    private val inflight = HashMap<String, CompletableDeferred<VideoDetail?>>()
-    private val detailCacheLock = Mutex()
-
-    /**
-     * 获取视频源详情，命中缓存直接返回。
-     * 起播 resolve() 与选集 resolveEpisodes() 会对同一部剧并发调用，这里用 single-flight：
-     * 同一 key 的并发请求共享一次 detail 网络调用，彻底消除重复往返。
-     * 失败结果不写入缓存（下次可重试）；成功结果按 TTL 缓存并设容量上限。
-     */
-    private suspend fun getVideoDetail(candidate: DramaCandidate): VideoDetail? {
-        val key = videoDetailKey(candidate)
-        val now = System.currentTimeMillis()
-
-        // 1) 命中有效缓存
-        detailCacheLock.withLock {
-            val hit = detailCache[key]
-            if (hit != null && now - hit.at < DETAIL_CACHE_TTL_MS && hit.detail != null) {
-                return hit.detail
-            }
-        }
-        // 2) 已有进行中的同 key 请求 → 等待其结果
-        val waiter: CompletableDeferred<VideoDetail?>? = detailCacheLock.withLock {
-            inflight[key]
-        }
-        if (waiter != null) return waiter.await()
-
-        // 3) 本协程成为该 key 的加载者
-        val mine = CompletableDeferred<VideoDetail?>()
-        detailCacheLock.withLock { inflight[key] = mine }
-        var detail: VideoDetail? = null
-        try {
-            detail = runCatching {
-                val info = VideoSourceRegistry.getSourceInfo(candidate.source.key)
-                    ?: return@runCatching null
-                val source = VideoSourceRegistry.createSource(info)
-                    ?: return@runCatching null
-                source.detail(candidate.itemId.ifBlank { candidate.pageUrl })
-                    .takeIf { it.playLines.isNotEmpty() }
-            }.getOrNull()
-        } finally {
-            // 无论成功/失败/取消，都清理 inflight 并唤醒等待者，避免挂起
-            detailCacheLock.withLock {
-                inflight.remove(key)
-                if (detail != null) {
-                    if (detailCache.size >= DETAIL_CACHE_MAX) {
-                        val oldest = detailCache.entries
-                            .sortedBy { it.value.at }
-                            .take(DETAIL_CACHE_MAX / 4)
-                        oldest.forEach { detailCache.remove(it.key) }
-                    }
-                    detailCache[key] = DetailEntry(detail, System.currentTimeMillis())
-                }
-            }
-            mine.complete(detail)
-        }
-        return detail
-    }
-
-    private fun videoDetailKey(candidate: DramaCandidate): String =
-        "${candidate.source.key}|${candidate.itemId.ifBlank { candidate.pageUrl }}"
+    private const val RESOLVE_PAGE_TIMEOUT_MS = 25_000L
 
     suspend fun resolve(candidate: DramaCandidate): DramaPlayable? = withContext(Dispatchers.IO) {
-        // 快速路径：条目已带媒体直链时无需 detail/抓页/嗅探，立即起播。
-        // 书源/订阅源的候选中相当一部分 pageUrl 本身即 m3u8/mp4，可省去整个解析链路的等待。
-        if (candidate.source.kind != DramaSourceKind.PY &&
-            candidate.source.kind != DramaSourceKind.TVBOX &&
-            candidate.pageUrl.isMediaUrl()
-        ) {
-            return@withContext DramaPlayable(
-                url = candidate.pageUrl,
-                headers = mapOf("Referer" to candidate.pageUrl),
-                title = candidate.title,
-            )
-        }
         when (candidate.source.kind) {
             DramaSourceKind.PY, DramaSourceKind.TVBOX -> resolveVideo(candidate)
             DramaSourceKind.RSS -> resolveRss(candidate)
@@ -119,26 +35,15 @@ object ShortDramaPlaybackResolver {
         }
     }
 
-    /** http(s) 且路径像 m3u8/mp4 的直链（含查询串），用于起播快速判定。 */
-    private fun String.isMediaUrl(): Boolean {
-        if (!startsWith("http", ignoreCase = true)) return false
-        val path = substringBefore("?").substringBefore("#")
-        return path.contains(".m3u8", ignoreCase = true) ||
-            path.contains(".mp4", ignoreCase = true) ||
-            path.contains(".mkv", ignoreCase = true) ||
-            path.contains(".ts", ignoreCase = true)
-    }
-
     private suspend fun resolveVideo(candidate: DramaCandidate): DramaPlayable? {
         return runCatching {
             withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                val detail = getVideoDetail(candidate) ?: return@withTimeoutOrNull null
-                val line = detail.playLines.firstOrNull() ?: return@withTimeoutOrNull null
-                // play() 仍需源实例；detail 已缓存，这里只做直链解析
                 val info = VideoSourceRegistry.getSourceInfo(candidate.source.key)
                     ?: return@withTimeoutOrNull null
                 val source = VideoSourceRegistry.createSource(info)
                     ?: return@withTimeoutOrNull null
+                val detail = source.detail(candidate.itemId.ifBlank { candidate.pageUrl })
+                val line = detail.playLines.firstOrNull() ?: return@withTimeoutOrNull null
                 val result = runCatching { source.play(line.url, line.flag) }
                     .getOrElse { source.play(line.url) }
                 DramaPlayable(
@@ -279,7 +184,11 @@ object ShortDramaPlaybackResolver {
     private suspend fun resolveVideoEpisodes(candidate: DramaCandidate): List<DramaEpisode> {
         return runCatching {
             withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                val detail = getVideoDetail(candidate) ?: return@withTimeoutOrNull emptyList()
+                val info = VideoSourceRegistry.getSourceInfo(candidate.source.key)
+                    ?: return@withTimeoutOrNull emptyList()
+                val source = VideoSourceRegistry.createSource(info)
+                    ?: return@withTimeoutOrNull emptyList()
+                val detail = source.detail(candidate.itemId.ifBlank { candidate.pageUrl })
                 detail.playLines.mapIndexed { i, line ->
                     // 线路名：优先取 flag，其次取 name 中「·」前缀（与主播放器 groupPyPlayLines 一致）
                     val route = line.flag.takeIf { it.isNotBlank() }
