@@ -213,6 +213,27 @@ class JsonVideoSource(
         }
     }
 
+    /**
+     * 苹果 CMS 的 ac=list 本身支持 pg 分页：首页第 1 页之外的「最新」条目靠这里翻页取，
+     * 作为分类/搜索拿不到内容时的兜底补量通道。
+     */
+    override suspend fun homePage(pg: Int): List<VideoItem> = withContext(Dispatchers.IO) {
+        if (!isCmsMode) return@withContext emptyList()
+        if (pg <= 1) return@withContext emptyList()
+        // 优先 ac=list 翻页；部分站点 ac=list 不分页，再用不带分类的 ac=videolist 取全量列表
+        val urls = listOf(
+            buildCmsUrl("home", mapOf("ac" to "list", "pg" to pg.toString())),
+            buildCmsUrl("category", mapOf("ac" to "videolist", "pg" to pg.toString())),
+        )
+        for (url in urls) {
+            val json = runCatching { VideoHttpClient.getJson(url, siteHeaders) }.getOrNull()
+                ?: continue
+            val list = parseCmsList(json.getAsJsonArray("list"))
+            if (list.isNotEmpty()) return@withContext list
+        }
+        emptyList()
+    }
+
     override suspend fun category(tid: String, pg: Int): CategoryResult = withContext(Dispatchers.IO) {
         if (isCmsMode) {
             // 苹果CMS V10: 分类用 ac=videolist

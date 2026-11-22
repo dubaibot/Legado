@@ -100,6 +100,12 @@ interface VideoSource {
     /** 首页：返回分类列表 + 推荐视频 */
     suspend fun home(): Pair<List<VideoCategory>, List<VideoItem>>
 
+    /**
+     * 首页列表的翻页。部分源（如苹果 CMS 的 ac=list）本身支持 pg 分页，
+     * 可取到首页 20 条之外的「最新」条目；源不支持时返回空。
+     */
+    suspend fun homePage(pg: Int): List<VideoItem> = emptyList()
+
     /** 分类页：返回某分类的视频列表 */
     suspend fun category(tid: String, pg: Int): CategoryResult
 

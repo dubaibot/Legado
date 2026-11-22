@@ -48,6 +48,7 @@ object ShortDramaCandidateProvider {
     // 分类页去重后不足该阈值时，追加搜索补量（只维护 home 的 spider 常见）
     private const val VIDEO_SEARCH_FALLBACK_THRESHOLD = 30
     private val VIDEO_EXPAND_KEYWORDS = listOf("短剧", "热播", "爱情")
+    private const val VIDEO_HOME_PAGE_FALLBACK_PAGES = 4
     /** 参与扩容的分类数（按名称优先级挑推荐/短剧/热门类 tab） */
     private const val VIDEO_CATEGORY_TARGETS = 4
     /** 每个分类额外拉取的页数；首页已覆盖第 1 页推荐，这里从第 1 页开始按分类取新内容 */
@@ -59,6 +60,9 @@ object ShortDramaCandidateProvider {
 
     /** 源 key -> 首页分类（load 时填充，expand 复用，避免重复请求 home） */
     private val cachedCategories = java.util.concurrent.ConcurrentHashMap<String, List<VideoCategory>>()
+
+    // 首页完整条目（未截断）：首屏只展示 20 条，剩余部分由 expand 直接补池，避免白丢数据
+    private val cachedHomeItems = java.util.concurrent.ConcurrentHashMap<String, List<VideoItem>>()
 
     suspend fun load(
         sources: List<DramaSourceRef>,
@@ -176,6 +180,9 @@ object ShortDramaCandidateProvider {
                 "home=${loaded.items.size}, categories=${categories.size}, " +
                 "cats=${categories.joinToString("/") { it.id + ":" + it.name }}"
         )
+        if (loaded.items.isNotEmpty()) {
+            cachedHomeItems[ref.key] = loaded.items
+        }
         val categoryNames = categories.map { it.name }
         return loaded.items
             .take(VIDEO_PER_SOURCE)
@@ -241,51 +248,76 @@ object ShortDramaCandidateProvider {
 
         val items = ArrayList<VideoItem>()
         val startedAt = System.currentTimeMillis()
-        for (tid in targets) {
-            for (page in 1..VIDEO_PAGES_PER_CATEGORY) {
-                if (items.size >= VIDEO_MAX_PER_SOURCE) break
-                if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
-                val videos = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
-                    runCatching { source.category(tid, page).videos }
-                        .onFailure {
-                            LogUtils.d(
-                                "ShortDramaProvider",
-                                "expand ${ref.key} tid=$tid page=$page failed: ${it.message}"
-                            )
-                        }
-                        .getOrDefault(emptyList())
-                }.orEmpty()
-                LogUtils.d(
-                    "ShortDramaProvider",
-                    "expand ${ref.key} tid=$tid page=$page -> ${videos.size}"
-                )
-                if (videos.isEmpty()) break
-                items.addAll(videos)
+
+        // 0) 首页本身超出 20 条的剩余部分优先补入（首屏只截取了前 20 条）
+        cachedHomeItems[ref.key]?.let { items.addAll(it) }
+
+        // 1) 先翻首页列表：苹果 CMS 的 ac=list 支持 pg，是最稳的「首页 20 条之外」通道
+        for (page in 2..VIDEO_HOME_PAGE_FALLBACK_PAGES) {
+            if (items.size >= VIDEO_MAX_PER_SOURCE) break
+            if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+            val pageItems = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                runCatching { source.homePage(page) }
+                    .onFailure {
+                        AppLog.put(
+                            "ShortDramaProvider.expand(${ref.key}) homePage pg=$page 失败: ${it.message}"
+                        )
+                    }
+                    .getOrDefault(emptyList())
+            }.orEmpty()
+            AppLog.put(
+                "ShortDramaProvider.expand(${ref.key}) homePage pg=$page -> ${pageItems.size}"
+            )
+            if (pageItems.isEmpty()) break
+            items.addAll(pageItems)
+        }
+
+        // 2) 首页翻页仍不够时走分类翻页（tid 由首页分类表提供）
+        if (items.map { it.stableKey() }.toSet().size < VIDEO_SEARCH_FALLBACK_THRESHOLD) {
+            for (tid in targets) {
+                for (page in 1..VIDEO_PAGES_PER_CATEGORY) {
+                    if (items.size >= VIDEO_MAX_PER_SOURCE) break
+                    if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+                    val videos = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                        runCatching { source.category(tid, page).videos }
+                            .onFailure {
+                                AppLog.put(
+                                    "ShortDramaProvider.expand(${ref.key}) category tid=$tid pg=$page 失败: ${it.message}"
+                                )
+                            }
+                            .getOrDefault(emptyList())
+                    }.orEmpty()
+                    AppLog.put(
+                        "ShortDramaProvider.expand(${ref.key}) category tid=$tid pg=$page -> ${videos.size}"
+                    )
+                    if (videos.isEmpty()) break
+                    items.addAll(videos)
+                }
             }
         }
-        // 分类页与首页高度重复（常见于只维护 home 的 spider）时，用搜索补量：
-        // 搜索词取通用短剧词，多源实测能拿到首页之外的长列表。
+
+        // 3) 仍然不够时用通用短剧词搜索拓宽来源
         if (items.map { it.stableKey() }.toSet().size < VIDEO_SEARCH_FALLBACK_THRESHOLD) {
             for (keyword in VIDEO_EXPAND_KEYWORDS) {
+                if (items.size >= VIDEO_MAX_PER_SOURCE) break
                 if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
                 val searched = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
                     runCatching { source.search(keyword, 1) }
                         .onFailure {
-                            LogUtils.d(
-                                "ShortDramaProvider",
-                                "expand search ${ref.key} kw=$keyword failed: ${it.message}"
+                            AppLog.put(
+                                "ShortDramaProvider.expand(${ref.key}) search kw=$keyword 失败: ${it.message}"
                             )
                         }
                         .getOrDefault(emptyList())
                 }.orEmpty()
-                LogUtils.d(
-                    "ShortDramaProvider",
-                    "expand search ${ref.key} kw=$keyword -> ${searched.size}"
+                AppLog.put(
+                    "ShortDramaProvider.expand(${ref.key}) search kw=$keyword -> ${searched.size}"
                 )
                 if (searched.isEmpty()) continue
                 items.addAll(searched)
             }
         }
+
         val fresh = items
             .distinctBy { it.stableKey() }
             .map { it.toCandidate(ref, emptyList()) }
