@@ -7,7 +7,6 @@ import io.legado.app.data.drama.DramaCandidate
 import io.legado.app.data.drama.DramaEpisode
 import io.legado.app.data.drama.DramaHistorySnapshot
 import io.legado.app.data.drama.DramaPlayable
-import io.legado.app.data.drama.DramaRankResult
 import io.legado.app.data.drama.DramaSeriesPlaylist
 import io.legado.app.data.drama.DramaSourceRef
 import io.legado.app.data.drama.ShortDramaCandidateProvider
@@ -25,8 +24,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import io.legado.app.utils.isWifiConnect
-import io.legado.app.help.exoplayer.VideoPrefiller
-import io.legado.app.help.exoplayer.ExoPlayerHelper
 
 /**
  * 短剧信息流 ViewModel。
@@ -83,27 +80,6 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     /** 相邻页预取：最多向前预热 2 个候选的播放地址，仅 WiFi 下进行。 */
     private var prefetchJob: Job? = null
     private val prefetchAhead = 2
-
-    /**
-     * 已预填开头字节的 URL 去重集合。
-     * [VideoPrefiller] 内部虽有 LRU，但这里再做一层会话级去重，避免快速来回滑动时重复发 Range 请求。
-     */
-    private val prefilledUrls = HashSet<String>()
-
-    /**
-     * 近期去重窗口：只对最近 N 条曝光做强去重。
-     * 旧实现把整个 feed + 全部 sessionExposed 作为去重集合，池内候选一旦全部曝光，
-     * rank 必然返回空 → ended=true 永久停推。改用滑动窗口后，较早曝光的条目在冷却后
-     * 可重新进入推荐，这是「滑到一定次数就无法继续推送」的根治点。
-     */
-    private val recentDedupWindow = 24
-
-    /** 后台补充候选池的最小间隔，避免每次 loadMore 都重复拉源。 */
-    private val replenishIntervalMs = 30_000L
-    private var lastReplenishAt = 0L
-
-    /** 循环复用时的轮转起点，打散顺序，避免每次都从同一部开始。 */
-    private var recycledCursor = 0
 
     init {
         _state.update {
@@ -247,21 +223,13 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
             val snapshot = ShortDramaHistoryStore.snapshot(
                 sessionSkips = sessionSkips,
             )
-            // 只取最近一段作为强去重窗口：滑过足够多条目后，较早曝光的候选可被重新推荐，
-            // 从根源上避免「feed 越来越大 → 池内候选全部被排除 → 永久停推」。
-            val recentFeed = current.feed.takeLast(recentDedupWindow)
-            val recentExposed = sessionExposed.toList().takeLast(recentDedupWindow)
-            var ranked = ShortDramaRecommendEngine.rank(
+            val ranked = ShortDramaRecommendEngine.rank(
                 candidates = candidatePool,
                 snapshot = snapshot,
-                sessionExposed = recentExposed,
-                currentFeed = recentFeed,
+                sessionExposed = sessionExposed.toList(),
+                currentFeed = current.feed,
                 rng = Random.Default,
             )
-            // 池内候选都被近期窗口排空时，按「最久未曝光」顺序循环复用，保证信息流可无限下滑。
-            if (ranked.candidates.isEmpty()) {
-                ranked = pickRecycled(snapshot, recentFeed)
-            }
             if (ranked.candidates.isEmpty()) {
                 _state.update { it.copy(loadingMore = false, ended = true) }
             } else {
@@ -272,85 +240,7 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                         supplement = ranked.supplement,
                     )
                 }
-                // 池子余量不足一批时后台补源，保持信息流新鲜并尽量减少循环复用的重复感。
-                replenishPoolIfNeeded(current)
             }
-        }
-    }
-
-    /**
-     * 循环复用：当严格/宽松两轮都取不到候选时，从池中挑「最久未曝光」的一批重新推。
-     * 仍套用近期标题去重，避免紧接着出现同一部剧；用 [recycledCursor] 轮转起点打散顺序。
-     */
-    private fun pickRecycled(
-        snapshot: DramaHistorySnapshot,
-        recentFeed: List<DramaCandidate>,
-    ): DramaRankResult {
-        if (candidatePool.isEmpty()) return DramaRankResult(emptyList(), supplement = true)
-        val recentIds = recentFeed.map { it.seriesId }.toSet()
-        val recentTitles = LinkedHashSet<String>().apply {
-            recentFeed.forEach { persistTitle(it.title, this) }
-        }
-        // 曝光时间越早越优先复用；从未曝光的候选（sessionExposed 不含）优先排最前
-        val exposureRank = sessionExposed.toList()
-        val poolSorted = candidatePool.sortedBy { candidate ->
-            val idx = exposureRank.indexOf(candidate.seriesId)
-            if (idx < 0) -1 else idx
-        }
-        val picked = ArrayList<DramaCandidate>(ShortDramaRecommendEngine.BATCH_SIZE)
-        var cursor = recycledCursor.coerceIn(0, poolSorted.lastIndex.coerceAtLeast(0))
-        var scanned = 0
-        while (picked.size < ShortDramaRecommendEngine.BATCH_SIZE && scanned < poolSorted.size) {
-            val candidate = poolSorted[cursor % poolSorted.size]
-            cursor++
-            scanned++
-            if (candidate.seriesId in recentIds) continue
-            val titleKey = normalizeTitle(candidate.title)
-            if (titleKey.isNotBlank() && titleKey in recentTitles) continue
-            // 7 天内完播过的仍允许循环，但排到队尾由后续批次自然稀释；这里只做轻惩罚跳过最相邻的
-            val completedAt = snapshot.completedSeries[candidate.seriesId]
-            if (completedAt != null && System.currentTimeMillis() - completedAt < 60_000L) continue
-            picked.add(candidate)
-            if (titleKey.isNotBlank()) recentTitles.add(titleKey)
-        }
-        recycledCursor = cursor
-        return DramaRankResult(picked, supplement = true)
-    }
-
-    /** 标题归一化，与推荐引擎口径一致（跨条目去重）。 */
-    private fun normalizeTitle(raw: String): String {
-        if (raw.isBlank()) return ""
-        return raw.lowercase()
-            .replace(Regex("[\\s\\p{P}\\p{S}]+"), "")
-            .replace(Regex("第?\\d+集?"), "")
-            .replace(Regex("全集|完整版|电影版|高清|国语|粤语"), "")
-            .take(24)
-    }
-
-    private fun persistTitle(raw: String, into: MutableSet<String>) {
-        normalizeTitle(raw).takeIf { it.isNotBlank() }?.let { into.add(it) }
-    }
-
-    /**
-     * 候选池余量不足一批时，后台重新拉源补充新内容。
-     * 用独立协程 + 间隔节流，避免阻塞当前翻页，也避免频繁重复请求同一批源首页。
-     */
-    private fun replenishPoolIfNeeded(current: UiState) {
-        val now = System.currentTimeMillis()
-        val remaining = candidatePool.size - sessionExposed.size
-        if (remaining >= ShortDramaRecommendEngine.BATCH_SIZE) return
-        if (now - lastReplenishAt < replenishIntervalMs) return
-        lastReplenishAt = now
-        viewModelScope.launch {
-            val sources = ShortDramaSourceStore.enabled()
-            if (sources.isEmpty()) return@launch
-            val fresh = ShortDramaCandidateProvider.load(sources)
-            if (fresh.isEmpty()) return@launch
-            val merged = (candidatePool + fresh)
-                .distinctBy { it.seriesId }
-                .take(maxPoolSize)
-            candidatePool = merged
-            cachedPool = merged
         }
     }
 
@@ -407,37 +297,21 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * 相邻页「预解析 + 预缓存开头」。
-     *
-     * 抖音式做法：在当前视频播放时，把后面 1~2 个视频的开头一段字节（含 moov + 首帧 I-frame /
-     * m3u8 清单 + 首分片）提前下载进 ExoPlayer 的 [ExoPlayerHelper.cache]，滑到下一页时
-     * 播放器直接从缓存出首帧，实现秒开。
-     *
-     * - 直链解析复用 [resolvePlayable]（内部已有 detail single-flight 缓存），结果写 playableCache；
-     * - 开头字节预填复用 [VideoPrefiller.prefill]，它自带次数上限/字节上限/开关/去重，且不污染全局请求头；
-     * - 仅 WiFi 下进行，避免消耗移动流量；[prefilledUrls] 做会话级去重，防止来回滑动反复下载；
-     * - [prefetchJob] 保证任一时刻只有一次预取在跑，避免快速滑动叠加大量请求。
+     * 相邻页播放地址预取。
+     * 只调用 [resolvePlayable] 生成直链并写入缓存；单个候选失败静默跳过。
+     * 用 [prefetchJob] 保证任一时刻只有一次预取在跑，避免快速滑动时叠加大量请求。
      */
     private fun prefetchNext(candidate: DramaCandidate, index: Int, feed: List<DramaCandidate>) {
         if (_state.value.searchQuery.isNotEmpty()) return
         if (!appCtx.isWifiConnect) return
         if (feed.isEmpty() || index >= feed.size - 1) return
         if (prefetchJob?.isActive == true) return
-        // 防止长时间浏览后无限增长
-        if (prefilledUrls.size > maxPoolSize * 2) prefilledUrls.clear()
         prefetchJob = viewModelScope.launch {
             val targets = feed.subList(index + 1, minOf(index + 1 + prefetchAhead, feed.size))
             for (next in targets) {
-                // 解析失败（返回 null）不缓存，下次滑到会重试
-                val playable = runCatching { resolvePlayable(next) }.getOrNull() ?: continue
-                val url = playable.url
-                if (url.isBlank() || !prefilledUrls.add(url)) continue
-                val headers = HashMap(playable.headers)
-                if (headers.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
-                    headers["User-Agent"] = ExoPlayerHelper.BROWSER_UA
-                }
-                // 异步预填开头字节；失败静默，不影响当前播放
-                VideoPrefiller.prefill(url, headers)
+                // 已缓存则跳过；解析失败（返回 null）不缓存，下次滑到会重试
+                if (playableCache.containsKey(next.seriesId)) continue
+                runCatching { resolvePlayable(next) }
             }
         }
     }

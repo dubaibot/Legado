@@ -1232,38 +1232,6 @@ object ExoPlayerHelper {
     }
 
     /**
-     * 短剧页内播放专用：构造「带请求头 + 命中磁盘缓存」的 DataSource.Factory。
-     *
-     * 与全局 [cacheDataSourceFactory] 的区别：
-     * - 每次调用新建独立 OkHttp 工厂并注入本页请求头（Referer/Cookie/UA），避免污染全局单例头；
-     * - 复用同一个 [cache]，因此能命中 [VideoPrefiller] 预填的后续视频开头字节，实现相邻页秒开；
-     * - 尊重视频缓存总开关 [VideoPlay.videoCache]：关闭时退化为纯直连（省存储）。
-     *
-     * 缓存键为纯 URL（DataSpec.key=null 时 CacheDataSource 以 uri 字符串为键），
-     * 与 [VideoPrefiller.prefill] 预填时使用的键完全一致，保证能命中。
-     */
-    fun createDramaDataSourceFactory(headers: Map<String, String>): DataSource.Factory {
-        val requestHeaders = LinkedHashMap(headers)
-        if (requestHeaders.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
-            requestHeaders["User-Agent"] = BROWSER_UA
-        }
-        // 独立于全局单例的工厂，per-call 注入头，杜绝头污染（F-04/Z2）
-        val upstream = OkHttpDataSource.Factory(videoStreamClient)
-            .setUserAgent(BROWSER_UA)
-            .setDefaultRequestProperties(requestHeaders)
-        if (!VideoPlay.videoCache) return upstream
-        return CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(upstream)
-            .setCacheReadDataSourceFactory(FileDataSource.Factory())
-            .setCacheWriteDataSinkFactory(
-                CacheDataSink.Factory()
-                    .setCache(cache)
-                    .setFragmentSize(CacheDataSink.DEFAULT_FRAGMENT_SIZE)
-            )
-    }
-
-    /**
      * P0: Cronet DataSource.Factory（TLS 指纹与 Chrome 一致，解决 CDN TLS 指纹检测）
      *
      * 根因：部分视频 CDN 使用 TLS 指纹检测（JA3），OkHttp 的 conscrypt TLS ClientHello
