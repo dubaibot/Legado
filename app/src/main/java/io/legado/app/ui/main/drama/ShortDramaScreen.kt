@@ -3,11 +3,13 @@ package io.legado.app.ui.main.drama
 import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,7 +52,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -76,8 +77,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -182,7 +185,9 @@ fun ShortDramaScreen(
                 onToggleLike = viewModel::toggleLike,
                 onIsLiked = viewModel::isLiked,
                 onIsInBookshelf = viewModel::isInBookshelf,
-                onToggleBookshelf = viewModel::toggleBookshelf,
+                onToggleBookshelf = { c, add, index, title, total ->
+                    viewModel.toggleBookshelf(c, add, index, title, total)
+                },
                 onSetSpeed = viewModel::setSpeed,
                 onSetCleanScreen = viewModel::setCleanScreen,
                 onSetAutoSlide = viewModel::setAutoSlide,
@@ -299,7 +304,7 @@ private fun DramaFeed(
     onToggleLike: (DramaCandidate, Boolean) -> Unit,
     onIsLiked: suspend (String) -> Boolean,
     onIsInBookshelf: suspend (DramaCandidate) -> Boolean,
-    onToggleBookshelf: (DramaCandidate, Boolean) -> Unit,
+    onToggleBookshelf: (DramaCandidate, Boolean, Int, String, Int) -> Unit,
     onSetSpeed: (Float) -> Unit,
     onSetCleanScreen: (Boolean) -> Unit,
     onSetAutoSlide: (Boolean) -> Unit,
@@ -356,7 +361,9 @@ private fun DramaFeed(
                 onToggleLike = { liked -> onToggleLike(candidate, liked) },
                 onIsLiked = onIsLiked,
                 onIsInBookshelf = { onIsInBookshelf(candidate) },
-                onToggleBookshelf = { add -> onToggleBookshelf(candidate, add) },
+                onToggleBookshelf = { add, index, title, total ->
+                    onToggleBookshelf(candidate, add, index, title, total)
+                },
                 onSetSpeed = onSetSpeed,
                 onSetCleanScreen = onSetCleanScreen,
                 onSetAutoSlide = onSetAutoSlide,
@@ -386,7 +393,7 @@ private fun DramaPage(
     onToggleLike: (Boolean) -> Unit,
     onIsLiked: suspend (String) -> Boolean,
     onIsInBookshelf: suspend () -> Boolean,
-    onToggleBookshelf: (Boolean) -> Unit,
+    onToggleBookshelf: (Boolean, Int, String, Int) -> Unit,
     onSetSpeed: (Float) -> Unit,
     onSetCleanScreen: (Boolean) -> Unit,
     onSetAutoSlide: (Boolean) -> Unit,
@@ -414,6 +421,8 @@ private fun DramaPage(
     // 播放进度（每秒 2 次刷新，用于信息面板进度条）
     var playPositionMs by remember(candidate.seriesId) { mutableLongStateOf(0L) }
     var playDurationMs by remember(candidate.seriesId) { mutableLongStateOf(0L) }
+    // 页内播放器实例引用：供信息区进度条拖动时直接 seek
+    var inlinePlayer by remember(candidate.seriesId) { mutableStateOf<ExoPlayer?>(null) }
 
     fun episodeKey(episode: DramaEpisode) =
         "${candidate.seriesId}:${episode.index}:${episode.url}"
@@ -552,6 +561,7 @@ private fun DramaPage(
                     longPressing = true
                 },
                 onLongPressEnd = { longPressing = false },
+                onPlayerReady = { inlinePlayer = it },
             )
         } else if (candidate.cover.isNotBlank()) {
             GlideImage(
@@ -598,8 +608,10 @@ private fun DramaPage(
                 onBookshelf = {
                     val add = !inBookshelf
                     inBookshelf = add
-                    onToggleBookshelf(add)
-                    toast(if (add) "已加入书架" else "已移出书架")
+                    val index = (playlist?.currentIndex ?: 0) + 1
+                    val total = playlist?.episodes?.size ?: candidate.episodeCount
+                    onToggleBookshelf(add, index, chapterTitle, total)
+                    toast(if (add) "已加入书架 · 第${index}集" else "已移出书架")
                 },
                 onSkip = onSkip,
                 onShowEpisodes = openEpisodes,
@@ -617,6 +629,7 @@ private fun DramaPage(
                 bottomPaddingDp = bottomPaddingDp,
                 playPositionMs = playPositionMs,
                 playDurationMs = playDurationMs,
+                onSeek = { inlinePlayer?.seekTo(it) },
                 countdownActive = episodeEnded,
                 playFailed = playFailed,
                 playingInline = playingInline,
@@ -692,6 +705,7 @@ private fun DramaVideoPlayer(
     onTick: (Long, Long) -> Unit,
     onLongPressStart: () -> Unit,
     onLongPressEnd: () -> Unit,
+    onPlayerReady: (ExoPlayer) -> Unit = {},
 ) {
     val context = LocalContext.current
     val currentOnError by rememberUpdatedState(onPlaybackError)
@@ -788,6 +802,8 @@ private fun DramaVideoPlayer(
 
     val currentLongPressStart by rememberUpdatedState(onLongPressStart)
     val currentLongPressEnd by rememberUpdatedState(onLongPressEnd)
+    val currentOnPlayerReady by rememberUpdatedState(onPlayerReady)
+    LaunchedEffect(exoPlayer) { currentOnPlayerReady(exoPlayer) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
@@ -888,6 +904,109 @@ private fun RailAction(
     }
 }
 
+/** 播放时长格式化：不足 1 小时用 mm:ss，超过用 h:mm:ss。 */
+private fun formatVideoTime(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val sec = total % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
+}
+
+/**
+ * 可拖动播放进度条：点击直达、按住水平拖动实时预览、松手 seek。
+ *
+ * 拖动中不跟随播放器 tick（[dragFraction] 优先），松手后回到真实进度，
+ * 避免 seek 尚未生效时圆点被旧位置拉回去。
+ */
+@Composable
+private fun DramaProgressBar(
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (durationMs <= 0L) return
+    var dragFraction by remember { mutableStateOf<Float?>(null) }
+    val played = (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    val shown = dragFraction ?: played
+    val seekToFraction: (Float) -> Unit = { fraction ->
+        onSeek((fraction.coerceIn(0f, 1f) * durationMs).toLong())
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .pointerInput(durationMs) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { offset ->
+                            dragFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            dragFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        },
+                        onDragEnd = {
+                            dragFraction?.let(seekToFraction)
+                            dragFraction = null
+                        },
+                        onDragCancel = { dragFraction = null },
+                    )
+                }
+                .pointerInput(durationMs) {
+                    detectTapGestures { offset ->
+                        seekToFraction(offset.x / size.width.toFloat())
+                    }
+                },
+        ) {
+            val cy = size.height / 2f
+            val stroke = 3.dp.toPx()
+            val radius = 5.dp.toPx()
+            drawLine(
+                color = Color.White.copy(alpha = 0.25f),
+                start = Offset(0f, cy),
+                end = Offset(size.width, cy),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = Color.White,
+                start = Offset(0f, cy),
+                end = Offset(size.width * shown, cy),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.28f),
+                radius = radius + 3.dp.toPx(),
+                center = Offset(size.width * shown, cy),
+            )
+            drawCircle(
+                color = Color.White,
+                radius = radius,
+                center = Offset(size.width * shown, cy),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = formatVideoTime((shown * durationMs).toLong()),
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 11.sp,
+            )
+            Text(
+                text = formatVideoTime(durationMs),
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 private fun DramaInfoPanel(
@@ -901,21 +1020,22 @@ private fun DramaInfoPanel(
     bottomPaddingDp: Dp,
     playPositionMs: Long,
     playDurationMs: Long,
+    onSeek: (Long) -> Unit,
     playFailed: Boolean,
     playingInline: Boolean,
     onOpenDetail: () -> Unit,
     onNext: () -> Unit,
 ) {
     var expanded by remember(candidate.seriesId) { mutableStateOf(false) }
-    var countdown by remember(candidate.seriesId) { mutableIntStateOf(4) }
+    var countdown by remember(candidate.seriesId) { mutableIntStateOf(1) }
 
-    // 一集播完后开始 4 秒倒计时，到 0 自动切下一集（播放中不触发）
+    // 一集播完后 1 秒倒计时，到 0 自动切下一集（播放中不触发）
     LaunchedEffect(countdownActive, active, chapterTitle) {
         if (!countdownActive || !active) {
-            countdown = 4
+            countdown = 1
             return@LaunchedEffect
         }
-        countdown = 4
+        countdown = 1
         while (countdown > 0) {
             delay(1_000L)
             countdown--
@@ -989,16 +1109,11 @@ private fun DramaInfoPanel(
             )
         }
         if (playingInline && playDurationMs > 0) {
-            Spacer(Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = {
-                    (playPositionMs.toFloat() / playDurationMs.toFloat()).coerceIn(0f, 1f)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = Color.White,
-                trackColor = Color.White.copy(alpha = 0.25f),
+            Spacer(Modifier.height(6.dp))
+            DramaProgressBar(
+                positionMs = playPositionMs,
+                durationMs = playDurationMs,
+                onSeek = onSeek,
             )
         }
         if (playFailed) {

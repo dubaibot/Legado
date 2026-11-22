@@ -558,9 +558,31 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     suspend fun isInBookshelf(candidate: DramaCandidate): Boolean =
         ShortDramaBookshelf.isInBookshelf(candidate)
 
-    fun toggleBookshelf(candidate: DramaCandidate, add: Boolean) {
+    /**
+     * 收藏/取消收藏。加入书架时同步记录当前集数，下次从书架打开能直接续到这一集。
+     *
+     * @param episodeIndex 1 基当前集号
+     * @param episodeTitle 当前集标题
+     * @param totalEpisodes 总集数（未知时传 0）
+     */
+    fun toggleBookshelf(
+        candidate: DramaCandidate,
+        add: Boolean,
+        episodeIndex: Int = 0,
+        episodeTitle: String = "",
+        totalEpisodes: Int = 0,
+    ) {
         viewModelScope.launch {
-            if (add) ShortDramaBookshelf.add(candidate) else ShortDramaBookshelf.remove(candidate)
+            if (add) {
+                ShortDramaBookshelf.add(
+                    candidate = candidate,
+                    episodeIndex = episodeIndex,
+                    episodeTitle = episodeTitle,
+                    totalEpisodes = totalEpisodes,
+                )
+            } else {
+                ShortDramaBookshelf.remove(candidate)
+            }
         }
     }
 

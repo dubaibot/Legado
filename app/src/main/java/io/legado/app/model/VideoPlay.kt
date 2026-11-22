@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -13,6 +15,7 @@ import com.shuyu.gsyvideoplayer.listener.GSYMediaPlayerListener
 import com.shuyu.gsyvideoplayer.utils.CommonUtil
 import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import com.shuyu.gsyvideoplayer.video.base.GSYBaseVideoPlayer
+import com.shuyu.gsyvideoplayer.video.base.GSYVideoView
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
@@ -1919,8 +1922,39 @@ object VideoPlay : CoroutineScope by MainScope(){
         chapterInVolumeIndex = index
         saveRead(0)
         startPlay(player)
+        ensurePlayingSoon(player)
         postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1)) //更新选集视图
         return true
+    }
+
+    private val ensurePlayHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * 切集后兜底起播：全屏（GSY 窗口全屏克隆播放器）下 `setUp` 与 `startPlayLogic`
+     * 的时序会被窗口转移打断，出现「已进入下一集但停在暂停态」，需要用户手动点播放。
+     * 这里在起播后做两次延迟状态检查，仅在暂停/播完态补一次 `startPlayLogic`，
+     * 播放中/缓冲中/准备中一律不动，避免抢用户手动暂停的意图。
+     */
+    fun ensurePlayingSoon(player: GSYBaseVideoPlayer? = null) {
+        if (!autoPlay || player == null) return
+        ensurePlayHandler.removeCallbacksAndMessages(null)
+        val token = currentSwitchToken
+        for (delayMs in longArrayOf(500L, 1_500L)) {
+            ensurePlayHandler.postDelayed({
+                if (token != currentSwitchToken) return@postDelayed
+                val target = resolvePlaybackPlayer(player) as? StandardGSYVideoPlayer
+                    ?: return@postDelayed
+                val state = target.currentState
+                if (state == GSYVideoView.CURRENT_STATE_PAUSE ||
+                    state == GSYVideoView.CURRENT_STATE_AUTO_COMPLETE
+                ) {
+                    AppLog.put(
+                        "VideoPlay.ensurePlayingSoon: state=$state, force startPlayLogic, token=$token"
+                    )
+                    target.startPlayLogic()
+                }
+            }, delayMs)
+        }
     }
 
     /**
@@ -2241,7 +2275,10 @@ object VideoPlay : CoroutineScope by MainScope(){
             localPlayer.mapHeadData = linkedMapOf()
             // SAF URIs go straight to the player; no URL rules, HTTP cache or sniffing.
             localPlayer.setUp(chapter.url, false, null, chapter.title)
-            if (autoPlay) localPlayer.startPlayLogic()
+            if (autoPlay) {
+                localPlayer.startPlayLogic()
+                ensurePlayingSoon(localPlayer)
+            }
             isLoading = false
             return
         }

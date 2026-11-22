@@ -299,6 +299,7 @@ object VideoPlaybackPipeline {
             player.setUp(playUrl, VideoPlay.cachePlay, File(appCtx.externalCache, "exoplayer"), ctx.title)
             if (VideoPlay.autoPlay) {
                 player.startPlayLogic()
+                VideoPlay.ensurePlayingSoon(player)
             }
         }
     }

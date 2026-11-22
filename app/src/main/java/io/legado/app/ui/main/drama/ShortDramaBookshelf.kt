@@ -24,7 +24,20 @@ object ShortDramaBookshelf {
         appDb.bookDao.getBook(candidate.pageUrl) != null
     }
 
-    suspend fun add(candidate: DramaCandidate, source: BookSource? = null) {
+    /**
+     * 加入书架并记录当前观看进度（第几集）。
+     *
+     * @param episodeIndex 1 基集号，>0 时写入 [Book.durChapterIndex]（0 基）
+     * @param episodeTitle 当前集标题，写入 [Book.durChapterTitle]
+     * @param totalEpisodes 总集数，>0 时写入 [Book.totalChapterNum]
+     */
+    suspend fun add(
+        candidate: DramaCandidate,
+        source: BookSource? = null,
+        episodeIndex: Int = 0,
+        episodeTitle: String = "",
+        totalEpisodes: Int = 0,
+    ) {
         withContext(Dispatchers.IO) {
             val bookSource = source ?: appDb.bookSourceDao.getBookSource(candidate.source.key)
             var book = appDb.bookDao.getBook(candidate.pageUrl)
@@ -52,6 +65,15 @@ object ShortDramaBookshelf {
                     candidate.itemId.ifBlank { candidate.pageUrl },
                 )
             }
+            if (episodeIndex > 0) {
+                book.durChapterIndex = episodeIndex - 1
+                book.durChapterPos = 0
+            }
+            if (episodeTitle.isNotBlank()) {
+                book.durChapterTitle = episodeTitle
+                book.latestChapterTitle = episodeTitle
+            }
+            if (totalEpisodes > 0) book.totalChapterNum = totalEpisodes
             book.removeType(BookType.notShelf)
             if (book.order == 0) book.order = appDb.bookDao.minOrder - 1
             bookSource?.let { SourceGroupTagLinker.apply(book, it) }

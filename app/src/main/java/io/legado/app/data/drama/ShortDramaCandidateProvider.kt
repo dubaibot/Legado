@@ -46,9 +46,9 @@ object ShortDramaCandidateProvider {
      */
     private const val VIDEO_MAX_PER_SOURCE = 60
     /** 参与扩容的分类数（按名称优先级挑推荐/短剧/热门类 tab） */
-    private const val VIDEO_CATEGORY_TARGETS = 3
+    private const val VIDEO_CATEGORY_TARGETS = 4
     /** 每个分类额外拉取的页数；首页已覆盖第 1 页推荐，这里从第 1 页开始按分类取新内容 */
-    private const val VIDEO_PAGES_PER_CATEGORY = 2
+    private const val VIDEO_PAGES_PER_CATEGORY = 3
     /** 扩容阶段总预算：到点就只用已拿到的条目，不让慢分类拖垮首屏 */
     private const val VIDEO_EXPAND_BUDGET_MS = 5_000L
     /** 单个分类页的等待上限 */
@@ -162,10 +162,21 @@ object ShortDramaCandidateProvider {
 
         val merged = LinkedHashMap<String, VideoItem>()
         loaded.items.take(VIDEO_PER_SOURCE).forEach { merged[it.stableKey()] = it }
-        // py 源支持分类翻页，补足首页之外的条目；其它源保持原有单页行为，避免额外请求
-        if (loaded.source.sourceType == SourceType.PY && merged.size < VIDEO_MAX_PER_SOURCE) {
-            expandPySource(loaded.source, loaded.categories)
-                .forEach { merged.putIfAbsent(it.stableKey(), it) }
+        // 分类翻页扩容：PY 与 JSON（TVBox 展开的 py/json 站点）都支持 category(tid,pg)，
+        // 首页通常只有 20 条，不扩容信息流滑到底就没内容了。TXT/HTML/JAR 保持单页避免无谓请求。
+        val expandable = loaded.source.sourceType == SourceType.PY ||
+            loaded.source.sourceType == SourceType.JSON
+        AppLog.put(
+            "ShortDramaProvider.loadVideoSource(${ref.key}): type=${loaded.source.sourceType}, " +
+                "base=${merged.size}, categories=${loaded.categories.size}, expandable=$expandable"
+        )
+        if (expandable && merged.size < VIDEO_MAX_PER_SOURCE) {
+            val expanded = expandSource(loaded.source, loaded.categories)
+            expanded.forEach { merged.putIfAbsent(it.stableKey(), it) }
+            AppLog.put(
+                "ShortDramaProvider.expand(${ref.key}): expanded=${expanded.size}, " +
+                    "merged=${merged.size}, cats=${loaded.categories.joinToString("/") { it.id + ":" + it.name }}"
+            )
         }
         val categoryNames = loaded.categories.map { it.name }
         return merged.values
@@ -185,7 +196,7 @@ object ShortDramaCandidateProvider {
      * 总预算 [VIDEO_EXPAND_BUDGET_MS] 内能拿多少算多少；单页失败或超时直接跳过，
      * 不影响已经拿到的首页内容。py 源由 PyTaskQueue 串行执行，这里按分类顺序请求。
      */
-    private suspend fun expandPySource(
+    private suspend fun expandSource(
         source: VideoSource,
         categories: List<VideoCategory>,
     ): List<VideoItem> {
@@ -193,7 +204,10 @@ object ShortDramaCandidateProvider {
             .filter { it.id.isNotBlank() }
             .sortedByDescending { categoryPriority(it.name) }
             .take(VIDEO_CATEGORY_TARGETS)
-        if (targets.isEmpty()) return emptyList()
+        if (targets.isEmpty()) {
+            AppLog.put("ShortDramaProvider.expandSource: 分类为空，跳过扩容, type=${source.sourceType}")
+            return emptyList()
+        }
 
         val result = ArrayList<VideoItem>()
         withTimeoutOrNull(VIDEO_EXPAND_BUDGET_MS) {
@@ -202,8 +216,18 @@ object ShortDramaCandidateProvider {
                     if (result.size >= VIDEO_MAX_PER_SOURCE) break
                     val videos = withTimeoutOrNull(VIDEO_PAGE_TIMEOUT_MS) {
                         runCatching { source.category(category.id, page).videos }
+                            .onFailure {
+                                LogUtils.d(
+                                    "ShortDramaProvider",
+                                    "expand ${category.id}/${page} failed: ${it.message}"
+                                )
+                            }
                             .getOrDefault(emptyList())
                     }.orEmpty()
+                    LogUtils.d(
+                        "ShortDramaProvider",
+                        "expand ${category.name}(${category.id}) page=$page -> ${videos.size}"
+                    )
                     // 该分类没有更多页，换下一个分类
                     if (videos.isEmpty()) break
                     result.addAll(videos)
