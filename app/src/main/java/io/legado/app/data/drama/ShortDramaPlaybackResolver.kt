@@ -278,7 +278,11 @@ object ShortDramaPlaybackResolver {
                     }
                 }
             }.onFailure {
-                AppLog.put("ShortDramaPlaybackResolver.resolveEpisodePlayable failed", it)
+                AppLog.put(
+                    "ShortDramaPlaybackResolver.resolveEpisodePlayable failed: " +
+                        "${it.javaClass.simpleName}: ${it.message} (url=${episode.url}, flag=${episode.flag})",
+                    it
+                )
             }.getOrNull()
             else -> if (episode.url.isBlank()) {
                 null

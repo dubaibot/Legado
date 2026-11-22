@@ -22,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -58,12 +60,12 @@ object ShortDramaCandidateProvider {
     private const val VIDEO_PAGES_PER_CATEGORY = 3
     /** 单源参与调度的列表入口上限（红果类源可展开 40+ 个，取权重最高的这些） */
     private const val VIDEO_LISTS_PER_SOURCE = 12
-    /** 单个列表入口最多翻的页数，避免单列表吃满预算 */
-    private const val VIDEO_PAGES_PER_LIST_MAX = 3
     /** 后台扩容总预算：到点就只用已拿到的条目（不影响已展示的信息流） */
-    private const val VIDEO_EXPAND_TOTAL_BUDGET_MS = 20_000L
-    /** 单个分类页的等待上限 */
-    private const val VIDEO_EXPAND_PAGE_TIMEOUT_MS = 6_000L
+    private const val VIDEO_EXPAND_TOTAL_BUDGET_MS = 40_000L
+    /** 单个列表页的等待上限：红果类源走官网 SSR，冷启常超 6s */
+    private const val VIDEO_EXPAND_PAGE_TIMEOUT_MS = 12_000L
+    /** 同时请求的列表入口数：过高会拖慢单请求，过低则吃不满预算 */
+    private const val VIDEO_EXPAND_CONCURRENCY = 3
 
     /** 源 key -> 首页分类（load 时填充，expand 复用，避免重复请求 home） */
     private val cachedCategories = java.util.concurrent.ConcurrentHashMap<String, List<VideoCategory>>()
@@ -294,40 +296,27 @@ object ShortDramaCandidateProvider {
             val scheduled = lists
                 .sortedByDescending { it.weight }
                 .take(VIDEO_LISTS_PER_SOURCE)
-            val pagesUsed = HashMap<String, Int>()
-            var round = 0
-            while (
-                items.size < VIDEO_MAX_PER_SOURCE &&
-                round < VIDEO_PAGES_PER_LIST_MAX &&
-                System.currentTimeMillis() - startedAt <= VIDEO_EXPAND_TOTAL_BUDGET_MS
-            ) {
-                var progressed = false
-                for (list in scheduled) {
-                    if (items.size >= VIDEO_MAX_PER_SOURCE) break
-                    if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
-                    val page = (pagesUsed[list.key] ?: 0) + 1
-                    if (page > VIDEO_PAGES_PER_LIST_MAX) continue
-                    val videos = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
-                        runCatching { source.category(list.tid, page, list.filters).videos }
-                            .onFailure {
-                                AppLog.put(
-                                    "ShortDramaProvider.expand(${ref.key}) list=${list.name} " +
-                                        "tid=${list.tid} pg=$page 失败: ${it.message}"
-                                )
-                            }
-                            .getOrDefault(emptyList())
-                    }.orEmpty()
-                    pagesUsed[list.key] = page
-                    AppLog.put(
-                        "ShortDramaProvider.expand(${ref.key}) list=${list.name} pg=$page -> " +
-                            "${videos.size} (pool=${items.size})"
-                    )
-                    if (videos.isEmpty()) continue
-                    items.addAll(videos)
-                    progressed = true
+            // 每个入口拉第 1 页；并发调度避免红果这类慢源串行把预算吃光。
+            // 第 1 页拿满池即可，不逐页追加（多入口并集通常已超池上限）。
+            val semaphore = Semaphore(VIDEO_EXPAND_CONCURRENCY)
+            val perListPages = coroutineScope {
+                scheduled.map { list ->
+                    async {
+                        semaphore.withPermit {
+                            fetchListPages(source, ref.key, list, startedAt, maxPages = 1)
+                        }
+                    }
+                }.awaitAll()
+            }
+            scheduled.forEachIndexed { index, list ->
+                val pages = perListPages.getOrElse(index) { emptyList() }
+                if (pages.isNotEmpty()) {
+                    items.addAll(pages)
                 }
-                if (!progressed) break
-                round++
+                AppLog.put(
+                    "ShortDramaProvider.expand(${ref.key}) list=${list.name} -> ${pages.size} " +
+                        "(pool=${items.size})"
+                )
             }
         } else {
             // 源未提供列表入口（只有 home 的 spider）：退回首页分类兜底
@@ -404,6 +393,40 @@ object ShortDramaCandidateProvider {
     )
 
     /** 分类优先级：短剧/推荐类最相关，热门/最新次之，其余按源返回顺序。 */
+    /**
+     * 抓取单个列表入口的前若干页，返回累计条目。
+     * 一页拉空即停；超出总预算或达到单源上限也停。
+     */
+    private suspend fun fetchListPages(
+        source: VideoSource,
+        refKey: String,
+        list: VideoListRef,
+        startedAt: Long,
+        maxPages: Int,
+    ): List<VideoItem> {
+        val collected = ArrayList<VideoItem>()
+        for (page in 1..maxPages) {
+            if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+            val videos = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                runCatching { source.category(list.tid, page, list.filters).videos }
+                    .onFailure {
+                        AppLog.put(
+                            "ShortDramaProvider.expand($refKey) list=${list.name} " +
+                                "tid=${list.tid} pg=$page 失败: ${it.message}"
+                        )
+                    }
+                    .getOrDefault(emptyList())
+            }.orEmpty()
+            AppLog.put(
+                "ShortDramaProvider.expand($refKey) list=${list.name} pg=$page -> ${videos.size}"
+            )
+            if (videos.isEmpty()) break
+            collected.addAll(videos)
+            if (collected.size >= VIDEO_MAX_PER_SOURCE) break
+        }
+        return collected
+    }
+
     /**
      * 从首页分类表展开可召回列表入口。
      *

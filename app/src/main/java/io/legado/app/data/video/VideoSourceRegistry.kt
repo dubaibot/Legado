@@ -386,8 +386,8 @@ class PyVideoSource(
         System.currentTimeMillis() - entry.timestamp < cacheTtlMs
 
     private var homeCache: CacheEntry<Pair<List<VideoCategory>, List<VideoItem>>>? = null
-    private val categoryCache = mutableMapOf<String, CacheEntry<CategoryResult>>()
-    private val searchCache = mutableMapOf<String, CacheEntry<List<VideoItem>>>()
+    private val categoryCache = java.util.concurrent.ConcurrentHashMap<String, CacheEntry<CategoryResult>>()
+    private val searchCache = java.util.concurrent.ConcurrentHashMap<String, CacheEntry<List<VideoItem>>>()
 
     private val pyModule get() = moduleId.ifBlank { sourceId }
 
