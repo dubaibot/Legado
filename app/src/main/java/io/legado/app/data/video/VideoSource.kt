@@ -36,6 +36,28 @@ data class VideoCategory(
 data class VideoFilter(val key: String, val name: String, val values: List<VideoFilterValue>)
 data class VideoFilterValue(val name: String, val value: String)
 
+/**
+ * 可翻页的列表入口。
+ *
+ * 同一个分类下可能带多个子分类/榜单（如红果的 `real-drama` 下有 25 个 `cat`），
+ * 它们在数据侧是相互独立、各自可分页的列表，信息流召回需要把它们当作独立通道，
+ * 否则会反复拉取「全部」这一条列表而拿不到新内容。
+ *
+ * @param tid    category 接口的 tid（route）
+ * @param filters 传给 category 的 extend，例如 `{"cat":"romance"}`
+ * @param name   展示/日志用名称
+ * @param weight 召回权重，越大越优先分配配额
+ */
+data class VideoListRef(
+    val tid: String,
+    val filters: Map<String, String> = emptyMap(),
+    val name: String = "",
+    val weight: Int = 0,
+) {
+    val key: String get() = if (filters.isEmpty()) tid
+    else tid + "#" + filters.entries.joinToString(",") { "${it.key}=${it.value}" }
+}
+
 /** 分类视频列表结果 */
 data class CategoryResult(
     val page: Int = 1,
@@ -106,6 +128,31 @@ interface VideoSource {
      */
     suspend fun homePage(pg: Int): List<VideoItem> = emptyList()
 
+    /**
+     * 可召回列表入口集合：由 [home] 返回的分类与其 filters 展开。
+     *
+     * 默认实现把每个分类的每个 filter 值视为独立列表，缺省保留「全部」这一项；
+     * 源若要自定义（例如榜单要整体当一个入口），可覆写。
+     */
+    suspend fun lists(): List<VideoListRef> {
+        val categories = runCatching { home().first }.getOrDefault(emptyList())
+        return categories.flatMap { category ->
+            val combos = expandFilterCombos(category.filters)
+            if (combos.isEmpty()) {
+                listOf(VideoListRef(category.id, emptyMap(), category.name, listWeight(category.name)))
+            } else {
+                combos.map { (filters, label) ->
+                    VideoListRef(
+                        tid = category.id,
+                        filters = filters,
+                        name = if (label.isBlank()) category.name else "${category.name}·$label",
+                        weight = listWeight(category.name, label),
+                    )
+                }
+            }
+        }.filter { it.tid.isNotBlank() }
+    }
+
     /** 分类页：返回某分类的视频列表 */
     suspend fun category(tid: String, pg: Int): CategoryResult
 
@@ -124,4 +171,57 @@ interface VideoSource {
 
     /** 弹幕：返回弹幕列表（可选，源不支持时返回空） */
     suspend fun danmaku(videoId: String): DanmakuList
+}
+
+/**
+ * 把一个分类的 filters 展开成「filter 组合 + 展示标签」。
+ *
+ * 跳过 value 为空的选项（通常是「全部」，对应 `category(tid)` 的默认行为，
+ * 已由无 filter 的入口覆盖），其余每个子分类/榜单各成一条独立列表。
+ * 多个 filter 组时做笛卡尔积，但设上限防止组合爆炸。
+ */
+internal fun expandFilterCombos(filters: List<VideoFilter>): List<Pair<Map<String, String>, String>> {
+    if (filters.isEmpty()) return emptyList()
+    val groups = filters.mapNotNull { filter ->
+        val values = filter.values.filter { it.value.isNotBlank() }
+        if (values.isEmpty()) null else filter.key to values
+    }
+    if (groups.isEmpty()) return emptyList()
+    var combos: List<Pair<Map<String, String>, List<String>>> =
+        listOf(emptyMap<String, String>() to emptyList())
+    for ((key, values) in groups) {
+        val next = ArrayList<Pair<Map<String, String>, List<String>>>(combos.size * values.size)
+        for ((baseFilters, baseLabels) in combos) {
+            for (value in values) {
+                if (next.size >= MAX_LIST_COMBOS) break
+                next.add(
+                    (baseFilters + (key to value.value)) to (baseLabels + value.name)
+                )
+            }
+        }
+        combos = next
+        if (combos.size >= MAX_LIST_COMBOS) break
+    }
+    return combos.map { (filters, labels) -> filters to labels.joinToString("/") }
+}
+
+/** 单个分类最多展开的列表数，防止畸形 filters 拖垮召回。 */
+internal const val MAX_LIST_COMBOS = 40
+
+/**
+ * 列表召回权重：榜单/热门/推荐类优先，短剧次之，其余兜底。
+ * 同名分类下带具体子分类标签的略微加权，让垂类列表先被调度。
+ */
+internal fun listWeight(categoryName: String, filterLabel: String = ""): Int {
+    val n = categoryName.trim()
+    var weight = when {
+        n.contains("排行") || n.contains("榜") -> 5
+        n.contains("热门") || n.contains("精选") || n.contains("推荐") -> 4
+        n.contains("最新") || n.contains("新剧") -> 4
+        n.contains("短剧") -> 3
+        n.contains("全部") -> 1
+        else -> 2
+    }
+    if (filterLabel.isNotBlank()) weight += 1
+    return weight
 }

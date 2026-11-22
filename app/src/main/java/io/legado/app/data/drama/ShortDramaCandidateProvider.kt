@@ -8,8 +8,11 @@ import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.video.VideoCategory
 import io.legado.app.data.video.VideoItem
+import io.legado.app.data.video.VideoListRef
 import io.legado.app.data.video.VideoSource
 import io.legado.app.data.video.VideoSourceRegistry
+import io.legado.app.data.video.expandFilterCombos
+import io.legado.app.data.video.listWeight
 import io.legado.app.help.source.exploreKindsJson
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
@@ -53,6 +56,10 @@ object ShortDramaCandidateProvider {
     private const val VIDEO_CATEGORY_TARGETS = 4
     /** 每个分类额外拉取的页数；首页已覆盖第 1 页推荐，这里从第 1 页开始按分类取新内容 */
     private const val VIDEO_PAGES_PER_CATEGORY = 3
+    /** 单源参与调度的列表入口上限（红果类源可展开 40+ 个，取权重最高的这些） */
+    private const val VIDEO_LISTS_PER_SOURCE = 12
+    /** 单个列表入口最多翻的页数，避免单列表吃满预算 */
+    private const val VIDEO_PAGES_PER_LIST_MAX = 3
     /** 后台扩容总预算：到点就只用已拿到的条目（不影响已展示的信息流） */
     private const val VIDEO_EXPAND_TOTAL_BUDGET_MS = 20_000L
     /** 单个分类页的等待上限 */
@@ -63,6 +70,10 @@ object ShortDramaCandidateProvider {
 
     // 首页完整条目（未截断）：首屏只展示 20 条，剩余部分由 expand 直接补池，避免白丢数据
     private val cachedHomeItems = java.util.concurrent.ConcurrentHashMap<String, List<VideoItem>>()
+
+    // 源 key -> 可召回列表入口（含子分类/榜单展开），expand 复用避免重复解析 home
+    private val cachedLists =
+        java.util.concurrent.ConcurrentHashMap<String, List<VideoListRef>>()
 
     suspend fun load(
         sources: List<DramaSourceRef>,
@@ -174,6 +185,9 @@ object ShortDramaCandidateProvider {
         val categories = loaded.categories
         if (categories.isNotEmpty()) {
             cachedCategories[ref.key] = categories
+            // 预热列表入口：home 已拿到带 filters 的分类，这里直接展开，expand 无需再请求 home
+            val lists = buildListsFromCategories(categories)
+            if (lists.isNotEmpty()) cachedLists[ref.key] = lists
         }
         AppLog.put(
             "ShortDramaProvider.loadVideoSource(${ref.key}): type=${loaded.source.sourceType}, " +
@@ -232,19 +246,6 @@ object ShortDramaCandidateProvider {
     ): List<DramaCandidate> {
         val info = VideoSourceRegistry.getSourceInfo(ref.key) ?: return emptyList()
         val source = VideoSourceRegistry.createSource(info) ?: return emptyList()
-        val categories = cachedCategories[ref.key]
-            ?: runCatching {
-                withTimeoutOrNull(SOURCE_TIMEOUT_MS) { source.home().first }
-            }.getOrNull().orEmpty()
-        if (categories.isNotEmpty()) cachedCategories[ref.key] = categories
-
-        val tids = categories
-            .filter { it.id.isNotBlank() }
-            .sortedByDescending { categoryPriority(it.name) }
-            .take(VIDEO_CATEGORY_TARGETS)
-            .map { it.id }
-        // 无分类兜底：空 tid 在 FongMi spider 中常等价「推荐」分页
-        val targets = tids.ifEmpty { listOf("") }
 
         val items = ArrayList<VideoItem>()
         val startedAt = System.currentTimeMillis()
@@ -252,7 +253,7 @@ object ShortDramaCandidateProvider {
         // 0) 首页本身超出 20 条的剩余部分优先补入（首屏只截取了前 20 条）
         cachedHomeItems[ref.key]?.let { items.addAll(it) }
 
-        // 1) 先翻首页列表：苹果 CMS 的 ac=list 支持 pg，是最稳的「首页 20 条之外」通道
+        // 1) 首页翻页：苹果 CMS 的 ac=list 支持 pg，是最稳的「首页 20 条之外」通道
         for (page in 2..VIDEO_HOME_PAGE_FALLBACK_PAGES) {
             if (items.size >= VIDEO_MAX_PER_SOURCE) break
             if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
@@ -272,8 +273,75 @@ object ShortDramaCandidateProvider {
             items.addAll(pageItems)
         }
 
-        // 2) 首页翻页仍不够时走分类翻页（tid 由首页分类表提供）
-        if (items.map { it.stableKey() }.toSet().size < VIDEO_SEARCH_FALLBACK_THRESHOLD) {
+        // 2) 按列表入口召回：一个分类下的多个子分类/榜单各自是独立可翻页列表，
+        //    按权重轮转分配配额，避免反复拉同一个「全部」列表。
+        var lists = cachedLists[ref.key].orEmpty()
+        if (lists.isEmpty()) {
+            val resolved = withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                runCatching { source.lists() }.getOrDefault(emptyList())
+            }.orEmpty()
+            if (resolved.isNotEmpty()) {
+                cachedLists[ref.key] = resolved
+                lists = resolved
+            }
+        }
+        AppLog.put(
+            "ShortDramaProvider.expand(${ref.key}) lists=${lists.size} " +
+                lists.take(6).joinToString(",") { it.name }
+        )
+
+        if (lists.isNotEmpty()) {
+            val scheduled = lists
+                .sortedByDescending { it.weight }
+                .take(VIDEO_LISTS_PER_SOURCE)
+            val pagesUsed = HashMap<String, Int>()
+            var round = 0
+            while (
+                items.size < VIDEO_MAX_PER_SOURCE &&
+                round < VIDEO_PAGES_PER_LIST_MAX &&
+                System.currentTimeMillis() - startedAt <= VIDEO_EXPAND_TOTAL_BUDGET_MS
+            ) {
+                var progressed = false
+                for (list in scheduled) {
+                    if (items.size >= VIDEO_MAX_PER_SOURCE) break
+                    if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+                    val page = (pagesUsed[list.key] ?: 0) + 1
+                    if (page > VIDEO_PAGES_PER_LIST_MAX) continue
+                    val videos = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                        runCatching { source.category(list.tid, page, list.filters).videos }
+                            .onFailure {
+                                AppLog.put(
+                                    "ShortDramaProvider.expand(${ref.key}) list=${list.name} " +
+                                        "tid=${list.tid} pg=$page 失败: ${it.message}"
+                                )
+                            }
+                            .getOrDefault(emptyList())
+                    }.orEmpty()
+                    pagesUsed[list.key] = page
+                    AppLog.put(
+                        "ShortDramaProvider.expand(${ref.key}) list=${list.name} pg=$page -> " +
+                            "${videos.size} (pool=${items.size})"
+                    )
+                    if (videos.isEmpty()) continue
+                    items.addAll(videos)
+                    progressed = true
+                }
+                if (!progressed) break
+                round++
+            }
+        } else {
+            // 源未提供列表入口（只有 home 的 spider）：退回首页分类兜底
+            val categories = cachedCategories[ref.key]
+                ?: runCatching {
+                    withTimeoutOrNull(SOURCE_TIMEOUT_MS) { source.home().first }
+                }.getOrNull().orEmpty()
+            if (categories.isNotEmpty()) cachedCategories[ref.key] = categories
+            val targets = categories
+                .filter { it.id.isNotBlank() }
+                .sortedByDescending { categoryPriority(it.name) }
+                .take(VIDEO_CATEGORY_TARGETS)
+                .map { it.id }
+                .ifEmpty { listOf("") }
             for (tid in targets) {
                 for (page in 1..VIDEO_PAGES_PER_CATEGORY) {
                     if (items.size >= VIDEO_MAX_PER_SOURCE) break
@@ -324,7 +392,7 @@ object ShortDramaCandidateProvider {
             .filter { it.seriesId !in existing }
         AppLog.put(
             "ShortDramaProvider.expand(${ref.key}): raw=${items.size}, fresh=${fresh.size}, " +
-                "targets=${targets.joinToString(",")}, existing=${existing.size}"
+                "lists=${lists.size}, existing=${existing.size}"
         )
         return fresh
     }
@@ -336,6 +404,40 @@ object ShortDramaCandidateProvider {
     )
 
     /** 分类优先级：短剧/推荐类最相关，热门/最新次之，其余按源返回顺序。 */
+    /**
+     * 从首页分类表展开可召回列表入口。
+     *
+     * 与 [VideoSource.lists] 默认实现保持一致：每个分类的每个 filter 值视为独立列表，
+     * 无 filter 的分类保留一条无参数入口。榜单（rank/new）通常把各 tab 放在 filters 里，
+     * 展开后每个 tab 都是可翻页的独立列表。
+     */
+    private fun buildListsFromCategories(
+        categories: List<VideoCategory>,
+    ): List<VideoListRef> {
+        return categories.flatMap { category ->
+            val combos = expandFilterCombos(category.filters)
+            if (combos.isEmpty()) {
+                listOf(
+                    VideoListRef(
+                        tid = category.id,
+                        filters = emptyMap(),
+                        name = category.name,
+                        weight = listWeight(category.name),
+                    )
+                )
+            } else {
+                combos.map { (filters, label) ->
+                    VideoListRef(
+                        tid = category.id,
+                        filters = filters,
+                        name = if (label.isBlank()) category.name else "${category.name}·$label",
+                        weight = listWeight(category.name, label),
+                    )
+                }
+            }
+        }.filter { it.tid.isNotBlank() }
+    }
+
     private fun categoryPriority(name: String): Int {
         val n = name.trim()
         return when {

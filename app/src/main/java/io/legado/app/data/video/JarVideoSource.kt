@@ -34,12 +34,12 @@ class JarVideoSource(
         } catch (e: Exception) {
             throw IllegalStateException("jar spider homeContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
         }
-        val categories = mutableListOf<VideoCategory>()
-        json.getAsJsonArray("class")?.forEach { el ->
-            val o = el.asJsonObject
-            categories.add(VideoCategory(str(o, "type_id", "id"), str(o, "type_name", "name")))
+        // 复用 TVBox 结果解析：同时还原 class 的 filters（榜单/子分类），供 lists() 展开
+        val (categories, homeVideos) = PyResultParser.parseHome(json.toString())
+        val videos = homeVideos.toMutableList()
+        if (videos.isEmpty()) {
+            videos.addAll(parseList(json.getAsJsonArray("list")).toMutableList())
         }
-        val videos = parseList(json.getAsJsonArray("list")).toMutableList()
         // homeVideoContent 合并（部分 spider 只实现 homeVideoContent）
         try {
             val extra = parse(spider.homeVideoContent())
@@ -51,8 +51,14 @@ class JarVideoSource(
     }
 
     override suspend fun category(tid: String, pg: Int): CategoryResult = withContext(Dispatchers.IO) {
+        category(tid, pg, emptyMap())
+    }
+
+    override suspend fun category(tid: String, pg: Int, filters: Map<String, String>): CategoryResult =
+        withContext(Dispatchers.IO) {
+        val extend = HashMap<String, String>(filters)
         val json = try {
-            parse(spider.categoryContent(tid, pg.toString(), false, HashMap()))
+            parse(spider.categoryContent(tid, pg.toString(), filters.isNotEmpty(), extend))
         } catch (e: Exception) {
             throw IllegalStateException("jar spider categoryContent 失败: ${e.javaClass.simpleName}: ${e.message}", e)
         }
