@@ -3,6 +3,7 @@ package io.legado.app.ui.main.drama
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.legado.app.constant.AppLog
 import io.legado.app.data.drama.DramaCandidate
 import io.legado.app.data.drama.DramaEpisode
 import io.legado.app.data.drama.DramaHistorySnapshot
@@ -86,6 +87,10 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     private val replenishIntervalMs = 30_000L
     private var lastReplenishAt = 0L
 
+    /** 已做过分类扩容的源签名；同一批源只扩一次，避免重复翻页请求 */
+    private var expandedSignature: String = ""
+    private var expandJob: Job? = null
+
     /** 复用轮转起点，避免每次都从同一部开始 */
     private var recycledCursor = 0
 
@@ -124,6 +129,9 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 return@launch
             }
             val signature = sources.joinToString("|") { it.id }
+            if (force || signature != expandedSignature) {
+                expandedSignature = ""
+            }
             val now = System.currentTimeMillis()
             val usableCache = !force && signature == cachedPoolSignature &&
                 now - cachedPoolAt < poolCacheTtlMs && cachedPool.isNotEmpty()
@@ -199,6 +207,8 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                     return@launch
                 }
             }
+            // 先确保后台扩容在跑：池子只有首页 20 条时，靠分类翻页继续补新内容
+            ensureExpanded()
             val feedNow = _state.value.feed
             val recentFeed = feedNow.takeLast(recentDedupWindow)
             val recentExposed = sessionExposed.toList().takeLast(recentDedupWindow)
@@ -315,11 +325,21 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch { replenishPoolNow() }
     }
 
-    /** 实际执行一次补源：拉源 → 去重合并 → 写缓存；补到新内容时清除停推标记。 */
+    /** 实际执行一次补源：优先分类翻页拿新条目，其次重读首页；补到新内容时清除停推标记。 */
     private suspend fun replenishPoolNow() {
         val sources = ShortDramaSourceStore.enabled()
         if (sources.isEmpty()) return
-        val fresh = ShortDramaCandidateProvider.load(sources)
+        val existing = candidatePool.mapTo(HashSet()) { it.seriesId }
+        var fresh = ShortDramaCandidateProvider.expand(sources, existing)
+        if (fresh.isEmpty()) {
+            fresh = ShortDramaCandidateProvider.load(sources)
+                .filter { it.seriesId !in existing }
+        }
+        if (fresh.isEmpty()) return
+        mergeIntoPool(fresh)
+    }
+
+    private fun mergeIntoPool(fresh: List<DramaCandidate>) {
         if (fresh.isEmpty()) return
         val merged = (candidatePool + fresh)
             .distinctBy { it.seriesId }
@@ -330,6 +350,33 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         cachedPoolAt = System.currentTimeMillis()
         if (grew && _state.value.ended) {
             _state.update { it.copy(ended = false) }
+        }
+    }
+
+    /**
+     * 后台分类扩容：同一批源只跑一次，结果追加进候选池。
+     *
+     * 与补池节流解耦——这是「只有首页 20 条」的核心补足手段，命中一次后
+     * 池子上限由 [maxPoolSize] 与源侧内容量决定。
+     */
+    private fun ensureExpanded() {
+        if (expandJob?.isActive == true) return
+        expandJob = viewModelScope.launch {
+            val sources = ShortDramaSourceStore.enabled()
+            if (sources.isEmpty()) return@launch
+            val signature = sources.joinToString("|") { it.id }
+            if (signature == expandedSignature) return@launch
+            expandedSignature = signature
+            val existing = candidatePool.mapTo(HashSet()) { it.seriesId }
+            val fresh = runCatching {
+                ShortDramaCandidateProvider.expand(sources, existing)
+            }.getOrDefault(emptyList())
+            if (fresh.isNotEmpty()) {
+                mergeIntoPool(fresh)
+                AppLog.put(
+                    "ShortDramaViewModel.expand: fresh=${fresh.size}, pool=${candidatePool.size}"
+                )
+            }
         }
     }
 

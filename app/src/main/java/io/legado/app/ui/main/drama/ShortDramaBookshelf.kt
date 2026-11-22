@@ -66,8 +66,13 @@ object ShortDramaBookshelf {
                 )
             }
             if (episodeIndex > 0) {
-                book.durChapterIndex = episodeIndex - 1
+                // 视频播放器以 chapterInVolumeIndex 作为「当前第几集」的恢复位（见 VideoPlay.initSource），
+                // 无卷目录下 durChapterIndex 与它同值（见 VideoPlay.saveRead），两者必须一起写。
+                val episodeOffset = episodeIndex - 1
+                book.chapterInVolumeIndex = episodeOffset
+                book.durChapterIndex = episodeOffset
                 book.durChapterPos = 0
+                book.durVolumeIndex = 0
             }
             if (episodeTitle.isNotBlank()) {
                 book.durChapterTitle = episodeTitle

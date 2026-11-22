@@ -296,8 +296,32 @@ object VideoPlaybackPipeline {
             }
             val player = VideoPlay.resolvePlaybackPlayer(ctx.player)
             player.mapHeadData = headers
-            player.setUp(playUrl, VideoPlay.cachePlay, File(appCtx.externalCache, "exoplayer"), ctx.title)
-            if (VideoPlay.autoPlay) {
+            val setUpOk = player.setUp(
+                playUrl, VideoPlay.cachePlay,
+                File(appCtx.externalCache, "exoplayer"), ctx.title
+            )
+            if (!setUpOk) {
+                // GSYVideoView.setUp 在「本实例是当前 media listener 且切换 view 不足 2 秒」时
+                // 直接返回 false 且不改 url（全屏克隆实例刚建立时必中）。此时 startPlayLogic 会把
+                // 旧剧集重新 prepare，表现为下一集停在暂停态。延迟越过 2 秒窗口后重试。
+                AppLog.put("Pipeline: setUp blocked by 2s view-change guard, retry in 2200ms, token=${ctx.token}")
+                player.postDelayed({
+                    if (VideoPlay.currentSwitchToken != ctx.token) {
+                        return@postDelayed
+                    }
+                    val retryPlayer = VideoPlay.resolvePlaybackPlayer(ctx.player)
+                    retryPlayer.mapHeadData = headers
+                    val ok = retryPlayer.setUp(
+                        playUrl, VideoPlay.cachePlay,
+                        File(appCtx.externalCache, "exoplayer"), ctx.title
+                    )
+                    AppLog.put("Pipeline: setUp retry ok=$ok, token=${ctx.token}")
+                    if (ok && VideoPlay.autoPlay) {
+                        retryPlayer.startPlayLogic()
+                        VideoPlay.ensurePlayingSoon(retryPlayer)
+                    }
+                }, 2_200L)
+            } else if (VideoPlay.autoPlay) {
                 player.startPlayLogic()
                 VideoPlay.ensurePlayingSoon(player)
             }

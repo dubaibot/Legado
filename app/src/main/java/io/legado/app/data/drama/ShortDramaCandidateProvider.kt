@@ -6,7 +6,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.rule.ExploreKind
-import io.legado.app.data.video.SourceType
 import io.legado.app.data.video.VideoCategory
 import io.legado.app.data.video.VideoItem
 import io.legado.app.data.video.VideoSource
@@ -49,10 +48,13 @@ object ShortDramaCandidateProvider {
     private const val VIDEO_CATEGORY_TARGETS = 4
     /** 每个分类额外拉取的页数；首页已覆盖第 1 页推荐，这里从第 1 页开始按分类取新内容 */
     private const val VIDEO_PAGES_PER_CATEGORY = 3
-    /** 扩容阶段总预算：到点就只用已拿到的条目，不让慢分类拖垮首屏 */
-    private const val VIDEO_EXPAND_BUDGET_MS = 5_000L
+    /** 后台扩容总预算：到点就只用已拿到的条目（不影响已展示的信息流） */
+    private const val VIDEO_EXPAND_TOTAL_BUDGET_MS = 20_000L
     /** 单个分类页的等待上限 */
-    private const val VIDEO_PAGE_TIMEOUT_MS = 3_500L
+    private const val VIDEO_EXPAND_PAGE_TIMEOUT_MS = 6_000L
+
+    /** 源 key -> 首页分类（load 时填充，expand 复用，避免重复请求 home） */
+    private val cachedCategories = java.util.concurrent.ConcurrentHashMap<String, List<VideoCategory>>()
 
     suspend fun load(
         sources: List<DramaSourceRef>,
@@ -160,28 +162,112 @@ object ShortDramaCandidateProvider {
             LogUtils.d("ShortDramaProvider", "loadVideoSource(${ref.key}) failed: ${it.message}")
         }.getOrNull() ?: return emptyList()
 
-        val merged = LinkedHashMap<String, VideoItem>()
-        loaded.items.take(VIDEO_PER_SOURCE).forEach { merged[it.stableKey()] = it }
-        // 分类翻页扩容：PY 与 JSON（TVBox 展开的 py/json 站点）都支持 category(tid,pg)，
-        // 首页通常只有 20 条，不扩容信息流滑到底就没内容了。TXT/HTML/JAR 保持单页避免无谓请求。
-        val expandable = loaded.source.sourceType == SourceType.PY ||
-            loaded.source.sourceType == SourceType.JSON
+        // 首页只取 20 条保证首屏速度；后续分类翻页由 [expand] 在后台补池
+        val categories = loaded.categories
+        if (categories.isNotEmpty()) {
+            cachedCategories[ref.key] = categories
+        }
         AppLog.put(
             "ShortDramaProvider.loadVideoSource(${ref.key}): type=${loaded.source.sourceType}, " +
-                "base=${merged.size}, categories=${loaded.categories.size}, expandable=$expandable"
+                "home=${loaded.items.size}, categories=${categories.size}, " +
+                "cats=${categories.joinToString("/") { it.id + ":" + it.name }}"
         )
-        if (expandable && merged.size < VIDEO_MAX_PER_SOURCE) {
-            val expanded = expandSource(loaded.source, loaded.categories)
-            expanded.forEach { merged.putIfAbsent(it.stableKey(), it) }
-            AppLog.put(
-                "ShortDramaProvider.expand(${ref.key}): expanded=${expanded.size}, " +
-                    "merged=${merged.size}, cats=${loaded.categories.joinToString("/") { it.id + ":" + it.name }}"
-            )
-        }
-        val categoryNames = loaded.categories.map { it.name }
-        return merged.values
-            .take(VIDEO_MAX_PER_SOURCE)
+        val categoryNames = categories.map { it.name }
+        return loaded.items
+            .take(VIDEO_PER_SOURCE)
+            .distinctBy { it.stableKey() }
             .map { it.toCandidate(ref, categoryNames) }
+    }
+
+    /**
+     * 后台补池：按分类翻页从同源拿首页之外的新条目。
+     *
+     * 与首屏加载解耦——首屏 20 条先出，滑到底时调用本函数把池子补到
+     * [VIDEO_MAX_PER_SOURCE]；分类缺失时用空 tid 探页（多数 FongMi spider 的空 tid
+     * 即「推荐/最新」分页入口），保证只有首页一页的源也能继续出内容。
+     */
+    suspend fun expand(
+        sources: List<DramaSourceRef>,
+        existing: Set<String>,
+        limit: Int = 60,
+    ): List<DramaCandidate> = withContext(Dispatchers.IO) {
+        val refs = sources.filter {
+            it.kind == DramaSourceKind.PY || it.kind == DramaSourceKind.TVBOX
+        }
+        if (refs.isEmpty()) return@withContext emptyList()
+        val results = coroutineScope {
+            refs.map { ref ->
+                async {
+                    runCatching { expandVideoSource(ref, existing) }
+                        .onFailure {
+                            LogUtils.d(
+                                "ShortDramaProvider",
+                                "expand(${ref.key}) failed: ${it.message}"
+                            )
+                        }
+                        .getOrDefault(emptyList())
+                }
+            }.awaitAll()
+        }
+        results.flatten()
+            .filter { it.seriesId !in existing }
+            .distinctBy { it.seriesId }
+            .take(limit)
+    }
+
+    private suspend fun expandVideoSource(
+        ref: DramaSourceRef,
+        existing: Set<String>,
+    ): List<DramaCandidate> {
+        val info = VideoSourceRegistry.getSourceInfo(ref.key) ?: return emptyList()
+        val source = VideoSourceRegistry.createSource(info) ?: return emptyList()
+        val categories = cachedCategories[ref.key]
+            ?: runCatching {
+                withTimeoutOrNull(SOURCE_TIMEOUT_MS) { source.home().first }
+            }.getOrNull().orEmpty()
+        if (categories.isNotEmpty()) cachedCategories[ref.key] = categories
+
+        val tids = categories
+            .filter { it.id.isNotBlank() }
+            .sortedByDescending { categoryPriority(it.name) }
+            .take(VIDEO_CATEGORY_TARGETS)
+            .map { it.id }
+        // 无分类兜底：空 tid 在 FongMi spider 中常等价「推荐」分页
+        val targets = tids.ifEmpty { listOf("") }
+
+        val items = ArrayList<VideoItem>()
+        val startedAt = System.currentTimeMillis()
+        for (tid in targets) {
+            for (page in 1..VIDEO_PAGES_PER_CATEGORY) {
+                if (items.size >= VIDEO_MAX_PER_SOURCE) break
+                if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+                val videos = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                    runCatching { source.category(tid, page).videos }
+                        .onFailure {
+                            LogUtils.d(
+                                "ShortDramaProvider",
+                                "expand ${ref.key} tid=$tid page=$page failed: ${it.message}"
+                            )
+                        }
+                        .getOrDefault(emptyList())
+                }.orEmpty()
+                LogUtils.d(
+                    "ShortDramaProvider",
+                    "expand ${ref.key} tid=$tid page=$page -> ${videos.size}"
+                )
+                if (videos.isEmpty()) break
+                items.addAll(videos)
+            }
+        }
+        val fresh = items
+            .distinctBy { it.stableKey() }
+            .map { it.toCandidate(ref, emptyList()) }
+            .filter { it.seriesId !in existing }
+        AppLog.put(
+            "ShortDramaProvider.expand(${ref.key}): raw=${items.size}, fresh=${fresh.size}, " +
+                "targets=${targets.joinToString(",")}, existing=${existing.size}"
+        )
+        return fresh
     }
 
     private class LoadedVideoSource(
@@ -189,53 +275,6 @@ object ShortDramaCandidateProvider {
         val categories: List<VideoCategory>,
         val items: List<VideoItem>,
     )
-
-    /**
-     * 分类扩容：按「短剧/推荐/热门/最新」优先挑几个分类，各翻 1~2 页补足首页之外的条目。
-     *
-     * 总预算 [VIDEO_EXPAND_BUDGET_MS] 内能拿多少算多少；单页失败或超时直接跳过，
-     * 不影响已经拿到的首页内容。py 源由 PyTaskQueue 串行执行，这里按分类顺序请求。
-     */
-    private suspend fun expandSource(
-        source: VideoSource,
-        categories: List<VideoCategory>,
-    ): List<VideoItem> {
-        val targets = categories
-            .filter { it.id.isNotBlank() }
-            .sortedByDescending { categoryPriority(it.name) }
-            .take(VIDEO_CATEGORY_TARGETS)
-        if (targets.isEmpty()) {
-            AppLog.put("ShortDramaProvider.expandSource: 分类为空，跳过扩容, type=${source.sourceType}")
-            return emptyList()
-        }
-
-        val result = ArrayList<VideoItem>()
-        withTimeoutOrNull(VIDEO_EXPAND_BUDGET_MS) {
-            for (category in targets) {
-                for (page in 1..VIDEO_PAGES_PER_CATEGORY) {
-                    if (result.size >= VIDEO_MAX_PER_SOURCE) break
-                    val videos = withTimeoutOrNull(VIDEO_PAGE_TIMEOUT_MS) {
-                        runCatching { source.category(category.id, page).videos }
-                            .onFailure {
-                                LogUtils.d(
-                                    "ShortDramaProvider",
-                                    "expand ${category.id}/${page} failed: ${it.message}"
-                                )
-                            }
-                            .getOrDefault(emptyList())
-                    }.orEmpty()
-                    LogUtils.d(
-                        "ShortDramaProvider",
-                        "expand ${category.name}(${category.id}) page=$page -> ${videos.size}"
-                    )
-                    // 该分类没有更多页，换下一个分类
-                    if (videos.isEmpty()) break
-                    result.addAll(videos)
-                }
-            }
-        }
-        return result
-    }
 
     /** 分类优先级：短剧/推荐类最相关，热门/最新次之，其余按源返回顺序。 */
     private fun categoryPriority(name: String): Int {

@@ -1010,6 +1010,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         danmakuFile = null
         resetDanmakuLoadKey()
         val player = resolvePlaybackPlayer(player) as StandardGSYVideoPlayer
+        ensurePlayingSoon(player)
         if (singleUrl) {
             val mUrl = videoUrl ?: return
             // 4.8b（Z9）：singleUrl 直链即原始 URL，同步历史键
@@ -1928,33 +1929,55 @@ object VideoPlay : CoroutineScope by MainScope(){
     }
 
     private val ensurePlayHandler = Handler(Looper.getMainLooper())
+    private var ensurePlayGeneration = 0
 
     /**
-     * 切集后兜底起播：全屏（GSY 窗口全屏克隆播放器）下 `setUp` 与 `startPlayLogic`
-     * 的时序会被窗口转移打断，出现「已进入下一集但停在暂停态」，需要用户手动点播放。
-     * 这里在起播后做两次延迟状态检查，仅在暂停/播完态补一次 `startPlayLogic`，
-     * 播放中/缓冲中/准备中一律不动，避免抢用户手动暂停的意图。
+     * 切集后兜底起播看门狗。
+     *
+     * 全屏是 GSY 窗口全屏克隆实例，`setUp`/`startPlayLogic` 与窗口转移、`startPrepare`
+     * 内部的 `listener.onCompletion()` 交错，会在准备完成后落回 PAUSE 并停住；
+     * 单次定时检查容易恰好错过（此时还在 PREPAREING）。改成分段轮询：
+     * 只有「已见过准备中」之后出现暂停/播完态才补 `startPlayLogic`，
+     * 一旦见到真正在播放就立即收手，不覆盖用户手动暂停。
      */
     fun ensurePlayingSoon(player: GSYBaseVideoPlayer? = null) {
         if (!autoPlay || player == null) return
         ensurePlayHandler.removeCallbacksAndMessages(null)
+        ensurePlayGeneration++
+        val generation = ensurePlayGeneration
         val token = currentSwitchToken
-        for (delayMs in longArrayOf(500L, 1_500L)) {
-            ensurePlayHandler.postDelayed({
-                if (token != currentSwitchToken) return@postDelayed
+        var sawPreparing = false
+        var tries = 0
+        val tick = object : Runnable {
+            override fun run() {
+                if (generation != ensurePlayGeneration || !autoPlay) return
+                tries++
                 val target = resolvePlaybackPlayer(player) as? StandardGSYVideoPlayer
-                    ?: return@postDelayed
+                    ?: return
                 val state = target.currentState
-                if (state == GSYVideoView.CURRENT_STATE_PAUSE ||
-                    state == GSYVideoView.CURRENT_STATE_AUTO_COMPLETE
-                ) {
-                    AppLog.put(
-                        "VideoPlay.ensurePlayingSoon: state=$state, force startPlayLogic, token=$token"
-                    )
-                    target.startPlayLogic()
+                when {
+                    state == GSYVideoView.CURRENT_STATE_PLAYING -> return
+                    state == GSYVideoView.CURRENT_STATE_PREPAREING ||
+                        state == GSYVideoView.CURRENT_STATE_PLAYING_BUFFERING_START -> {
+                        sawPreparing = true
+                    }
+
+                    // 已 prepared 却落到暂停态：直接恢复媒体播放。
+                    // 用 startPlayLogic 会重新 prepare（内部 startPrepare 会触发 onCompletion →
+                    // 上层 onAutoComplete 误判整集播完而跳集），startAfterPrepared 才是纯恢复。
+                    sawPreparing && state == GSYVideoView.CURRENT_STATE_PAUSE -> {
+                        AppLog.put(
+                            "VideoPlay.ensurePlayingSoon: state=PAUSE after prepared, " +
+                                "resume playback (tries=$tries, token=$token)"
+                        )
+                        target.startAfterPrepared()
+                    }
                 }
-            }, delayMs)
+                if (tries < 40) ensurePlayHandler.postDelayed(this, 500L)
+            }
         }
+        // 2.4 秒后再开始：给 Pipeline 的 2 秒 view-change 守卫重试留出窗口，避免误续播旧剧集
+        ensurePlayHandler.postDelayed(tick, 2_400L)
     }
 
     /**
