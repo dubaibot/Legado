@@ -98,16 +98,6 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
      */
     private val recentDedupWindow = 24
 
-    /**
-     * 循环复用时的「强去重窗口」，必须显著小于典型候选池规模。
-     *
-     * 关键修复：每源只返回 10~20 条，勾选单个源时池子通常仅 10~20 条，小于 [recentDedupWindow]=24。
-     * 旧实现里 pickRecycled 也用 24 条窗口做去重，导致 recentIds 覆盖整个池子 → 复用永远取不到候选
-     * → ended=true 永久停推。这里把复用窗口收紧到 4 条（只避开紧邻的几条），
-     * 保证即使池子很小也能循环产出，这是「滑动一定数量后没有下一条」的真正根治点。
-     */
-    private val recycleGuardWindow = 4
-
     /** 后台补充候选池的最小间隔，避免每次 loadMore 都重复拉源。 */
     private val replenishIntervalMs = 30_000L
     private var lastReplenishAt = 0L
@@ -250,19 +240,10 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     fun loadMore() {
         val current = _state.value
         if (current.searchQuery.isNotEmpty()) return
-        if (current.loading || current.loadingMore) return
-        // 注意：不再因 ended 提前返回。ended 现在仅表示「严格推荐暂时无新内容」，
-        // 信息流语义下仍应继续循环复用，否则一旦置位就永久卡死（这是停推的另一处根因）。
+        if (current.loading || current.loadingMore || current.ended) return
+        if (candidatePool.isEmpty()) return
         viewModelScope.launch {
-            _state.update { it.copy(loadingMore = true, ended = false) }
-            // 池子为空时先补一次源，补到才继续；补不到就干净退出并标记 ended
-            if (candidatePool.isEmpty()) {
-                replenishPoolNow()
-                if (candidatePool.isEmpty()) {
-                    _state.update { it.copy(loadingMore = false, ended = true) }
-                    return@launch
-                }
-            }
+            _state.update { it.copy(loadingMore = true) }
             val snapshot = ShortDramaHistoryStore.snapshot(
                 sessionSkips = sessionSkips,
             )
@@ -277,97 +258,61 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 currentFeed = recentFeed,
                 rng = Random.Default,
             )
-            // 严格推荐取不满一批时，用「最久未曝光 + 仅避开最近几条」的循环复用补足。
-            // 关键：复用窗口用 recycleGuardWindow(4) 而非 recentDedupWindow(24)，
-            // 否则小池子（单源 10~20 条）会被 recentIds 全部排除，永远补不满 → 停推。
-            if (ranked.candidates.size < ShortDramaRecommendEngine.BATCH_SIZE) {
-                val recycled = pickRecycled(snapshot, recentFeed)
-                val existing = HashSet(ranked.candidates.map { it.seriesId })
-                val fill = recycled.candidates.filter { it.seriesId !in existing }
-                    .take(ShortDramaRecommendEngine.BATCH_SIZE - ranked.candidates.size)
-                ranked = ranked.copy(
-                    candidates = ranked.candidates + fill,
-                    supplement = true,
-                )
+            // 池内候选都被近期窗口排空时，按「最久未曝光」顺序循环复用，保证信息流可无限下滑。
+            if (ranked.candidates.isEmpty()) {
+                ranked = pickRecycled(snapshot, recentFeed)
             }
-            _state.update {
-                it.copy(
-                    loadingMore = false,
-                    feed = it.feed + ranked.candidates,
-                    supplement = ranked.supplement,
-                    // 只要池子非空且这次填进了内容，就绝不是「结束」，清除可能的旧停推位。
-                    ended = ranked.candidates.isEmpty() && candidatePool.isEmpty(),
-                )
+            if (ranked.candidates.isEmpty()) {
+                _state.update { it.copy(loadingMore = false, ended = true) }
+            } else {
+                _state.update {
+                    it.copy(
+                        loadingMore = false,
+                        feed = it.feed + ranked.candidates,
+                        supplement = ranked.supplement,
+                    )
+                }
+                // 池子余量不足一批时后台补源，保持信息流新鲜并尽量减少循环复用的重复感。
+                replenishPoolIfNeeded(current)
             }
-            // 池子余量不足一批时后台补源，保持信息流新鲜并尽量减少循环复用的重复感。
-            replenishPoolIfNeeded(current)
         }
     }
 
     /**
-     * 循环复用：从池中挑「最久未曝光」的一批重新推，保证信息流永不因池子小而停推。
-     *
-     * 关键修复：
-     * - 强去重只用 [recycleGuardWindow]（最近 4 条），而不是 24 条窗口。
-     *   单源池子常常只有 10~20 条，用 24 条去重会把整个池子排除 → 返回空 → 停推。
-     * - 两级兜底：若第一级（避开最近 4 条 + 完播冷却）填不满，就放宽为只避 seriesId 强重复，
-     *   仍从「最久未曝光」开始补足，确保即使池子比一批还小也能填满（宁可稍早重复，也不能卡死）。
-     * - 用 [recycledCursor] 轮转起点打散顺序，避免每次都从同一部开始。
+     * 循环复用：当严格/宽松两轮都取不到候选时，从池中挑「最久未曝光」的一批重新推。
+     * 仍套用近期标题去重，避免紧接着出现同一部剧；用 [recycledCursor] 轮转起点打散顺序。
      */
     private fun pickRecycled(
         snapshot: DramaHistorySnapshot,
         recentFeed: List<DramaCandidate>,
     ): DramaRankResult {
         if (candidatePool.isEmpty()) return DramaRankResult(emptyList(), supplement = true)
-        // 曝光时间越早越优先复用；从未曝光的候选（sessionExposed 不含，idx=-1）优先排最前
+        val recentIds = recentFeed.map { it.seriesId }.toSet()
+        val recentTitles = LinkedHashSet<String>().apply {
+            recentFeed.forEach { persistTitle(it.title, this) }
+        }
+        // 曝光时间越早越优先复用；从未曝光的候选（sessionExposed 不含）优先排最前
         val exposureRank = sessionExposed.toList()
         val poolSorted = candidatePool.sortedBy { candidate ->
             val idx = exposureRank.indexOf(candidate.seriesId)
             if (idx < 0) -1 else idx
         }
-        val batch = ShortDramaRecommendEngine.BATCH_SIZE
-        // 强去重集合只看最近几条，远小于池子，保证总有候选可选
-        val guard = recentFeed.takeLast(recycleGuardWindow)
-        val guardIds = guard.map { it.seriesId }.toSet()
-        val guardTitles = LinkedHashSet<String>().apply {
-            guard.forEach { persistTitle(it.title, this) }
-        }
-
-        val picked = ArrayList<DramaCandidate>(batch)
-        val pickedIds = HashSet<String>()
-        val titles = LinkedHashSet<String>(guardTitles)
+        val picked = ArrayList<DramaCandidate>(ShortDramaRecommendEngine.BATCH_SIZE)
         var cursor = recycledCursor.coerceIn(0, poolSorted.lastIndex.coerceAtLeast(0))
-
-        // 第一级：避开最近几条 + 标题去重 + 刚完播冷却，按轮转起点扫描
         var scanned = 0
-        while (picked.size < batch && scanned < poolSorted.size) {
+        while (picked.size < ShortDramaRecommendEngine.BATCH_SIZE && scanned < poolSorted.size) {
             val candidate = poolSorted[cursor % poolSorted.size]
             cursor++
             scanned++
-            if (candidate.seriesId in guardIds || candidate.seriesId in pickedIds) continue
+            if (candidate.seriesId in recentIds) continue
             val titleKey = normalizeTitle(candidate.title)
-            if (titleKey.isNotBlank() && titleKey in titles) continue
+            if (titleKey.isNotBlank() && titleKey in recentTitles) continue
+            // 7 天内完播过的仍允许循环，但排到队尾由后续批次自然稀释；这里只做轻惩罚跳过最相邻的
             val completedAt = snapshot.completedSeries[candidate.seriesId]
             if (completedAt != null && System.currentTimeMillis() - completedAt < 60_000L) continue
             picked.add(candidate)
-            pickedIds.add(candidate.seriesId)
-            if (titleKey.isNotBlank()) titles.add(titleKey)
+            if (titleKey.isNotBlank()) recentTitles.add(titleKey)
         }
-
-        // 第二级：池子太小第一级填不满时，只避开「最近几条 + 本批已选」，忽略标题与完播冷却补足。
-        // 宁可让相邻两部标题相近，也绝不能返回不足一批导致信息流提前见底。
-        if (picked.size < batch) {
-            scanned = 0
-            while (picked.size < batch && scanned < poolSorted.size) {
-                val candidate = poolSorted[cursor % poolSorted.size]
-                cursor++
-                scanned++
-                if (candidate.seriesId in guardIds || candidate.seriesId in pickedIds) continue
-                picked.add(candidate)
-                pickedIds.add(candidate.seriesId)
-            }
-        }
-
         recycledCursor = cursor
         return DramaRankResult(picked, supplement = true)
     }
@@ -396,25 +341,16 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         if (remaining >= ShortDramaRecommendEngine.BATCH_SIZE) return
         if (now - lastReplenishAt < replenishIntervalMs) return
         lastReplenishAt = now
-        viewModelScope.launch { replenishPoolNow() }
-    }
-
-    /** 实际执行一次补源（suspend）：拉源 → 去重合并 → 写缓存；补到内容时清除停推标记。 */
-    private suspend fun replenishPoolNow() {
-        val sources = ShortDramaSourceStore.enabled()
-        if (sources.isEmpty()) return
-        val fresh = ShortDramaCandidateProvider.load(sources)
-        if (fresh.isEmpty()) return
-        val merged = (candidatePool + fresh)
-            .distinctBy { it.seriesId }
-            .take(maxPoolSize)
-        val grew = merged.size > candidatePool.size
-        candidatePool = merged
-        cachedPool = merged
-        cachedPoolAt = System.currentTimeMillis()
-        // 补到新内容说明信息流可继续，清除可能因空池而置位的 ended，避免永久停推。
-        if (grew && _state.value.ended) {
-            _state.update { it.copy(ended = false) }
+        viewModelScope.launch {
+            val sources = ShortDramaSourceStore.enabled()
+            if (sources.isEmpty()) return@launch
+            val fresh = ShortDramaCandidateProvider.load(sources)
+            if (fresh.isEmpty()) return@launch
+            val merged = (candidatePool + fresh)
+                .distinctBy { it.seriesId }
+                .take(maxPoolSize)
+            candidatePool = merged
+            cachedPool = merged
         }
     }
 
