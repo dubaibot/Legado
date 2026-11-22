@@ -6,7 +6,10 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.video.SourceType
+import io.legado.app.data.video.VideoCategory
 import io.legado.app.data.video.VideoItem
+import io.legado.app.data.video.VideoSource
 import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.help.source.exploreKindsJson
 import io.legado.app.model.webBook.WebBook
@@ -36,6 +39,20 @@ object ShortDramaCandidateProvider {
     private const val RSS_PER_SOURCE = 10
     private const val VIDEO_PER_SOURCE = 20
     private const val BOOK_PER_SOURCE = 20
+
+    /**
+     * 单源扩容上限：py 源首页通常只给 20 条，滑到底就没内容了。
+     * 首页 20 条之外，再按分类翻页补足到 60 条，兼顾首屏速度与信息流长度。
+     */
+    private const val VIDEO_MAX_PER_SOURCE = 60
+    /** 参与扩容的分类数（按名称优先级挑推荐/短剧/热门类 tab） */
+    private const val VIDEO_CATEGORY_TARGETS = 3
+    /** 每个分类额外拉取的页数；首页已覆盖第 1 页推荐，这里从第 1 页开始按分类取新内容 */
+    private const val VIDEO_PAGES_PER_CATEGORY = 2
+    /** 扩容阶段总预算：到点就只用已拿到的条目，不让慢分类拖垮首屏 */
+    private const val VIDEO_EXPAND_BUDGET_MS = 5_000L
+    /** 单个分类页的等待上限 */
+    private const val VIDEO_PAGE_TIMEOUT_MS = 3_500L
 
     suspend fun load(
         sources: List<DramaSourceRef>,
@@ -132,20 +149,83 @@ object ShortDramaCandidateProvider {
     }
 
     private suspend fun loadVideoSource(ref: DramaSourceRef): List<DramaCandidate> {
-        return runCatching {
+        val loaded = runCatching {
             withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
-                val info = VideoSourceRegistry.getSourceInfo(ref.key) ?: return@withTimeoutOrNull emptyList()
-                val source = VideoSourceRegistry.createSource(info) ?: return@withTimeoutOrNull emptyList()
+                val info = VideoSourceRegistry.getSourceInfo(ref.key) ?: return@withTimeoutOrNull null
+                val source = VideoSourceRegistry.createSource(info) ?: return@withTimeoutOrNull null
                 val (categories, items) = source.home()
-                val categoryNames = categories.map { it.name }
-                items.take(VIDEO_PER_SOURCE).map { item ->
-                    item.toCandidate(ref, categoryNames)
-                }
-            } ?: emptyList()
+                LoadedVideoSource(source, categories, items)
+            }
         }.onFailure {
             LogUtils.d("ShortDramaProvider", "loadVideoSource(${ref.key}) failed: ${it.message}")
-        }.getOrDefault(emptyList())
+        }.getOrNull() ?: return emptyList()
+
+        val merged = LinkedHashMap<String, VideoItem>()
+        loaded.items.take(VIDEO_PER_SOURCE).forEach { merged[it.stableKey()] = it }
+        // py 源支持分类翻页，补足首页之外的条目；其它源保持原有单页行为，避免额外请求
+        if (loaded.source.sourceType == SourceType.PY && merged.size < VIDEO_MAX_PER_SOURCE) {
+            expandPySource(loaded.source, loaded.categories)
+                .forEach { merged.putIfAbsent(it.stableKey(), it) }
+        }
+        val categoryNames = loaded.categories.map { it.name }
+        return merged.values
+            .take(VIDEO_MAX_PER_SOURCE)
+            .map { it.toCandidate(ref, categoryNames) }
     }
+
+    private class LoadedVideoSource(
+        val source: VideoSource,
+        val categories: List<VideoCategory>,
+        val items: List<VideoItem>,
+    )
+
+    /**
+     * 分类扩容：按「短剧/推荐/热门/最新」优先挑几个分类，各翻 1~2 页补足首页之外的条目。
+     *
+     * 总预算 [VIDEO_EXPAND_BUDGET_MS] 内能拿多少算多少；单页失败或超时直接跳过，
+     * 不影响已经拿到的首页内容。py 源由 PyTaskQueue 串行执行，这里按分类顺序请求。
+     */
+    private suspend fun expandPySource(
+        source: VideoSource,
+        categories: List<VideoCategory>,
+    ): List<VideoItem> {
+        val targets = categories
+            .filter { it.id.isNotBlank() }
+            .sortedByDescending { categoryPriority(it.name) }
+            .take(VIDEO_CATEGORY_TARGETS)
+        if (targets.isEmpty()) return emptyList()
+
+        val result = ArrayList<VideoItem>()
+        withTimeoutOrNull(VIDEO_EXPAND_BUDGET_MS) {
+            for (category in targets) {
+                for (page in 1..VIDEO_PAGES_PER_CATEGORY) {
+                    if (result.size >= VIDEO_MAX_PER_SOURCE) break
+                    val videos = withTimeoutOrNull(VIDEO_PAGE_TIMEOUT_MS) {
+                        runCatching { source.category(category.id, page).videos }
+                            .getOrDefault(emptyList())
+                    }.orEmpty()
+                    // 该分类没有更多页，换下一个分类
+                    if (videos.isEmpty()) break
+                    result.addAll(videos)
+                }
+            }
+        }
+        return result
+    }
+
+    /** 分类优先级：短剧/推荐类最相关，热门/最新次之，其余按源返回顺序。 */
+    private fun categoryPriority(name: String): Int {
+        val n = name.trim()
+        return when {
+            n.contains("短剧") || n.contains("推荐") -> 3
+            n.contains("热门") || n.contains("精选") || n.contains("最新") -> 2
+            n.contains("全部") -> 1
+            else -> 0
+        }
+    }
+
+    /** 分类间去重键：优先条目 id，缺失时退回 url。 */
+    private fun VideoItem.stableKey(): String = if (id.isNotBlank()) id else url
 
     private fun VideoItem.toCandidate(
         ref: DramaSourceRef,

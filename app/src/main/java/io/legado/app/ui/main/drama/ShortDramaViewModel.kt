@@ -7,6 +7,7 @@ import io.legado.app.data.drama.DramaCandidate
 import io.legado.app.data.drama.DramaEpisode
 import io.legado.app.data.drama.DramaHistorySnapshot
 import io.legado.app.data.drama.DramaPlayable
+import io.legado.app.data.drama.DramaRankResult
 import io.legado.app.data.drama.DramaSeriesPlaylist
 import io.legado.app.data.drama.DramaSourceRef
 import io.legado.app.data.drama.ShortDramaCandidateProvider
@@ -68,6 +69,25 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
 
     /** 页内播放解析缓存：key = seriesId；解析失败不缓存，滑动回来可重试 */
     private val playableCache = HashMap<String, DramaPlayable>()
+
+    /** 推荐去重窗口：只强去重最近一段，较早曝光的候选在冷却后可重新进入推荐 */
+    private val recentDedupWindow = 24
+
+    /**
+     * 循环复用强去重窗口，必须显著小于典型候选池规模。
+     * 单源池子通常 20~60 条，复用只用最近 4 条做规避，避免整池被排除后停推。
+     */
+    private val recycleGuardWindow = 4
+
+    /** 候选池容量上限，后台补池时防止无限增长 */
+    private val maxPoolSize = 500
+
+    /** 后台补池最小间隔，避免每次翻页都重复拉源 */
+    private val replenishIntervalMs = 30_000L
+    private var lastReplenishAt = 0L
+
+    /** 复用轮转起点，避免每次都从同一部开始 */
+    private var recycledCursor = 0
 
     init {
         _state.update {
@@ -167,31 +187,149 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     fun loadMore() {
         val current = _state.value
         if (current.searchQuery.isNotEmpty()) return
-        if (current.loading || current.loadingMore || current.ended) return
-        if (candidatePool.isEmpty()) return
+        if (current.loading || current.loadingMore) return
+        // 不再因 ended 提前返回：ended 只表示「严格推荐暂时无新内容」，
+        // 信息流语义下仍应继续循环复用，否则一旦置位就永久卡死。
         viewModelScope.launch {
-            _state.update { it.copy(loadingMore = true) }
+            _state.update { it.copy(loadingMore = true, ended = false) }
+            if (candidatePool.isEmpty()) {
+                replenishPoolNow()
+                if (candidatePool.isEmpty()) {
+                    _state.update { it.copy(loadingMore = false, ended = true) }
+                    return@launch
+                }
+            }
+            val feedNow = _state.value.feed
+            val recentFeed = feedNow.takeLast(recentDedupWindow)
+            val recentExposed = sessionExposed.toList().takeLast(recentDedupWindow)
             val snapshot = ShortDramaHistoryStore.snapshot(
                 sessionSkips = sessionSkips,
             )
-            val ranked = ShortDramaRecommendEngine.rank(
+            var ranked = ShortDramaRecommendEngine.rank(
                 candidates = candidatePool,
                 snapshot = snapshot,
-                sessionExposed = sessionExposed.toList(),
-                currentFeed = current.feed,
+                sessionExposed = recentExposed,
+                currentFeed = recentFeed,
                 rng = Random.Default,
             )
-            if (ranked.candidates.isEmpty()) {
-                _state.update { it.copy(loadingMore = false, ended = true) }
-            } else {
-                _state.update {
-                    it.copy(
-                        loadingMore = false,
-                        feed = it.feed + ranked.candidates,
-                        supplement = ranked.supplement,
-                    )
-                }
+            // 严格推荐不满一批时用循环复用补足，避免池子小而整批取空
+            if (ranked.candidates.size < ShortDramaRecommendEngine.BATCH_SIZE) {
+                val recycled = pickRecycled(snapshot, recentFeed)
+                val existing = ranked.candidates.mapTo(HashSet()) { it.seriesId }
+                val fill = recycled.candidates
+                    .filter { it.seriesId !in existing }
+                    .take(ShortDramaRecommendEngine.BATCH_SIZE - ranked.candidates.size)
+                ranked = ranked.copy(
+                    candidates = ranked.candidates + fill,
+                    supplement = true,
+                )
             }
+            _state.update {
+                it.copy(
+                    loadingMore = false,
+                    feed = it.feed + ranked.candidates,
+                    supplement = ranked.supplement,
+                    ended = ranked.candidates.isEmpty() && candidatePool.isEmpty(),
+                )
+            }
+            if (ranked.candidates.isNotEmpty()) replenishPoolIfNeeded()
+        }
+    }
+
+    /**
+     * 循环复用：从池中挑「最久未曝光」的一批重新推。
+     * 第一级避开最近 [recycleGuardWindow] 条并做标题去重与完播冷却；
+     * 填不满时第二级只避开最近几条与本批已选，保证即使池子比一批还小也能填满。
+     */
+    private fun pickRecycled(
+        snapshot: DramaHistorySnapshot,
+        recentFeed: List<DramaCandidate>,
+    ): DramaRankResult {
+        if (candidatePool.isEmpty()) return DramaRankResult(emptyList(), supplement = true)
+        val exposureRank = sessionExposed.toList()
+        val poolSorted = candidatePool.sortedBy { candidate ->
+            val idx = exposureRank.indexOf(candidate.seriesId)
+            if (idx < 0) -1 else idx
+        }
+        val batch = ShortDramaRecommendEngine.BATCH_SIZE
+        val guard = recentFeed.takeLast(recycleGuardWindow)
+        val guardIds = guard.map { it.seriesId }.toSet()
+        val titles = LinkedHashSet<String>().apply {
+            guard.forEach { persistTitle(it.title, this) }
+        }
+
+        val picked = ArrayList<DramaCandidate>(batch)
+        val pickedIds = HashSet<String>()
+        var cursor = recycledCursor.coerceIn(0, poolSorted.lastIndex.coerceAtLeast(0))
+        var scanned = 0
+        while (picked.size < batch && scanned < poolSorted.size) {
+            val candidate = poolSorted[cursor % poolSorted.size]
+            cursor++
+            scanned++
+            if (candidate.seriesId in guardIds || candidate.seriesId in pickedIds) continue
+            val titleKey = normalizeTitle(candidate.title)
+            if (titleKey.isNotBlank() && titleKey in titles) continue
+            val completedAt = snapshot.completedSeries[candidate.seriesId]
+            if (completedAt != null && System.currentTimeMillis() - completedAt < 60_000L) continue
+            picked.add(candidate)
+            pickedIds.add(candidate.seriesId)
+            if (titleKey.isNotBlank()) titles.add(titleKey)
+        }
+
+        if (picked.size < batch) {
+            scanned = 0
+            while (picked.size < batch && scanned < poolSorted.size) {
+                val candidate = poolSorted[cursor % poolSorted.size]
+                cursor++
+                scanned++
+                if (candidate.seriesId in guardIds || candidate.seriesId in pickedIds) continue
+                picked.add(candidate)
+                pickedIds.add(candidate.seriesId)
+            }
+        }
+
+        recycledCursor = cursor
+        return DramaRankResult(picked, supplement = true)
+    }
+
+    private fun normalizeTitle(raw: String): String {
+        if (raw.isBlank()) return ""
+        return raw.lowercase()
+            .replace(Regex("[\\s\\p{P}\\p{S}]+"), "")
+            .replace(Regex("第?\\d+集?"), "")
+            .replace(Regex("全集|完整版|电影版|高清|国语|粤语"), "")
+            .take(24)
+    }
+
+    private fun persistTitle(raw: String, into: MutableSet<String>) {
+        normalizeTitle(raw).takeIf { it.isNotBlank() }?.let { into.add(it) }
+    }
+
+    /** 池内余量不足一批时后台补源；30 秒节流，避免频繁请求同一批源首页。 */
+    private fun replenishPoolIfNeeded() {
+        val remaining = candidatePool.size - sessionExposed.size
+        if (remaining >= ShortDramaRecommendEngine.BATCH_SIZE) return
+        val now = System.currentTimeMillis()
+        if (now - lastReplenishAt < replenishIntervalMs) return
+        lastReplenishAt = now
+        viewModelScope.launch { replenishPoolNow() }
+    }
+
+    /** 实际执行一次补源：拉源 → 去重合并 → 写缓存；补到新内容时清除停推标记。 */
+    private suspend fun replenishPoolNow() {
+        val sources = ShortDramaSourceStore.enabled()
+        if (sources.isEmpty()) return
+        val fresh = ShortDramaCandidateProvider.load(sources)
+        if (fresh.isEmpty()) return
+        val merged = (candidatePool + fresh)
+            .distinctBy { it.seriesId }
+            .take(maxPoolSize)
+        val grew = merged.size > candidatePool.size
+        candidatePool = merged
+        cachedPool = merged
+        cachedPoolAt = System.currentTimeMillis()
+        if (grew && _state.value.ended) {
+            _state.update { it.copy(ended = false) }
         }
     }
 
