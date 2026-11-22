@@ -18,6 +18,8 @@ import io.legado.app.data.drama.ShortDramaRecommendEngine
 import io.legado.app.data.drama.ShortDramaSourceStore
 import kotlin.random.Random
 import io.legado.app.data.entities.ShortDramaAction
+import io.legado.app.utils.toastOnUi
+import splitties.init.appCtx
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -376,6 +378,12 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 AppLog.put(
                     "ShortDramaViewModel.expand: fresh=${fresh.size}, pool=${candidatePool.size}"
                 )
+            } else {
+                AppLog.put("ShortDramaViewModel.expand: 分类翻页与搜索均未拿到新内容，池=${candidatePool.size}")
+                // 池子仍停在首页条数时给用户可见反馈，避免误以为「只有 20 条」是界面 bug
+                if (candidatePool.size <= 20) {
+                    appCtx.toastOnUi("当前视频源只提供 ${candidatePool.size} 条内容，可在源管理更换视频源")
+                }
             }
         }
     }

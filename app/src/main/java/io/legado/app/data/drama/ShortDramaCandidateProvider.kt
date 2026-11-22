@@ -44,6 +44,10 @@ object ShortDramaCandidateProvider {
      * 首页 20 条之外，再按分类翻页补足到 60 条，兼顾首屏速度与信息流长度。
      */
     private const val VIDEO_MAX_PER_SOURCE = 60
+
+    // 分类页去重后不足该阈值时，追加搜索补量（只维护 home 的 spider 常见）
+    private const val VIDEO_SEARCH_FALLBACK_THRESHOLD = 30
+    private val VIDEO_EXPAND_KEYWORDS = listOf("短剧", "热播", "爱情")
     /** 参与扩容的分类数（按名称优先级挑推荐/短剧/热门类 tab） */
     private const val VIDEO_CATEGORY_TARGETS = 4
     /** 每个分类额外拉取的页数；首页已覆盖第 1 页推荐，这里从第 1 页开始按分类取新内容 */
@@ -257,6 +261,29 @@ object ShortDramaCandidateProvider {
                 )
                 if (videos.isEmpty()) break
                 items.addAll(videos)
+            }
+        }
+        // 分类页与首页高度重复（常见于只维护 home 的 spider）时，用搜索补量：
+        // 搜索词取通用短剧词，多源实测能拿到首页之外的长列表。
+        if (items.map { it.stableKey() }.toSet().size < VIDEO_SEARCH_FALLBACK_THRESHOLD) {
+            for (keyword in VIDEO_EXPAND_KEYWORDS) {
+                if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+                val searched = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                    runCatching { source.search(keyword, 1) }
+                        .onFailure {
+                            LogUtils.d(
+                                "ShortDramaProvider",
+                                "expand search ${ref.key} kw=$keyword failed: ${it.message}"
+                            )
+                        }
+                        .getOrDefault(emptyList())
+                }.orEmpty()
+                LogUtils.d(
+                    "ShortDramaProvider",
+                    "expand search ${ref.key} kw=$keyword -> ${searched.size}"
+                )
+                if (searched.isEmpty()) continue
+                items.addAll(searched)
             }
         }
         val fresh = items

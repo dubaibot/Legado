@@ -1946,7 +1946,6 @@ object VideoPlay : CoroutineScope by MainScope(){
         ensurePlayGeneration++
         val generation = ensurePlayGeneration
         val token = currentSwitchToken
-        var sawPreparing = false
         var tries = 0
         val tick = object : Runnable {
             override fun run() {
@@ -1958,19 +1957,28 @@ object VideoPlay : CoroutineScope by MainScope(){
                 when {
                     state == GSYVideoView.CURRENT_STATE_PLAYING -> return
                     state == GSYVideoView.CURRENT_STATE_PREPAREING ||
-                        state == GSYVideoView.CURRENT_STATE_PLAYING_BUFFERING_START -> {
-                        sawPreparing = true
-                    }
+                        state == GSYVideoView.CURRENT_STATE_PLAYING_BUFFERING_START -> Unit
 
-                    // 已 prepared 却落到暂停态：直接恢复媒体播放。
-                    // 用 startPlayLogic 会重新 prepare（内部 startPrepare 会触发 onCompletion →
-                    // 上层 onAutoComplete 误判整集播完而跳集），startAfterPrepared 才是纯恢复。
-                    sawPreparing && state == GSYVideoView.CURRENT_STATE_PAUSE -> {
+                    // 换集后落回非播放态（PAUSE/NORMAL/AUTO_COMPLETE）就地恢复。
+                    // 注意：全屏克隆实例常在「准备完成前就被 onVideoPause 置为 PAUSE」，
+                    // 此时 GSY onPrepared 因 state!=PREPAREING 直接 return，永远起不来；
+                    // startAfterPrepared 已 prepared 就纯恢复，未 prepared 则等价手动点播放（重新 prepare）。
+                    state == GSYVideoView.CURRENT_STATE_PAUSE -> {
+                        // 已 prepared 却暂停：纯恢复媒体播放，不重新 prepare
                         AppLog.put(
-                            "VideoPlay.ensurePlayingSoon: state=PAUSE after prepared, " +
-                                "resume playback (tries=$tries, token=$token)"
+                            "VideoPlay.ensurePlayingSoon: state=PAUSE, startAfterPrepared " +
+                                "(tries=$tries, token=$token)"
                         )
                         target.startAfterPrepared()
+                    }
+
+                    else -> {
+                        // NORMAL/AUTO_COMPLETE 等：等价手动点播放（必要时重新 prepare 当前 URL）
+                        AppLog.put(
+                            "VideoPlay.ensurePlayingSoon: state=$state, startPlayLogic " +
+                                "(tries=$tries, token=$token)"
+                        )
+                        target.startPlayLogic()
                     }
                 }
                 if (tries < 40) ensurePlayHandler.postDelayed(this, 500L)

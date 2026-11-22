@@ -32,6 +32,7 @@ import com.shuyu.gsyvideoplayer.utils.GSYVideoType
 import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import com.shuyu.gsyvideoplayer.video.base.GSYVideoPlayer
 import com.shuyu.gsyvideoplayer.video.base.GSYBaseVideoPlayer
+import com.shuyu.gsyvideoplayer.video.base.GSYVideoView
 import androidx.core.graphics.ColorUtils
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -875,8 +876,24 @@ class VideoPlayer: StandardGSYVideoPlayer {
     }
 
     override fun onPrepared() {
+        // 全屏是 GSY 反射克隆的同类新实例，cloneParams 会把 mStartAfterPrepared 一并复制。
+        // 一旦其为 false，GSYVideoView.onPrepared() 末尾会主动 setStateAndUi(AUTO_COMPLETE)
+        // 并 onVideoPause()，表现就是「换集后链接已切换但画面暂停，需要手动点播放」。
+        // 自动播放意图明确时在 super 调用前改回 true，让 onPrepared 走 startAfterPrepared 分支。
+        if (VideoPlay.autoPlay && !isStartAfterPrepared()) {
+            setStartAfterPrepared(true)
+        }
         super.onPrepared()
         onPrepareDanmaku(this)
+        if (VideoPlay.autoPlay) {
+            postDelayed({
+                if (currentState != GSYVideoView.CURRENT_STATE_PLAYING &&
+                    currentState != GSYVideoView.CURRENT_STATE_PREPAREING
+                ) {
+                    startAfterPrepared()
+                }
+            }, 400L)
+        }
         // R3：片头/片尾跳过标记仅换集时重置，全屏切换时不重置（isFullscreenSwitch=true）
         if (!isFullscreenSwitch) {
             resetSkipFlags()
