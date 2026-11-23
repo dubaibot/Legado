@@ -257,8 +257,8 @@ object Restore {
         // 恢复书架数据
         if ("bookshelf.json" in selectedSet) {
             progress("bookshelf.json")
-            appDb.bookDao.deleteAll()
             fileToListT<Book>(path, "bookshelf.json")?.let {
+                appDb.bookDao.deleteAll()
                 it.forEach { book -> book.upType() }
                 it.filter { book -> book.isLocal }
                     .forEach { book -> book.coverUrl = LocalBook.getCoverPath(book) }
@@ -271,8 +271,8 @@ object Restore {
         // 恢复书签
         if ("bookmark.json" in selectedSet) {
             progress("bookmark.json")
-            appDb.bookmarkDao.deleteAll()
             fileToListT<Bookmark>(path, "bookmark.json")?.let {
+                appDb.bookmarkDao.deleteAll()
                 appDb.bookmarkDao.insert(*it.toTypedArray())
             }
         }
@@ -289,8 +289,8 @@ object Restore {
         // 恢复书源
         if ("bookSource.json" in selectedSet) {
             progress("bookSource.json")
-            appDb.bookSourceDao.deleteAll()
             fileToListT<BookSource>(path, "bookSource.json")?.let {
+                appDb.bookSourceDao.deleteAll()
                 appDb.bookSourceDao.insert(*it.toTypedArray())
             } ?: run {
                 val bookSourceFile = File(path, "bookSource.json")
@@ -304,8 +304,8 @@ object Restore {
         // 恢复RSS源
         if ("rssSources.json" in selectedSet) {
             progress("rssSources.json")
-            appDb.rssSourceDao.deleteAll()
             fileToListT<RssSource>(path, "rssSources.json")?.let {
+                appDb.rssSourceDao.deleteAll()
                 appDb.rssSourceDao.insert(*it.toTypedArray())
             }
         }
@@ -313,8 +313,8 @@ object Restore {
         // 恢复RSS收藏
         if ("rssStar.json" in selectedSet) {
             progress("rssStar.json")
-            appDb.rssStarDao.deleteAll()
             fileToListT<RssStar>(path, "rssStar.json")?.let {
+                appDb.rssStarDao.deleteAll()
                 appDb.rssStarDao.insert(*it.toTypedArray())
             }
         }
@@ -322,8 +322,8 @@ object Restore {
         // 恢复源订阅链接
         if ("sourceSub.json" in selectedSet) {
             progress("sourceSub.json")
-            appDb.ruleSubDao.deleteAll()
             fileToListT<RuleSub>(path, "sourceSub.json")?.let {
+                appDb.ruleSubDao.deleteAll()
                 appDb.ruleSubDao.insert(*it.toTypedArray())
             }
         }
@@ -348,8 +348,8 @@ object Restore {
         // 恢复替换规则
         if ("replaceRule.json" in selectedSet) {
             progress("replaceRule.json")
-            appDb.replaceRuleDao.deleteAll()
             fileToListT<ReplaceRule>(path, "replaceRule.json")?.let {
+                appDb.replaceRuleDao.deleteAll()
                 appDb.replaceRuleDao.insert(*it.toTypedArray())
             }
         }
@@ -367,8 +367,8 @@ object Restore {
         }
         if ("searchHistory.json" in selectedSet) {
             progress("searchHistory.json")
-            appDb.searchKeywordDao.deleteAll()
             fileToListT<SearchKeyword>(path, "searchHistory.json")?.let {
+                appDb.searchKeywordDao.deleteAll()
                 appDb.searchKeywordDao.insert(*it.toTypedArray())
             }
         }
@@ -376,8 +376,8 @@ object Restore {
         // 恢复TXT目录规则
         if ("txtTocRule.json" in selectedSet) {
             progress("txtTocRule.json")
-            appDb.txtTocRuleDao.deleteAll()
             fileToListT<TxtTocRule>(path, "txtTocRule.json")?.let {
+                appDb.txtTocRuleDao.deleteAll()
                 appDb.txtTocRuleDao.insert(*it.toTypedArray())
             }
         }
@@ -385,8 +385,8 @@ object Restore {
         // 恢复HTTP TTS配置
         if ("httpTTS.json" in selectedSet) {
             progress("httpTTS.json")
-            appDb.httpTTSDao.deleteAll()
             fileToListT<HttpTTS>(path, "httpTTS.json")?.let {
+                appDb.httpTTSDao.deleteAll()
                 appDb.httpTTSDao.insert(*it.toTypedArray())
             }
         }
@@ -394,8 +394,8 @@ object Restore {
         // 恢复词典规则
         if ("dictRule.json" in selectedSet) {
             progress("dictRule.json")
-            appDb.dictRuleDao.deleteAll()
             fileToListT<DictRule>(path, "dictRule.json")?.let {
+                appDb.dictRuleDao.deleteAll()
                 appDb.dictRuleDao.insert(*it.toTypedArray())
             }
         }
@@ -403,8 +403,8 @@ object Restore {
         // 恢复自动任务
         if ("autoTask.json" in selectedSet) {
             progress("autoTask.json")
-            appDb.autoTaskRuleDao.deleteAll()
             fileToListT<AutoTaskRule>(path, "autoTask.json")?.let {
+                appDb.autoTaskRuleDao.deleteAll()
                 appDb.autoTaskRuleDao.insert(*it.toTypedArray())
             }
         }
@@ -412,8 +412,8 @@ object Restore {
         // 恢复键盘辅助
         if ("keyboardAssists.json" in selectedSet) {
             progress("keyboardAssists.json")
-            appDb.keyboardAssistsDao.deleteAll()
             fileToListT<KeyboardAssist>(path, "keyboardAssists.json")?.let {
+                appDb.keyboardAssistsDao.deleteAll()
                 appDb.keyboardAssistsDao.insert(*it.toTypedArray())
             }
         }
@@ -664,8 +664,8 @@ object Restore {
 
         // 恢复书架数据
         progress("bookshelf.json")
-        appDb.bookDao.deleteAll()
         fileToListT<Book>(path, "bookshelf.json")?.let {
+            appDb.bookDao.deleteAll()
             it.forEach { book ->
                 book.upType()
             }
@@ -680,8 +680,8 @@ object Restore {
 
         // 恢复书签
         progress("bookmark.json")
-        appDb.bookmarkDao.deleteAll()
         fileToListT<Bookmark>(path, "bookmark.json")?.let {
+            appDb.bookmarkDao.deleteAll()
             appDb.bookmarkDao.insert(*it.toTypedArray())
         }
 
@@ -694,8 +694,8 @@ object Restore {
 
         // 恢复书源（兼容旧版本格式）
         progress("bookSource.json")
-        appDb.bookSourceDao.deleteAll()
         fileToListT<BookSource>(path, "bookSource.json")?.let {
+            appDb.bookSourceDao.deleteAll()
             appDb.bookSourceDao.insert(*it.toTypedArray())
         } ?: run {
             val bookSourceFile = File(path, "bookSource.json")
@@ -707,22 +707,22 @@ object Restore {
 
         // 恢复RSS源
         progress("rssSources.json")
-        appDb.rssSourceDao.deleteAll()
         fileToListT<RssSource>(path, "rssSources.json")?.let {
+            appDb.rssSourceDao.deleteAll()
             appDb.rssSourceDao.insert(*it.toTypedArray())
         }
 
         // 恢复RSS收藏
         progress("rssStar.json")
-        appDb.rssStarDao.deleteAll()
         fileToListT<RssStar>(path, "rssStar.json")?.let {
+            appDb.rssStarDao.deleteAll()
             appDb.rssStarDao.insert(*it.toTypedArray())
         }
 
         // 恢复源订阅
         progress("sourceSub.json")
-        appDb.ruleSubDao.deleteAll()
         fileToListT<RuleSub>(path, "sourceSub.json")?.let {
+            appDb.ruleSubDao.deleteAll()
             appDb.ruleSubDao.insert(*it.toTypedArray())
         }
 
@@ -743,8 +743,8 @@ object Restore {
 
         // 恢复替换规则
         progress("replaceRule.json")
-        appDb.replaceRuleDao.deleteAll()
         fileToListT<ReplaceRule>(path, "replaceRule.json")?.let {
+            appDb.replaceRuleDao.deleteAll()
             appDb.replaceRuleDao.insert(*it.toTypedArray())
         }
 
@@ -758,43 +758,43 @@ object Restore {
             AppLog.put("恢复高亮规则出错\n${it.localizedMessage}", it)
         }
         progress("searchHistory.json")
-        appDb.searchKeywordDao.deleteAll()
         fileToListT<SearchKeyword>(path, "searchHistory.json")?.let {
+            appDb.searchKeywordDao.deleteAll()
             appDb.searchKeywordDao.insert(*it.toTypedArray())
         }
 
         // 恢复TXT目录规则
         progress("txtTocRule.json")
-        appDb.txtTocRuleDao.deleteAll()
         fileToListT<TxtTocRule>(path, "txtTocRule.json")?.let {
+            appDb.txtTocRuleDao.deleteAll()
             appDb.txtTocRuleDao.insert(*it.toTypedArray())
         }
 
         // 恢复HTTP TTS配置
         progress("httpTTS.json")
-        appDb.httpTTSDao.deleteAll()
         fileToListT<HttpTTS>(path, "httpTTS.json")?.let {
+            appDb.httpTTSDao.deleteAll()
             appDb.httpTTSDao.insert(*it.toTypedArray())
         }
 
         // 恢复词典规则
         progress("dictRule.json")
-        appDb.dictRuleDao.deleteAll()
         fileToListT<DictRule>(path, "dictRule.json")?.let {
+            appDb.dictRuleDao.deleteAll()
             appDb.dictRuleDao.insert(*it.toTypedArray())
         }
 
         // 恢复自动任务
         progress("autoTask.json")
-        appDb.autoTaskRuleDao.deleteAll()
         fileToListT<AutoTaskRule>(path, "autoTask.json")?.let {
+            appDb.autoTaskRuleDao.deleteAll()
             appDb.autoTaskRuleDao.insert(*it.toTypedArray())
         }
 
         // 恢复键盘辅助（先删除再插入，保证与备份数据一致）
         progress("keyboardAssists.json")
-        appDb.keyboardAssistsDao.deleteAll()
         fileToListT<KeyboardAssist>(path, "keyboardAssists.json")?.let {
+            appDb.keyboardAssistsDao.deleteAll()
             appDb.keyboardAssistsDao.insert(*it.toTypedArray())
         }
 
