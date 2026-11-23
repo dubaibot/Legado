@@ -33,8 +33,12 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.MalformedURLException
 import java.net.URL
+import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 @Suppress("unused", "MemberVisibilityCanBePrivate")
@@ -51,7 +55,32 @@ open class WebDav(
         }
 
         @SuppressLint("DateTimeFormatter")
-        private val dateTimeFormatter = DateTimeFormatter.RFC_1123_DATE_TIME
+        private val lastModifiedFormatters = listOf(
+            DateTimeFormatter.RFC_1123_DATE_TIME,
+            DateTimeFormatter.ISO_OFFSET_DATE_TIME,
+            DateTimeFormatter.ISO_ZONED_DATE_TIME,
+            DateTimeFormatter.ISO_DATE_TIME,
+            DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US),
+            DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)
+        )
+
+        /** 解析失败时按 URL 复用上一次成功解析的时间戳，避免被误判为 0（最旧）。 */
+        private val lastModifiedCache = ConcurrentHashMap<String, Long>()
+
+        private fun parseLastModified(text: String?): Long? {
+            val raw = text?.trim().orEmpty()
+            if (raw.isEmpty()) return null
+            for (formatter in lastModifiedFormatters) {
+                runCatching {
+                    ZonedDateTime.parse(raw, formatter).toInstant().toEpochMilli()
+                }.getOrNull()?.let { return it }
+                runCatching {
+                    LocalDateTime.parse(raw, formatter)
+                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                }.getOrNull()?.let { return it }
+            }
+            return null
+        }
 
         // 指定返回哪些属性
         @Language("xml")
@@ -209,16 +238,21 @@ open class WebDav(
                     element.findNS("getcontentlength", ns)
                         .firstOrNull()?.text()?.toLong() ?: 0
                 }.getOrDefault(0)
-                val lastModify: Long = kotlin.runCatching {
-                    element.findNS("getlastmodified", ns)
-                        .firstOrNull()?.text()?.let {
-                            ZonedDateTime.parse(it, dateTimeFormatter)
-                                .toInstant().toEpochMilli()
-                        }
-                }.getOrNull() ?: 0
                 var fullURL = NetworkUtils.getAbsoluteURL(baseUrl, hrefDecode)
                 if (WebDavFile.isDir(contentType, resourceType) && !fullURL.endsWith("/")) {
                     fullURL += "/"
+                }
+                val parsedLastModified: Long? = kotlin.runCatching {
+                    parseLastModified(
+                        element.findNS("getlastmodified", ns).firstOrNull()?.text()
+                    )
+                }.getOrNull()
+                val lastModify: Long = parsedLastModified
+                    ?: lastModifiedCache[fullURL]
+                    ?: 0
+                if (parsedLastModified != null) {
+                    if (lastModifiedCache.size > 2000) lastModifiedCache.clear()
+                    lastModifiedCache[fullURL] = parsedLastModified
                 }
                 webDavFile = WebDavFile(
                     fullURL,
