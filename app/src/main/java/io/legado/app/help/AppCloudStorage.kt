@@ -50,6 +50,8 @@ object AppCloudStorage {
     private const val TOP_BARS_DIR = "topBars/"
     private const val COVER_COLLECTIONS_DIR = "coverCollections/"
     private const val BUBBLES_DIR = "bubbles/"
+    // 云存储服务端与设备时钟可能存在偏差，同步比较时留出容差避免漏同步
+    private const val CLOCK_SKEW_MS = 5 * 60 * 1000L
 
     private val webDavBackend = WebDavCloudStorageBackend()
     private val s3Backend = S3CloudStorageBackend()
@@ -386,7 +388,7 @@ object AppCloudStorage {
         val map = files.associateBy { it.displayName }
         appDb.bookDao.all.forEach { book ->
             val file = map[getProgressFileName(book.name, book.author)] ?: return@forEach
-            if (file.lastModify <= book.syncTime) return@forEach
+            if (file.lastModify <= book.syncTime - CLOCK_SKEW_MS) return@forEach
             getBookProgress(book)?.let { progress ->
                 if (progress.durChapterIndex > book.durChapterIndex ||
                     (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos > book.durChapterPos)

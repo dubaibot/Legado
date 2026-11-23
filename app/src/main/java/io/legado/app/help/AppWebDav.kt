@@ -41,6 +41,8 @@ import java.io.File
  */
 object AppWebDav {
     private const val defaultWebDavUrl = "https://dav.jianguoyun.com/dav/"
+    // WebDAV 服务端与设备时钟可能存在偏差，同步比较时留出容差避免漏同步
+    private const val CLOCK_SKEW_MS = 5 * 60 * 1000L
     private val bookProgressUrl get() = "${rootWebDavUrl}bookProgress/"
     private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
     private val bgWebDavUrl get() = "${rootWebDavUrl}background/"
@@ -347,8 +349,8 @@ object AppWebDav {
         appDb.bookDao.all.forEach { book ->
             val progressFileName = getProgressFileName(book.name, book.author)
             val webDavFile = map[progressFileName] ?: return@forEach
-            if (webDavFile.lastModify <= book.syncTime) {
-                //本地同步时间大于上传时间不用同步
+            if (webDavFile.lastModify <= book.syncTime - CLOCK_SKEW_MS) {
+                //本地同步时间大于上传时间不用同步（含时钟偏差容差）
                 return@forEach
             }
             getBookProgress(book)?.let { bookProgress ->
