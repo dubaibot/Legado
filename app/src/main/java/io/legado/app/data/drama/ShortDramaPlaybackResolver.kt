@@ -5,6 +5,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.RssArticle
+import io.legado.app.data.video.PlayLine
 import io.legado.app.data.video.VideoSourceRegistry
 import io.legado.app.help.video.VideoUrlExtractor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -27,15 +28,23 @@ object ShortDramaPlaybackResolver {
     private const val RESOLVE_TIMEOUT_MS = 10_000L
     private const val RESOLVE_PAGE_TIMEOUT_MS = 25_000L
 
-    suspend fun resolve(candidate: DramaCandidate): DramaPlayable? = withContext(Dispatchers.IO) {
-        when (candidate.source.kind) {
-            DramaSourceKind.PY, DramaSourceKind.TVBOX -> resolveVideo(candidate)
-            DramaSourceKind.RSS -> resolveRss(candidate)
-            DramaSourceKind.BOOK -> resolveBook(candidate)
-        }
-    }
+    /** 线路名：优先取 flag，其次取 name 中「·」前缀（与主播放器 groupPyPlayLines 一致）。 */
+    private fun routeOf(line: PlayLine): String =
+        line.flag.takeIf { it.isNotBlank() }
+            ?: line.name.substringBefore("·")
+                .takeIf { it.isNotBlank() && it != line.name }
+            ?: "线路1"
 
-    private suspend fun resolveVideo(candidate: DramaCandidate): DramaPlayable? {
+    suspend fun resolve(candidate: DramaCandidate, route: String? = null): DramaPlayable? =
+        withContext(Dispatchers.IO) {
+            when (candidate.source.kind) {
+                DramaSourceKind.PY, DramaSourceKind.TVBOX -> resolveVideo(candidate, route)
+                DramaSourceKind.RSS -> resolveRss(candidate)
+                DramaSourceKind.BOOK -> resolveBook(candidate)
+            }
+        }
+
+    private suspend fun resolveVideo(candidate: DramaCandidate, route: String?): DramaPlayable? {
         return runCatching {
             withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
                 val info = VideoSourceRegistry.getSourceInfo(candidate.source.key)
@@ -43,7 +52,9 @@ object ShortDramaPlaybackResolver {
                 val source = VideoSourceRegistry.createSource(info)
                     ?: return@withTimeoutOrNull null
                 val detail = source.detail(candidate.itemId.ifBlank { candidate.pageUrl })
-                val line = detail.playLines.firstOrNull() ?: return@withTimeoutOrNull null
+                val line = detail.playLines.firstOrNull { routeOf(it) == route }
+                    ?: detail.playLines.firstOrNull()
+                    ?: return@withTimeoutOrNull null
                 val result = runCatching { source.play(line.url, line.flag) }
                     .getOrElse { source.play(line.url) }
                 DramaPlayable(
@@ -190,11 +201,6 @@ object ShortDramaPlaybackResolver {
                     ?: return@withTimeoutOrNull emptyList()
                 val detail = source.detail(candidate.itemId.ifBlank { candidate.pageUrl })
                 detail.playLines.mapIndexed { i, line ->
-                    // 线路名：优先取 flag，其次取 name 中「·」前缀（与主播放器 groupPyPlayLines 一致）
-                    val route = line.flag.takeIf { it.isNotBlank() }
-                        ?: line.name.substringBefore("·")
-                            .takeIf { it.isNotBlank() && it != line.name }
-                        ?: "线路1"
                     val title = line.name.substringAfter("·", line.name)
                         .ifBlank { "第${i + 1}集" }
                     DramaEpisode(
@@ -202,7 +208,7 @@ object ShortDramaPlaybackResolver {
                         title = title,
                         url = line.url,
                         flag = line.flag,
-                        route = route,
+                        route = routeOf(line),
                     )
                 }
             }

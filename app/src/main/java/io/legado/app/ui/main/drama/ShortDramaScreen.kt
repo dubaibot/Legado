@@ -293,7 +293,7 @@ private fun DramaFeed(
     onShown: (DramaCandidate, Int) -> Unit,
     onPlay: (DramaCandidate) -> Unit,
     onSkip: (DramaCandidate) -> Unit,
-    onResolve: suspend (DramaCandidate) -> DramaPlayable?,
+    onResolve: suspend (DramaCandidate, String?) -> DramaPlayable?,
     onResolveEpisodes: suspend (DramaCandidate) -> List<DramaEpisode>,
     onResolveEpisodePlayable: suspend (DramaCandidate, DramaEpisode) -> DramaPlayable?,
     onLoadPlaylist: (DramaCandidate) -> Unit,
@@ -382,7 +382,7 @@ private fun DramaPage(
     bottomPaddingDp: Dp,
     onPlay: () -> Unit,
     onSkip: () -> Unit,
-    onResolve: suspend (DramaCandidate) -> DramaPlayable?,
+    onResolve: suspend (DramaCandidate, String?) -> DramaPlayable?,
     onResolveEpisodes: suspend (DramaCandidate) -> List<DramaEpisode>,
     onResolveEpisodePlayable: suspend (DramaEpisode) -> DramaPlayable?,
     onLoadPlaylist: () -> Unit,
@@ -412,6 +412,10 @@ private fun DramaPage(
     var episodesLoading by remember(candidate.seriesId) { mutableStateOf(false) }
     var episodesFailed by remember(candidate.seriesId) { mutableStateOf(false) }
     var selectedRoute by remember(candidate.seriesId) { mutableStateOf("") }
+    // 首帧播放是否来自线路解析；选集切集后置 false，线路切换不再影响已选集
+    var firstFrameActive by remember(candidate.seriesId) { mutableStateOf(false) }
+    // 首帧当前所用线路，用于判断线路是否变化
+    var firstFrameRoute by remember(candidate.seriesId) { mutableStateOf("") }
     var episodeEnded by remember(candidate.seriesId) { mutableStateOf(false) }
     // 已解析起播的集标识（seriesId:index:url），避免同一集重复请求直链
     var resolvedEpisodeKey by remember(candidate.seriesId) { mutableStateOf("") }
@@ -432,6 +436,7 @@ private fun DramaPage(
         val key = episodeKey(episode)
         if (resolvedEpisodeKey == key) return
         resolvedEpisodeKey = key
+        firstFrameActive = false
         val fallbackHeaders = mapOf("Referer" to episode.url)
         val resolved = onResolveEpisodePlayable(episode)
         playable = resolved?.copy(headers = resolved.headers.ifEmpty { fallbackHeaders })
@@ -470,14 +475,25 @@ private fun DramaPage(
         applyEpisode(episode)
     }
 
+    // 加载选集列表：仅随激活页/换剧触发，与线路解析解耦，避免切线路重置当前集
     LaunchedEffect(active, candidate.seriesId) {
         onLoadPlaylist()
-        if (!active || playable != null || resolving) return@LaunchedEffect
+    }
+
+    // 首帧按当前选中线路解析；线路切换后按新线路重解析首帧。
+    // 已由选集切集覆盖（firstFrameActive=false）时不受影响，避免误改用户所选集。
+    LaunchedEffect(active, candidate.seriesId, selectedRoute) {
+        if (!active || resolving) return@LaunchedEffect
+        val needResolve = playable == null ||
+            (firstFrameActive && firstFrameRoute != selectedRoute)
+        if (!needResolve) return@LaunchedEffect
         resolving = true
-        val resolved = onResolve(candidate)
+        val resolved = onResolve(candidate, selectedRoute)
         resolving = false
         if (resolved != null) {
-            if (playable == null) playable = resolved
+            playable = resolved
+            firstFrameActive = true
+            firstFrameRoute = selectedRoute
         } else if (playable == null) {
             playFailed = true
         }
