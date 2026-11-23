@@ -236,10 +236,16 @@ object ShortDramaCandidateProvider {
                 }
             }.awaitAll()
         }
-        results.flatten()
+        val deduped = results.flatten()
             .filter { it.seriesId !in existing }
             .distinctBy { it.seriesId }
             .take(limit)
+        // 汇总日志：一次扩容的整体结果，便于快速判断「到底补进了多少新内容」
+        AppLog.put(
+            "ShortDramaProvider.expand[汇总]: 源=${refs.size}, 原始=${results.sumOf { it.size }}, " +
+                "新增=${deduped.size}, 上限=$limit"
+        )
+        deduped
     }
 
     private suspend fun expandVideoSource(

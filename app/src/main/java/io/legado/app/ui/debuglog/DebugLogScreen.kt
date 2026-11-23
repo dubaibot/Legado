@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -82,6 +83,7 @@ import io.legado.app.ui.debuglog.viewmodel.DebugLogViewModel
 import io.legado.app.ui.widget.components.AppPageTopBar
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
 
 /**
@@ -192,6 +194,16 @@ fun DebugLogScreen(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = stringResource(R.string.clear),
                                 tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+
+                        // 复制按钮：把当前筛选后的日志复制到剪贴板，便于粘贴排查
+                        IconButton(onClick = {
+                            context.sendToClip(viewModel.exportFilteredLogs())
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = stringResource(R.string.copy),
                             )
                         }
 
