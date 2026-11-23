@@ -823,12 +823,30 @@ object WebBook {
         semaphore: Semaphore? = null,
     ): Coroutine<Pair<Book, BookSource>> {
         return Coroutine.async(scope, context, semaphore = semaphore) {
+            val failures = mutableListOf<Pair<BookSource, Throwable>>()
             for (s in bookSourceParts) {
                 val source = s.getBookSource() ?: continue
-                val book = preciseSearchAwait(source, name, author).getOrNull()
-                if (book != null) {
-                    return@async Pair(book, source)
+                val result = preciseSearchAwait(source, name, author)
+                if (result.isSuccess) {
+                    val book = result.getOrNull()
+                    if (book != null) {
+                        return@async Pair(book, source)
+                    }
+                    continue
                 }
+                val cause = result.exceptionOrNull()
+                // 区分「该源确实没有匹配」与「该源请求/解析失败」：前者是
+                // NoStackTraceException("未搜索到 ...")，后者是真实的网络/解析异常。
+                if (cause is NoStackTraceException && cause.message?.contains("未搜索到") == true) {
+                    continue
+                }
+                failures.add(source to (cause ?: NoStackTraceException("未知错误")))
+            }
+            if (failures.isNotEmpty()) {
+                val detail = failures.joinToString("\n") { (src, e) ->
+                    "${src.bookSourceName}: ${e.message ?: e.javaClass.simpleName}"
+                }
+                throw NoStackTraceException("精准搜索《$name》存在失败书源:\n$detail")
             }
             throw NoStackTraceException("没有搜索到<$name>$author")
         }
