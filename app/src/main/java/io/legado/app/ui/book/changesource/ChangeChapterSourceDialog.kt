@@ -86,8 +86,22 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
         dismissAllowingStateLoss()
     }
     private var searchBook: SearchBook? = null
-    private val searchFinishCallback: (isEmpty: Boolean) -> Unit = {
-        if (it) {
+    private val searchFinishCallback: (SearchFinishResult) -> Unit = {
+        if (it.isEmpty && it.failedCount > 0) {
+            lifecycleScope.launch {
+                context?.alert("搜索失败") {
+                    setMessage(
+                        "${it.failedCount} 个书源全部搜索失败：\n" +
+                            it.failedSources.joinToString("\n") { src -> "· ${src.name}" } +
+                            "\n是否重试这些书源？"
+                    )
+                    cancelButton()
+                    okButton {
+                        viewModel.retryFailedSources()
+                    }
+                }
+            }
+        } else if (it.isEmpty) {
             val searchGroup = AppConfig.searchGroup
             if (searchGroup.isNotEmpty()) {
                 lifecycleScope.launch {

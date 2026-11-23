@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.util.Collections
+import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.min
@@ -62,7 +63,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     private val threadCount = AppConfig.threadCount
     private var searchPool: ExecutorCoroutineDispatcher? = null
     val searchStateData = MutableLiveData<Boolean>()
-    var searchFinishCallback: ((isEmpty: Boolean) -> Unit)? = null
+    var searchFinishCallback: ((result: SearchFinishResult) -> Unit)? = null
     var name: String = ""
     var author: String = ""
     private var fromReadBookActivity = false
@@ -73,6 +74,8 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         get() = bookSourceParts.size
     private var searchBookList = arrayListOf<SearchBook>()
     private val searchBooks = Collections.synchronizedList(arrayListOf<SearchBook>())
+    // 搜索失败的书源（origin -> 失败信息），用于区分「无结果」与「全部失败」
+    private val failedSources = Collections.synchronizedMap(LinkedHashMap<String, FailedSource>())
     private val tocMap = ConcurrentHashMap<String, List<BookChapter>>()
     private val _changeSourceProgress = MutableStateFlow(0 to "")
     val changeSourceProgress = _changeSourceProgress.asStateFlow()
@@ -189,6 +192,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
             }
             searchCallback?.upAdapter()
             bookSourceParts.clear()
+            failedSources.clear()
             tocMap.clear()
             bookMap.clear()
             tocMapChapterCount = 0
@@ -214,11 +218,31 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
         execute {
             stopSearch()
             bookSourceParts.clear()
+            failedSources.clear()
             tocMap.clear()
             bookMap.clear()
             tocMapChapterCount = 0
             bookSourceParts.add(appDb.bookSourceDao.getBookSourcePart(origin)!!)
             searchBooks.removeIf { it.origin == origin }
+            initSearchPool()
+            search()
+        }
+    }
+
+    /** 重试全部搜索失败的书源，与「真无结果」的空列表场景区分。 */
+    fun retryFailedSources() {
+        val origins = synchronized(failedSources) { failedSources.keys.toList() }
+        if (origins.isEmpty()) return
+        execute {
+            stopSearch()
+            bookSourceParts.clear()
+            failedSources.clear()
+            tocMap.clear()
+            bookMap.clear()
+            tocMapChapterCount = 0
+            bookSourceParts.addAll(origins.mapNotNull { appDb.bookSourceDao.getBookSourcePart(it) })
+            searchBooks.clear()
+            searchCallback?.upAdapter()
             initSearchPool()
             search()
         }
@@ -239,8 +263,16 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
                     withTimeout(60000L) {
                         search(it)
                     }
-                } catch (_: Throwable) {
-                    currentCoroutineContext().ensureActive()
+                } catch (t: Throwable) {
+                    if (t is CancellationException) {
+                        currentCoroutineContext().ensureActive()
+                    } else {
+                        failedSources[it.bookSourceUrl] = FailedSource(
+                            origin = it.bookSourceUrl,
+                            name = it.bookSourceName,
+                            message = t.localizedMessage ?: t.javaClass.simpleName,
+                        )
+                    }
                 }
                 it
             }.onEachIndexed { index, value ->
@@ -250,7 +282,14 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
             }.onCompletion {
                 ensureActive()
                 searchStateData.postValue(false)
-                searchFinishCallback?.invoke(searchBooks.isEmpty())
+                val failed = synchronized(failedSources) { failedSources.values.toList() }
+                searchFinishCallback?.invoke(
+                    SearchFinishResult(
+                        isEmpty = searchBooks.isEmpty(),
+                        failedCount = failed.size,
+                        failedSources = failed,
+                    )
+                )
             }.catch {
                 AppLog.put("换源搜索出错\n${it.localizedMessage}", it)
             }.collect()
@@ -578,3 +617,17 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     }
 
 }
+
+/** 单个书源搜索失败记录。 */
+data class FailedSource(
+    val origin: String,
+    val name: String,
+    val message: String,
+)
+
+/** 换源搜索结束结果：区分「真无结果」与「全部失败」。 */
+data class SearchFinishResult(
+    val isEmpty: Boolean,
+    val failedCount: Int,
+    val failedSources: List<FailedSource>,
+)
