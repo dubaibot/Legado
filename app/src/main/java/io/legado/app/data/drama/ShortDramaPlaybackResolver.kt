@@ -40,7 +40,7 @@ object ShortDramaPlaybackResolver {
             when (candidate.source.kind) {
                 DramaSourceKind.PY, DramaSourceKind.TVBOX -> resolveVideo(candidate, route)
                 DramaSourceKind.RSS -> resolveRss(candidate)
-                DramaSourceKind.BOOK -> resolveBook(candidate)
+                DramaSourceKind.BOOK, DramaSourceKind.PUSH -> resolveBook(candidate)
             }
         }
 
@@ -113,7 +113,10 @@ object ShortDramaPlaybackResolver {
 
     private suspend fun resolveBook(candidate: DramaCandidate): DramaPlayable? {
         if (candidate.pageUrl.isBlank()) return null
-        val source = appDb.bookSourceDao.getBookSource(candidate.source.key) ?: return null
+        val source = when (candidate.source.kind) {
+            DramaSourceKind.PUSH -> ShortDramaCandidateProvider.pushBookSource(candidate.source)
+            else -> appDb.bookSourceDao.getBookSource(candidate.source.key)
+        } ?: return null
         val book = appDb.searchBookDao.getSearchBook(candidate.pageUrl)?.toBook()
             ?: Book(
                 bookUrl = candidate.pageUrl,
@@ -186,7 +189,7 @@ object ShortDramaPlaybackResolver {
         withContext(Dispatchers.IO) {
             when (candidate.source.kind) {
                 DramaSourceKind.PY, DramaSourceKind.TVBOX -> resolveVideoEpisodes(candidate)
-                DramaSourceKind.BOOK -> resolveBookEpisodes(candidate)
+                DramaSourceKind.BOOK, DramaSourceKind.PUSH -> resolveBookEpisodes(candidate)
                 DramaSourceKind.RSS -> emptyList()
             }
         }
@@ -217,12 +220,15 @@ object ShortDramaPlaybackResolver {
         }.getOrDefault(emptyList()).orEmpty()
     }
 
-    /** 书源：取详情/目录章节，仅保留直链章节。 */
+    /** 书源/推送源：取详情/目录章节，仅保留直链章节。 */
     private suspend fun resolveBookEpisodes(candidate: DramaCandidate): List<DramaEpisode> {
             if (candidate.pageUrl.isBlank()) {
                 return emptyList()
             }
-            val source = appDb.bookSourceDao.getBookSource(candidate.source.key)
+            val source = when (candidate.source.kind) {
+                DramaSourceKind.PUSH -> ShortDramaCandidateProvider.pushBookSource(candidate.source)
+                else -> appDb.bookSourceDao.getBookSource(candidate.source.key)
+            }
                 ?: return emptyList()
             val book = appDb.searchBookDao.getSearchBook(candidate.pageUrl)?.toBook()
                 ?: Book(

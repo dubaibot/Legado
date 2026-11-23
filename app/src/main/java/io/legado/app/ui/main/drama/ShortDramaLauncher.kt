@@ -29,7 +29,7 @@ object ShortDramaLauncher {
     suspend fun open(activity: Activity, candidate: DramaCandidate) {
         when (candidate.source.kind) {
             DramaSourceKind.RSS -> openRss(activity, candidate)
-            DramaSourceKind.BOOK -> openBook(activity, candidate)
+            DramaSourceKind.BOOK, DramaSourceKind.PUSH -> openBook(activity, candidate)
             DramaSourceKind.PY, DramaSourceKind.TVBOX -> openVideoSource(activity, candidate)
         }
     }

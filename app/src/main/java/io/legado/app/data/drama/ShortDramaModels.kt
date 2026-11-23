@@ -5,12 +5,16 @@ package io.legado.app.data.drama
  *
  * 短剧不引入新的源格式，直接复用项目已导入的四类源：
  * 书源（视频类）、订阅源、PY 源、TVBOX 源。
+ *
+ * PUSH（推送源）是独立直通链路：后端按算法推送一批内容，每次进入请求一次、
+ * 按返回顺序展示，不进候选池、不做本地打分/去重/多样性、不写曝光窗口。
  */
 enum class DramaSourceKind(val label: String) {
     BOOK("书源"),
     RSS("订阅源"),
     PY("PY源"),
     TVBOX("TVBOX源"),
+    PUSH("推送源"),
 }
 
 /** 源的稳定标识：kind + 源 key（书源用 bookSourceUrl，订阅源用 sourceUrl，视频源用注册表 id）。 */

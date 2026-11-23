@@ -5,7 +5,11 @@ import io.legado.app.constant.BookSourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssArticle
+import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.rule.ContentRule
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.entities.rule.ExploreRule
+import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.data.video.VideoCategory
 import io.legado.app.data.video.VideoItem
 import io.legado.app.data.video.VideoListRef
@@ -44,6 +48,9 @@ object ShortDramaCandidateProvider {
     private const val VIDEO_PER_SOURCE = 20
     private const val BOOK_PER_SOURCE = 20
 
+    /** 内置 B 站推送书源的伪地址（仅作构造 BookSource 的稳定 key，不入库）。 */
+    private const val BILI_PUSH_SOURCE_URL = "__push_bili_rcmd__"
+
     /**
      * 单源扩容上限：py 源首页通常只给 20 条，滑到底就没内容了。
      * 首页 20 条之外，再按分类翻页补足到 60 条，兼顾首屏速度与信息流长度。
@@ -77,6 +84,10 @@ object ShortDramaCandidateProvider {
     private val cachedLists =
         java.util.concurrent.ConcurrentHashMap<String, List<VideoListRef>>()
 
+    /** PUSH 推送书源缓存：一次会话内复用，避免每次请求推送都重复查库/构造。 */
+    @Volatile
+    private var cachedPushBookSource: BookSource? = null
+
     suspend fun load(
         sources: List<DramaSourceRef>,
         limit: Int = 60,
@@ -89,6 +100,7 @@ object ShortDramaCandidateProvider {
                         DramaSourceKind.PY, DramaSourceKind.TVBOX -> listOf(async { loadVideoSource(ref) })
                         DramaSourceKind.RSS -> listOf(async { loadRssSource(ref) })
                         DramaSourceKind.BOOK -> listOf(async { loadBookSource(ref) })
+                        DramaSourceKind.PUSH -> emptyList()
                     }
                     loaders
                 }
@@ -111,6 +123,7 @@ object ShortDramaCandidateProvider {
                     DramaSourceKind.PY, DramaSourceKind.TVBOX -> listOf(async { searchVideoSource(ref, key) })
                     DramaSourceKind.BOOK -> listOf(async { searchBookSource(ref, key) })
                     DramaSourceKind.RSS -> listOf(async { searchRssSource(ref, key) })
+                    DramaSourceKind.PUSH -> emptyList()
                 }
             }.awaitAll()
         }
@@ -569,5 +582,129 @@ object ShortDramaCandidateProvider {
             it.type == ExploreKind.Type.url && !it.url.isNullOrBlank()
         }?.url ?: return null
         return url.replace("{{page}}", "1")
+    }
+
+    /**
+     * PUSH 推送源直通加载：请求后端推送流，按返回顺序产出候选。
+     *
+     * 不走 [load] 的候选池/rank/去重/截断链路——推送顺序由后端算法决定，
+     * 本地筛选会打乱顺序、去重会误杀新推送。这里只做请求 + 映射，保持后端顺序。
+     *
+     * 分页说明：B 站 `feed/rcmd` 是静态 URL，是否每次返回新内容取决于后端；
+     * 跨批去重由调用方（VM 的 loadMore）按 seriesId 过滤已展示项完成。
+     */
+    suspend fun loadPush(sources: List<DramaSourceRef>): List<DramaCandidate> =
+        withContext(Dispatchers.IO) {
+            val refs = sources.filter { it.kind == DramaSourceKind.PUSH }
+            if (refs.isEmpty()) return@withContext emptyList()
+            val results = coroutineScope {
+                refs.map { ref ->
+                    async {
+                        runCatching {
+                            withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                                val source = pushBookSource(ref)
+                                    ?: return@withTimeoutOrNull emptyList()
+                                val url = ShortDramaSourceStore.pushUrl(ref)
+                                WebBook.exploreBookAwait(source, url, 1)
+                                    .map { it.toPushCandidate(ref) }
+                            } ?: emptyList()
+                        }.onFailure {
+                            LogUtils.d("ShortDramaProvider", "loadPush(${ref.key}) failed: ${it.message}")
+                        }.getOrDefault(emptyList())
+                    }
+                }.awaitAll()
+            }
+            results.flatten()
+        }
+
+    /**
+     * 取 PUSH 推送所需的 [BookSource]。
+     *
+     * 三级降级：
+     * 1. 按 `ref.key` 直接查库——用户可把真实 B 站书源 URL 配置为推送 ref.key，复用其完整规则；
+     * 2. 在已启用书源中找 B 站源（url 含 bilibili / 名称含 B 站），复用其 ruleExplore/jsLib；
+     * 3. 兜底构造最小 B 站书源（仅 ruleExplore 必填，ruleToc/ruleContent 为尽力而为）。
+     *
+     * 结果缓存，一次会话内复用。
+     */
+    fun pushBookSource(ref: DramaSourceRef): BookSource? {
+        cachedPushBookSource?.let { return it }
+        val byKey = appDb.bookSourceDao.getBookSource(ref.key)
+            .takeIf { it != null && it.enabled }
+        if (byKey != null) {
+            cachedPushBookSource = byKey
+            return byKey
+        }
+        val bilibili = appDb.bookSourceDao.allEnabled
+            .firstOrNull {
+                it.bookSourceUrl.contains("bilibili", ignoreCase = true) ||
+                    it.bookSourceName.contains("B站", ignoreCase = true)
+            }
+        if (bilibili != null) {
+            cachedPushBookSource = bilibili
+            return bilibili
+        }
+        val constructed = buildBiliPushBookSource()
+        cachedPushBookSource = constructed
+        return constructed
+    }
+
+    /**
+     * 构造兜底 B 站推送书源。
+     *
+     * ruleExplore 解析 `feed/rcmd` 返回的推荐流；ruleToc/ruleContent 为尽力而为的
+     * B 站视频页解析，播放质量取决于 B 站页面结构，建议用户导入真实 B 站书源以获得最佳效果。
+     */
+    private fun buildBiliPushBookSource(): BookSource {
+        val tocPreJs = """
+            var m = /window\.__INITIAL_STATE__=(\{.*?\});/.exec(response);
+            if (m) {
+                var st = JSON.parse(m[1]);
+                var vd = st.videoData || {};
+                var ps = vd.pages || [];
+                var bv = vd.bvid || '';
+                response = JSON.stringify(ps.map(function(p, i) {
+                    return {title: p.part || '第' + (i + 1) + 'P', bvid: bv, cid: p.cid};
+                }));
+            }
+        """.trimIndent()
+        return BookSource(
+            bookSourceUrl = BILI_PUSH_SOURCE_URL,
+            bookSourceName = "B站推送(内置)",
+            bookSourceType = BookSourceType.default,
+            engineType = 0,
+            enabledExplore = true,
+            ruleExplore = ExploreRule(
+                bookList = "$.data.item[*]",
+                name = "$.title",
+                author = "$.owner.name",
+                coverUrl = "$.pic",
+                intro = "$.desc",
+                bookUrl = "https://www.bilibili.com/video/{{$.bvid}}",
+            ),
+            ruleToc = TocRule(
+                preUpdateJs = tocPreJs,
+                chapterList = "$[*]",
+                chapterName = "$.title",
+                chapterUrl = "https://www.bilibili.com/video/{{$.bvid}}",
+            ),
+            ruleContent = ContentRule(
+                content = "$..playurl",
+            ),
+        )
+    }
+
+    /** 推送发现结果 → 短剧候选。seriesId 用 bvid/书址稳定去重。 */
+    private fun SearchBook.toPushCandidate(ref: DramaSourceRef): DramaCandidate {
+        return DramaCandidate(
+            seriesId = "push:${ref.key}:${bookUrl}",
+            source = ref,
+            title = name,
+            author = author,
+            cover = coverUrl.orEmpty(),
+            intro = intro.orEmpty(),
+            pageUrl = bookUrl,
+            publishedAt = 0L,
+        )
     }
 }

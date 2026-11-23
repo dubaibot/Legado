@@ -10,6 +10,7 @@ import io.legado.app.data.drama.DramaHistorySnapshot
 import io.legado.app.data.drama.DramaPlayable
 import io.legado.app.data.drama.DramaRankResult
 import io.legado.app.data.drama.DramaSeriesPlaylist
+import io.legado.app.data.drama.DramaSourceKind
 import io.legado.app.data.drama.DramaSourceRef
 import io.legado.app.data.drama.ShortDramaCandidateProvider
 import io.legado.app.data.drama.ShortDramaHistoryStore
@@ -133,6 +134,28 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 return@launch
             }
+            val pushSources = sources.filter { it.kind == DramaSourceKind.PUSH }
+            val normalSources = sources.filter { it.kind != DramaSourceKind.PUSH }
+            // 纯推送模式：每次进入强制重新请求推送流，不走候选池/rank/曝光去重。
+            // 推送顺序由后端算法决定，本地筛选会打乱顺序、去重会误杀新推送。
+            if (pushSources.isNotEmpty() && normalSources.isEmpty()) {
+                val batch = ShortDramaCandidateProvider.loadPush(pushSources)
+                AppLog.put(
+                    "ShortDrama.refresh[push]: 源=${pushSources.size}, 批次=${batch.size}"
+                )
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        sources = sources,
+                        needsSource = false,
+                        feed = batch,
+                        ended = batch.isEmpty(),
+                        supplement = false,
+                    )
+                }
+                batch.firstOrNull()?.let { recordExposure(it, 0) }
+                return@launch
+            }
             val signature = sources.joinToString("|") { it.id }
             if (force || signature != expandedSignature) {
                 expandedSignature = ""
@@ -207,6 +230,29 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         )
         if (current.searchQuery.isNotEmpty()) return
         if (current.loading || current.loadingMore) return
+        // PUSH 直通：重新请求推送流，按 seriesId 过滤已展示项。
+        // 不进候选池、不过 rank、不写曝光窗口、不循环复用——推送内容由后端决定。
+        val pushSources = _state.value.sources.filter { it.kind == DramaSourceKind.PUSH }
+        if (pushSources.isNotEmpty()) {
+            viewModelScope.launch {
+                _state.update { it.copy(loadingMore = true, ended = false) }
+                val fresh = ShortDramaCandidateProvider.loadPush(pushSources)
+                val shown = _state.value.feed.mapTo(HashSet()) { it.seriesId }
+                val newOnes = fresh.filter { it.seriesId !in shown }
+                AppLog.put(
+                    "ShortDrama.loadMore[push]: 请求=${fresh.size}, 新增=${newOnes.size}, " +
+                        "feedAfter=${_state.value.feed.size + newOnes.size}"
+                )
+                _state.update {
+                    it.copy(
+                        loadingMore = false,
+                        feed = it.feed + newOnes,
+                        ended = newOnes.isEmpty(),
+                    )
+                }
+            }
+            return
+        }
         // 不再因 ended 提前返回：ended 只表示「严格推荐暂时无新内容」，
         // 信息流语义下仍应继续循环复用，否则一旦置位就永久卡死。
         viewModelScope.launch {
@@ -455,15 +501,21 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun onPageShown(candidate: DramaCandidate, index: Int) {
+        val size = _state.value.feed.size
+        val hasPush = _state.value.sources.any { it.kind == DramaSourceKind.PUSH }
+        AppLog.put(
+            "ShortDrama.onPageShown: index=$index, size=$size, hasPush=$hasPush"
+        )
+        if (hasPush) {
+            // 推送模式：提前预取（距末尾 3 条即触发），不记曝光、不做本地去重。
+            // 推送内容由后端算法决定，曝光窗口与去重会误杀新推送。
+            if (size > 0 && index >= size - 3) loadMore()
+            return
+        }
         // 翻页触发必须先于曝光去重早退：
         // 当信息流靠循环复用填入「已曝光过」的候选时，若仍按旧顺序先 return，
         // 这些复用页就永远不会触发 loadMore，池子停在首页 20 条 → 滑动卡死。
         // loadMore 内部有 loadingMore 防重入，且 rank 会做去重，提前触发是安全的。
-        val size = _state.value.feed.size
-        AppLog.put(
-            "ShortDrama.onPageShown: index=$index, size=$size, " +
-                "fire=${size > 0 && index >= (size + 1) / 2}"
-        )
         if (size > 0 && index >= (size + 1) / 2) loadMore()
         // 曝光记录仍需去重，避免同页反复写历史
         if (candidate.seriesId in sessionExposed) return
