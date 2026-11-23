@@ -140,7 +140,11 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
             LogUtils.d(TAG) {
                 "${session.method.name} - $uri - ${session.queryParameterString} - Error End($startAt)\n$e\n${e.stackTraceStr}"
             }
-            return newFixedLengthResponse(e.message)
+            return newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR,
+                "application/json",
+                GSON.toJson(ReturnData().setErrorMsg(e.localizedMessage ?: "服务器内部错误"))
+            )
         }
 
     }

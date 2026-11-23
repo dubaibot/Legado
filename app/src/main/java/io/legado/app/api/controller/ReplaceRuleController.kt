@@ -75,7 +75,8 @@ object ReplaceRuleController {
             if (rule.pattern.isEmpty()) {
                 returnData.setErrorMsg("替换规则不能为空")
             }
-            val text = map["text"] as String
+            val text = map["text"] as? String
+                ?: return returnData.setErrorMsg("参数text不能为空且需为字符串")
             val content = try {
                 if (rule.isRegex) {
                     text.replace(

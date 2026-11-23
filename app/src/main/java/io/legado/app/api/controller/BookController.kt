@@ -105,7 +105,7 @@ object BookController {
             ?: return returnData.setErrorMsg("bookUrl为空")
         val src = parameters["path"]?.firstOrNull()
             ?: return returnData.setErrorMsg("图片链接为空")
-        val width = parameters["width"]?.firstOrNull()?.toInt() ?: 640
+        val width = parameters["width"]?.firstOrNull()?.toIntOrNull() ?: 640
         if (this.bookUrl != bookUrl) {
             this.book = appDb.bookDao.getBook(bookUrl)
                 ?: return returnData.setErrorMsg("bookUrl不对")
@@ -179,7 +179,7 @@ object BookController {
      */
     fun getBookContent(parameters: Map<String, List<String>>): ReturnData {
         val bookUrl = parameters["url"]?.firstOrNull()
-        val index = parameters["index"]?.firstOrNull()?.toInt()
+        val index = parameters["index"]?.firstOrNull()?.toIntOrNull()
         val returnData = ReturnData()
         if (bookUrl.isNullOrEmpty()) {
             return returnData.setErrorMsg("参数url不能为空，请指定书籍地址")
