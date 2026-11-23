@@ -201,6 +201,10 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
 
     fun loadMore() {
         val current = _state.value
+        AppLog.put(
+            "ShortDrama.loadMore[enter]: feed=${current.feed.size}, pool=${candidatePool.size}, " +
+                "loadingMore=${current.loadingMore}, ended=${current.ended}"
+        )
         if (current.searchQuery.isNotEmpty()) return
         if (current.loading || current.loadingMore) return
         // 不再因 ended 提前返回：ended 只表示「严格推荐暂时无新内容」，
@@ -229,9 +233,17 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                 currentFeed = recentFeed,
                 rng = Random.Default,
             )
+            AppLog.put(
+                "ShortDrama.loadMore[rank]: ranked=${ranked.candidates.size}, " +
+                    "recentFeed=${recentFeed.size}, recentExposed=${recentExposed.size}"
+            )
             // 严格推荐不满一批时用循环复用补足，避免池子小而整批取空
             if (ranked.candidates.size < ShortDramaRecommendEngine.BATCH_SIZE) {
                 val recycled = pickRecycled(snapshot, recentFeed)
+                AppLog.put(
+                    "ShortDrama.loadMore[recycle]: ranked=${ranked.candidates.size}, " +
+                        "recycled=${recycled.candidates.size}, pool=${candidatePool.size}"
+                )
                 val existing = ranked.candidates.mapTo(HashSet()) { it.seriesId }
                 val fill = recycled.candidates
                     .filter { it.seriesId !in existing }
@@ -249,6 +261,10 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
                     ended = ranked.candidates.isEmpty() && candidatePool.isEmpty(),
                 )
             }
+            AppLog.put(
+                "ShortDrama.loadMore[done]: add=${ranked.candidates.size}, " +
+                    "feedAfter=${_state.value.feed.size}, pool=${candidatePool.size}"
+            )
             if (ranked.candidates.isNotEmpty()) replenishPoolIfNeeded()
         }
     }
@@ -444,6 +460,10 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         // 这些复用页就永远不会触发 loadMore，池子停在首页 20 条 → 滑动卡死。
         // loadMore 内部有 loadingMore 防重入，且 rank 会做去重，提前触发是安全的。
         val size = _state.value.feed.size
+        AppLog.put(
+            "ShortDrama.onPageShown: index=$index, size=$size, " +
+                "fire=${size > 0 && index >= (size + 1) / 2}"
+        )
         if (size > 0 && index >= (size + 1) / 2) loadMore()
         // 曝光记录仍需去重，避免同页反复写历史
         if (candidate.seriesId in sessionExposed) return
