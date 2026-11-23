@@ -43,6 +43,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
+import androidx.room.withTransaction
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
@@ -1188,8 +1189,10 @@ object ReadBook : CoroutineScope by MainScope() {
                     appDb.bookDao.replace(oldBook, book)
                     BookHelp.updateCacheFolder(oldBook, book)
                 }
-                appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                appDb.bookChapterDao.insert(*cList.toTypedArray())
+                appDb.withTransaction {
+                    appDb.bookChapterDao.delByBook(oldBook.bookUrl)
+                    appDb.bookChapterDao.insert(*cList.toTypedArray())
+                }
                 onChapterListUpdated(book, false)
                 nextTextChapter ?: loadContent(durChapterIndex + 1)
             }
