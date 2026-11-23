@@ -255,7 +255,7 @@ data class TextChapter(
     }
 
     fun getLastParagraphPosition(): Int {
-        return pageParagraphs.last().chapterPosition
+        return pageParagraphs.lastOrNull()?.chapterPosition ?: 0
     }
 
     /**

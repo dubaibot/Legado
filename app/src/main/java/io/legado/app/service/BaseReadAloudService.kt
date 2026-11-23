@@ -370,16 +370,18 @@ abstract class BaseReadAloudService : BaseService(),
             }
             nowSpeak = textChapter.getParagraphNum(readAloudNumber + 1, readAloudByPage) - 1
             if (!readAloudByPage && startPos == 0 && !toLast) {
-                pos = page.chapterPosition -
-                        textChapter.paragraphs[nowSpeak].chapterPosition
+                textChapter.paragraphs.getOrNull(nowSpeak)?.let {
+                    pos = page.chapterPosition - it.chapterPosition
+                }
             }
             if (toLast) {
                 toLast = false
                 readAloudNumber = textChapter.getLastParagraphPosition()
                 nowSpeak = contentList.lastIndex
                 if (page.paragraphs.size == 1) {
-                    pos = page.chapterPosition -
-                            textChapter.paragraphs[nowSpeak].chapterPosition
+                    textChapter.paragraphs.getOrNull(nowSpeak)?.let {
+                        pos = page.chapterPosition - it.chapterPosition
+                    }
                 }
             }
             paragraphStartPos = pos
