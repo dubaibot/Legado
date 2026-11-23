@@ -115,6 +115,13 @@ object HomeBridge {
 
     /**
      * 检查插件是否拥有某函数的调用权限。
+     *
+     * 发现页读取能力（home/category）不参与 manifest 权限声明的强校验：
+     * 大量影视 PY 插件（从 FongMi/TVBox 迁移）的 manifest 只声明 search/detail/play，
+     * 或未声明 permissions，但实际实现了 homeContent/categoryContent。旧逻辑用
+     * `permissions.contains("home")/"category")` 判断，会把这些插件在发现页的调用
+     * 直接拦成 onResult(null)，表现为「分类内容解析不出」。对这类无害的只读能力，
+     * 改为以插件的实际能力检测结果为准（能力检测已包含 Spider 方法别名映射）。
      */
     fun checkPermission(pluginId: String, func: String): Boolean {
         val meta = metaCache[pluginId] ?: PyLoader.listInstalled()
@@ -122,6 +129,8 @@ object HomeBridge {
             ?: return false
 
         if (meta.permissions.isEmpty()) return true
+        // 发现页只读能力：以实际能力检测为准，忽略 manifest 中可能不全的 permissions 声明
+        if (func == "home" || func == "category") return true
         return meta.permissions.contains(func)
     }
 

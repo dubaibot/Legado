@@ -89,9 +89,12 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     private val replenishIntervalMs = 30_000L
     private var lastReplenishAt = 0L
 
-    /** 已做过分类扩容的源签名；同一批源只扩一次，避免重复翻页请求 */
+    /** 已成功分类扩容的源签名；同一批源成功后不重复翻页，失败则允许下次重试 */
     private var expandedSignature: String = ""
     private var expandJob: Job? = null
+    /** 同一批源扩容失败的重试次数上限：PY 源冷启动可能首几次超时，但不能无限重试 */
+    private var expandAttempts = 0
+    private val maxExpandAttempts = 3
 
     /** 复用轮转起点，避免每次都从同一部开始 */
     private var recycledCursor = 0
@@ -133,6 +136,8 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
             val signature = sources.joinToString("|") { it.id }
             if (force || signature != expandedSignature) {
                 expandedSignature = ""
+                // 换源或强制刷新时重置扩容重试计数，避免新源继承旧源耗尽的重试次数
+                expandAttempts = 0
             }
             val now = System.currentTimeMillis()
             val usableCache = !force && signature == cachedPoolSignature &&
@@ -356,10 +361,11 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * 后台分类扩容：同一批源只跑一次，结果追加进候选池。
+     * 后台分类扩容：把「首页 20 条之外」的分类/翻页内容补进候选池。
      *
-     * 与补池节流解耦——这是「只有首页 20 条」的核心补足手段，命中一次后
-     * 池子上限由 [maxPoolSize] 与源侧内容量决定。
+     * 只有成功拿到新内容才固化 [expandedSignature]；PY 源首次调用要初始化 Python 引擎，
+     * 常因冷启动超时返回空——旧实现在调用前就写签名，导致一次失败后本批源永久不再扩容，
+     * 池子永远停在首页 20 条。现在失败会清签名并在后续 loadMore 重试，最多 [maxExpandAttempts] 次。
      */
     private fun ensureExpanded() {
         if (expandJob?.isActive == true) return
@@ -368,20 +374,25 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
             if (sources.isEmpty()) return@launch
             val signature = sources.joinToString("|") { it.id }
             if (signature == expandedSignature) return@launch
-            expandedSignature = signature
+            if (expandAttempts >= maxExpandAttempts) return@launch
+            expandAttempts++
             val existing = candidatePool.mapTo(HashSet()) { it.seriesId }
             val fresh = runCatching {
                 ShortDramaCandidateProvider.expand(sources, existing)
             }.getOrDefault(emptyList())
             if (fresh.isNotEmpty()) {
                 mergeIntoPool(fresh)
+                // 仅在成功后固化签名：本批源不再重复扩容
+                expandedSignature = signature
                 AppLog.put(
                     "ShortDramaViewModel.expand: fresh=${fresh.size}, pool=${candidatePool.size}"
                 )
             } else {
-                AppLog.put("ShortDramaViewModel.expand: 分类翻页与搜索均未拿到新内容，池=${candidatePool.size}")
-                // 池子仍停在首页条数时给用户可见反馈，避免误以为「只有 20 条」是界面 bug
-                if (candidatePool.size <= 20) {
+                // 失败：清除签名，允许下次 loadMore 再试（PY 冷启动超时可自愈）
+                expandedSignature = ""
+                AppLog.put("ShortDramaViewModel.expand: 本轮未拿到新内容(第 $expandAttempts/$maxExpandAttempts 次)，池=${candidatePool.size}")
+                // 重试耗尽且池子仍停在首页条数时，给用户可见反馈，避免误以为「只有 20 条」是界面 bug
+                if (expandAttempts >= maxExpandAttempts && candidatePool.size <= 20) {
                     appCtx.toastOnUi("当前视频源只提供 ${candidatePool.size} 条内容，可在源管理更换视频源")
                 }
             }
@@ -428,11 +439,15 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun onPageShown(candidate: DramaCandidate, index: Int) {
-        if (candidate.seriesId in sessionExposed) return
-        viewModelScope.launch { recordExposure(candidate, index) }
-        // 滑过当前批次一半就预取下一批
+        // 翻页触发必须先于曝光去重早退：
+        // 当信息流靠循环复用填入「已曝光过」的候选时，若仍按旧顺序先 return，
+        // 这些复用页就永远不会触发 loadMore，池子停在首页 20 条 → 滑动卡死。
+        // loadMore 内部有 loadingMore 防重入，且 rank 会做去重，提前触发是安全的。
         val size = _state.value.feed.size
         if (size > 0 && index >= (size + 1) / 2) loadMore()
+        // 曝光记录仍需去重，避免同页反复写历史
+        if (candidate.seriesId in sessionExposed) return
+        viewModelScope.launch { recordExposure(candidate, index) }
     }
 
     private suspend fun recordExposure(candidate: DramaCandidate, index: Int) {
