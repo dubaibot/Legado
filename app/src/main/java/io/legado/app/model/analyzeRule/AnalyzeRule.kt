@@ -20,7 +20,7 @@ import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.CookieStore
-import io.legado.app.help.source.evalJsLibInto
+import io.legado.app.help.source.getShareScope
 import io.legado.app.model.Debug
 import io.legado.app.model.debug.toDebugString
 import io.legado.app.model.webBook.WebBook
@@ -1083,8 +1083,23 @@ class AnalyzeRule(
             bindings["rssArticle"] = rssArticle
             bindings["fromBookInfo"] = isFromBookInfo
         }
-        val scope = RhinoScriptEngine.getRuntimeScope(bindings)
-        source?.evalJsLibInto(scope, coroutineContext)
+        val topScope = source?.getShareScope(coroutineContext) ?: topScopeRef?.get()
+        val scope = if (topScope == null) {
+            // 首次（或缓存被 GC）时新建一套标准对象顶层；调用次数多了之后缓存起来复用，
+            // 省掉重复 initStandardObjects 的开销（旧实现缓存的是 prototype）。
+            val standardTop = RhinoScriptEngine.newStandardTopLevel()
+            bindings.apply {
+                chainTo(standardTop)
+            }
+            if (evalJSCallCount++ > 16) {
+                topScopeRef = WeakReference(standardTop)
+            }
+            bindings
+        } else {
+            bindings.apply {
+                chainTo(topScope)
+            }
+        }
         
         val jsResult = try {
             val script = compileScriptCache(jsStr)
