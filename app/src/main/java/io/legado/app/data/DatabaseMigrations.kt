@@ -13,7 +13,7 @@ object DatabaseMigrations {
     val migrations: Array<Migration> by lazy {
         arrayOf(
             migration_10_11, migration_11_12, migration_12_13, migration_13_14,
-            migration_14_15, migration_15_17, migration_17_18, migration_18_19,
+            migration_14_15, migration_15_17, migration_16_17, migration_17_18, migration_18_19,
             migration_19_20, migration_20_21, migration_21_22, migration_22_23,
             migration_23_24, migration_24_25, migration_25_26, migration_26_27,
             migration_27_28, migration_28_29, migration_29_30, migration_30_31,
@@ -220,6 +220,13 @@ object DatabaseMigrations {
     private val migration_15_17 = object : Migration(15, 17) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("CREATE TABLE IF NOT EXISTS `readRecord` (`bookName` TEXT NOT NULL, `readTime` INTEGER NOT NULL, PRIMARY KEY(`bookName`))")
+        }
+    }
+
+    // 16 -> 17: 16 与 17 结构完全一致（readRecord 已在 16 引入），空迁移补齐版本链
+    private val migration_16_17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 无结构变更，仅推进版本号
         }
     }
 
