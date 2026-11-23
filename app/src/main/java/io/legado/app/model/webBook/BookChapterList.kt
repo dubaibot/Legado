@@ -134,7 +134,9 @@ object BookChapterList {
                         )
                         nextUrl = chapterData.second.firstOrNull() ?: ""
                         chapterList.addAll(chapterData.first)
-                    }
+                    } ?: throw NoStackTraceException(
+                        appCtx.getString(R.string.error_get_web_content, nextUrl)
+                    )
                 }
                 Debug.log(bookSource.bookSourceUrl, "◇目录总页数:${nextUrlList.size}")
             }
