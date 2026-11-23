@@ -220,4 +220,16 @@ Entries discovered by the Agent during task execution should follow this format:
 - Instructions:
   - 本项目对外品牌统一为「阅读 D」（ReadingD），仓库 dubaibot/Legado，applicationId com.myreaderD.reader
   - 下载、项目主页、贡献者、更新检查一律指向 https://github.com/dubaibot/Legado，不再引用 Sigma / 阅读M / 阅读Archive / gitee lyc486
-  - 关于页文案取自 app_name_sigma / about_description_sigma / contributors_summary_sigma / app_share_description_sigma 四个键，改品牌时四处与 values、values-zh 两份 strings 同步修改
+   - 关于页文案取自 app_name_sigma / about_description_sigma / contributors_summary_sigma / app_share_description_sigma 四个键，改品牌时四处与 values、values-zh 两份 strings 同步修改
+
+[公网站点发布机制与 sharecode 访问约定]
+- Date: 2026-11-22
+- Context: 将短剧模块源码/补丁/审查方案整理为静态站点并发布公网，经 workbuddy.host showcase 托管
+- Category: Operations & Deployment
+- Instructions:
+  - 发布形态：静态站点，本地用 `python3 -m http.server <port> --bind 0.0.0.0` 暂存预览，最终经 showcase API 上传到 workbuddy.host；站点内容目录（ALL.txt/index.html 等）在工作区之外，不在仓库内
+  - 分享链接格式：`https://<站点ID>.app.workbuddy.host/?sharecode=<分享码>`；当前站点 ID `a45a36eb07bd69046`，当前分享码 `ZHZVG3IYUZ`（分享码会轮换，轮换后需同步更新本条）
+  - **任何资源 URL 都必须带 `?sharecode=<分享码>`**（如 `text/ALL.txt?sharecode=ZHZVG3IYUZ`），否则返回 403「链接不完整」拦截页；回读校验公网内容时务必带该参数
+  - 一次性合集入口为 `text/ALL.txt`（含全部源码、补丁、文档），优先抓取这一个
+  - 发布前先停掉本地预览的 http.server 避免端口冲突；**禁止用 `pkill -f <模式>` 停服务**——模式会匹配到当前 shell 自身命令行（含相同字符串）把自己杀掉，改用查端口占用后按 PID 停止或用 background_terminal_kill 加终端 ID
+  - 发布与回读校验流程：复制内容进站点目录 → 重建合集（ALL.txt/ALL.md）→ 更新 index.html → 启本地服务 → 发布 → 带 sharecode 回读 `cmp` 比对本地与公网字节一致
