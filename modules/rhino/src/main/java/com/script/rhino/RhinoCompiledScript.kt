@@ -69,7 +69,9 @@ internal class RhinoCompiledScript(
         val result: Any?
         try {
             cx.checkRecursive()
-            val ret = script.exec(cx, scope)
+            val ret = NestedScriptScope.enter(cx, scope).use {
+                script.exec(cx, scope, engine.topLevelThis(scope))
+            }
             result = engine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
             throw RhinoScriptEngine.createScriptException(re, source, sourceName)
@@ -93,7 +95,9 @@ internal class RhinoCompiledScript(
             try {
                 cx.checkRecursive()
                 try {
-                    ret = cx.executeScriptWithContinuations(script, scope)
+                    ret = NestedScriptScope.enter(cx, scope).use {
+                        cx.executeScriptWithContinuations(script, scope)
+                    }
                 } catch (e: ContinuationPending) {
                     var pending = e
                     while (true) {
@@ -102,7 +106,9 @@ internal class RhinoCompiledScript(
                             val suspendFunction = pending.applicationState as suspend () -> Any?
                             val functionResult = suspendFunction()
                             val continuation = pending.continuation
-                            ret = cx.resumeContinuation(continuation, scope, functionResult)
+                            ret = NestedScriptScope.enter(cx, scope).use {
+                                cx.resumeContinuation(continuation, scope, functionResult)
+                            }
                             break
                         } catch (e: ContinuationPending) {
                             pending = e

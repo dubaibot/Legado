@@ -398,6 +398,10 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
         }
     }
 
+    /** 返回 scope 对应的 globalThis,用作脚本执行时的 this 对象 */
+    fun topLevelThis(scope: VarScope): Scriptable =
+        ScriptableObject.getTopLevelScope(scope).getGlobalThis()
+
     /** 对齐旧语义:每次调用挂接一套全新标准对象,脚本对内建原型的改动不跨调用泄漏 */
     override fun getRuntimeScope(bindings: ScriptBindings): ScriptBindings {
         bindings.chainTo(newStandardTopLevel())
