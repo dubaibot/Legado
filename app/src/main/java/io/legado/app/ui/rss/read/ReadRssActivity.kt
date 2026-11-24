@@ -956,30 +956,43 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         // 模块⑥：选择模式 JS
         private const val SELECT_JS =
             "(function(){" +
-                "if(window.__lycSelectInit)return;" +
-                "window.__lycSelectInit=true;" +
-                "window.__lycSelectMap={};" +
+                "window.__lycSelectMap=window.__lycSelectMap||{};" +
                 "window.__lycSelectUpdate=function(){" +
                 "var arr=[];for(var k in window.__lycSelectMap){if(window.__lycSelectMap[k])arr.push(k);}" +
                 "window.lycImgSelect.onUpdate(JSON.stringify(arr));" +
                 "};" +
-                "document.querySelectorAll('img').forEach(function(img){" +
+                "function bindOne(img){" +
+                "if(img.getAttribute('data-lyc-bound'))return;" +
+                "img.setAttribute('data-lyc-bound','1');" +
                 "img.style.cursor='pointer';" +
+                "if(window.__lycSelectMap[img.src]){img.style.boxShadow='inset 0 0 0 3px #FF5722';}" +
                 "img.addEventListener('click',function(e){" +
                 "e.preventDefault();e.stopPropagation();" +
                 "var u=img.src;" +
-                "if(window.__lycSelectMap[u]){window.__lycSelectMap[u]=false;img.style.outline='none';}" +
-                "else{window.__lycSelectMap[u]=true;img.style.outline='3px solid #FF5722';}" +
+                "if(window.__lycSelectMap[u]){window.__lycSelectMap[u]=false;img.style.boxShadow='none';}" +
+                "else{window.__lycSelectMap[u]=true;img.style.boxShadow='inset 0 0 0 3px #FF5722';}" +
                 "window.__lycSelectUpdate();" +
                 "});" +
+                "}" +
+                "document.querySelectorAll('img:not([data-lyc-bound])').forEach(bindOne);" +
+                "if(!window.__lycSelectObserver){" +
+                "window.__lycSelectObserver=new MutationObserver(function(muts){" +
+                "muts.forEach(function(m){" +
+                "if(m.addedNodes)m.addedNodes.forEach(function(n){" +
+                "if(n.tagName==='IMG'){bindOne(n);}" +
+                "else if(n.querySelectorAll){n.querySelectorAll('img:not([data-lyc-bound])').forEach(bindOne);}" +
                 "});" +
+                "});" +
+                "});" +
+                "window.__lycSelectObserver.observe(document.body,{childList:true,subtree:true});" +
+                "}" +
                 "})();"
 
         private const val SELECT_ALL_JS =
             "(function(){" +
                 "document.querySelectorAll('img').forEach(function(img){" +
                 "window.__lycSelectMap[img.src]=true;" +
-                "img.style.outline='3px solid #FF5722';" +
+                "img.style.boxShadow='inset 0 0 0 3px #FF5722';" +
                 "});" +
                 "window.__lycSelectUpdate();" +
                 "})();"
@@ -987,18 +1000,19 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         private const val CLEAR_SELECT_JS =
             "(function(){" +
                 "document.querySelectorAll('img').forEach(function(img){" +
-                "window.__lycSelectMap[img.src]=false;" +
-                "img.style.outline='none';" +
+                "delete window.__lycSelectMap[img.src];" +
+                "img.style.boxShadow='none';" +
                 "});" +
                 "window.__lycSelectUpdate();" +
+                "if(window.__lycSelectObserver){window.__lycSelectObserver.disconnect();window.__lycSelectObserver=null;}" +
                 "})();"
 
         private const val REVERT_SELECT_JS =
             "(function(){" +
                 "document.querySelectorAll('img').forEach(function(img){" +
                 "var u=img.src;" +
-                "if(window.__lycSelectMap[u]){window.__lycSelectMap[u]=false;img.style.outline='none';}" +
-                "else{window.__lycSelectMap[u]=true;img.style.outline='3px solid #FF5722';}" +
+                "if(window.__lycSelectMap[u]){window.__lycSelectMap[u]=false;img.style.boxShadow='none';}" +
+                "else{window.__lycSelectMap[u]=true;img.style.boxShadow='inset 0 0 0 3px #FF5722';}" +
                 "});" +
                 "window.__lycSelectUpdate();" +
                 "})();"
