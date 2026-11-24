@@ -47,11 +47,9 @@ fun <T> BaseSource?.withBookSourceClassPolicy(block: () -> T): T {
 /**
  * 把当前书源的 jsLib 直接执行进 [scope]（通常是本次求值的绑定作用域）。
  *
- * 关键点：htmlunit-core-js 与 mozilla Rhino 的 `this` 语义不同——
- * mozilla 中裸调用函数时 `this` 为「调用作用域」，而 corejs 中为「定义作用域」。
- * 若把 jsLib 放进独立的共享作用域，jsLib 内部函数里的 `this.java/this.source` 会取到
- * 不含绑定的共享作用域而抛错。把 jsLib 就地注入本次绑定作用域后，
- * jsLib 函数被调用时 `this` 即为含 java/source/book/chapter 等的绑定作用域，行为与 Max 对齐。
+ * 绑定链问题已按 Max 方案在 `SharedJsScope` 内解决（命名空间隔离 + `chainTo` 链式绑定），
+ * jsLib 经 `getShareScope` 编译注入后即可在调用作用域正确取到 java/source 等绑定。
+ * 保留本函数仅用于兼容其它调用者（`BaseSource.kt`、`AnalyzeUrl.kt` 等）。
  */
 fun BaseSource.evalJsLibInto(scope: VarScope, coroutineContext: CoroutineContext? = null) {
     SharedJsScope.getJsLibString(jsLib)?.let {
