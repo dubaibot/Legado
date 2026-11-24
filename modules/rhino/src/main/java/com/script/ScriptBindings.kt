@@ -8,8 +8,12 @@ import org.htmlunit.corejs.javascript.TopLevel
 
 /**
  * 脚本求值作用域:根标准对象的 isolate(对齐上游 TopLevel.createIsolate 范式)。
- * 写入(含脚本顶层 var/const 与 set 注入的绑定)落在自有 globalThis,
- * 名字解析经 globalThis 原型链回落父层;各实例互不可见。
+ *
+ * 注入的绑定(java/source 等)同时写入本实例(VarScope 槽位,供裸变量名解析)
+ * 与 globalThis(ScriptableObject 槽位,供 this.xxx 属性访问解析)。
+ * 脚本顶层 this 解析到 globalThis,裸变量名经 VarScope.get 解析到实例,
+ * 两套查找路径均能命中绑定。各实例的 globalThis 相互独立,写入互不可见;
+ * 父层定义(jsLib/CryptoJS 共享库或标准对象)经 globalThis 原型链回落可读。
  */
 class ScriptBindings : TopLevel(newIsolateGlobal()) {
 
@@ -31,7 +35,9 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
     operator fun set(key: String, value: Any?) {
         Context.enter()
         try {
-            put(key, this, Context.javaToJS(value, this))
+            val jsValue = Context.javaToJS(value, this)
+            put(key, this, jsValue)
+            globalThis.put(key, globalThis, jsValue)
         } finally {
             Context.exit()
         }
@@ -40,7 +46,9 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
     operator fun set(index: Int, value: Any?) {
         Context.enter()
         try {
-            put(index, this, Context.javaToJS(value, this))
+            val jsValue = Context.javaToJS(value, this)
+            put(index, this, jsValue)
+            globalThis.put(index, globalThis, jsValue)
         } finally {
             Context.exit()
         }
