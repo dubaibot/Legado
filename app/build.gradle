@@ -375,6 +375,9 @@ dependencies {
     implementation(libs.soraEditor.core)
     implementation(libs.soraEditor.language.textmate)
 
+    // 底栏棱柱透明效果（折射+色散），依赖液态玻璃库
+    implementation(libs.liquidglass)
+
     // Jetpack Compose (多源合并基础设施)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
