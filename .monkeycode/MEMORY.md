@@ -233,3 +233,26 @@ Entries discovered by the Agent during task execution should follow this format:
   - 一次性合集入口为 `text/ALL.txt`（含全部源码、补丁、文档），优先抓取这一个
   - 发布前先停掉本地预览的 http.server 避免端口冲突；**禁止用 `pkill -f <模式>` 停服务**——模式会匹配到当前 shell 自身命令行（含相同字符串）把自己杀掉，改用查端口占用后按 PID 停止或用 background_terminal_kill 加终端 ID
   - 发布与回读校验流程：复制内容进站点目录 → 重建合集（ALL.txt/ALL.md）→ 更新 index.html → 启本地服务 → 发布 → 带 sharecode 回读 `cmp` 比对本地与公网字节一致
+
+[Rhino 引擎 JVM 复现实验环境（免真机、免全量构建）]
+- Date: 2026-11-25
+- Context: 排查 B 站书源 jsLib 函数内 this 取不到 java（getString is not a function），复现并验证动态绑定层修复时搭建
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 先触发 RhinoScriptEngine 类初始化（引用 RhinoScriptEngine.INSTANCE）再 Context.enter()；否则 initGlobal 尚未装 RhinoContextFactory，eval 内 `Context.enter() as RhinoContext` 抛 ClassCastException
+  - JVM classpath 需含：`modules/rhino/build/tmp/kotlin-classes/debug` + `htmlunit-core-js-5.3.0.jar` + kotlin-stdlib + kotlinx-coroutines-core-jvm + collection-jvm + okio-jvm + `/opt/android-sdk/platforms/android-36/android.jar`；另加自建 `android.util.Log` 桩目录并置于 classpath 最前（android.jar 的 Log 会抛 Stub!）
+  - 只改 rhino 引擎时先跑 `./gradlew :modules:rhino:compileDebugKotlin --max-workers=1 --no-daemon`（约 40-50s），用 JVM 复现验证后再全量 `:app:assembleDebug`
+  - 复现「共享 jsLib 函数内部 this 取不到绑定」的必要条件：共享 scope 先 `preventExtensions()`，再让子 bindings `chainTo(shared)` 后执行规则；缺任一步都复现不到
+
+[Rhino doTopCall 断言错误（AssertionError @ ScriptRuntime.java:4969）定位与修复]
+- Date: 2026-11-25
+- Context: 修复 B 站书源目录页 `java.getLoginInfoMap()` 触发的 `AssertionError: assert cx.currentActivationCall == null`，定位并验证修复
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 断言位于 `ScriptRuntime.doTopCall(...,boolean)` 的 finally，结束顶层调用时要求 `Context.currentActivationCall == null`；该字段是包私有 `NativeCall`，与 `topCallScope`(TopLevel) 并列
+  - 触发条件：规则函数执行到一半（激活记录已入栈，`currentActivationCall` 非空）时，其内部调宿主方法再次执行 jsLib（嵌套顶层调用 `RhinoScriptEngine.eval → doTopCall`），内层结束时断言失败
+  - Android debug 包默认开启 Java 断言（AGP 4.1+ 的 debug 构建自动 `-ea`），release 不开启，故仅 debug 包报错；JVM 复现必须显式 `java -ea`
+  - `-ea` 启用断言后系统属性 `java.assertions` 仍为 null，**不要**用该属性判断断言是否开启，改用实际 `assert false` 抛 `AssertionError` 来探测
+  - 修复：`NestedScriptScope` 进入时保存并清空 `currentActivationCall`，`close()` 恢复；与既有 `topCallScope` 处理一致，6 处嵌套入口全经过该类，单点覆盖
+  - 激活链通过 `NativeCall.parentActivationCall` 链接，清空/恢复 `Context.currentActivationCall` 不动 parent 链，外层函数返回后由 `exitActivationFunction` 正确回退；唯一边角：内层脚本读外层函数 `.arguments` 得 null
+  - 负向对照法：临时回退修复（仅清 `topCallScope`）重编译后 `-ea` 跑，`AssertionError` 精确复现；恢复修复后同条件全过，确认修复为生效原因而非断言未开启
