@@ -4,8 +4,10 @@ import android.util.Log
 import com.script.rhino.RhinoScriptEngine
 import org.htmlunit.corejs.javascript.Context
 import org.htmlunit.corejs.javascript.NativeObject
+import org.htmlunit.corejs.javascript.Scriptable
 import org.htmlunit.corejs.javascript.ScriptableObject
 import org.htmlunit.corejs.javascript.TopLevel
+import org.htmlunit.corejs.javascript.VarScope
 
 /**
  * 脚本求值作用域:根标准对象的 isolate(对齐上游 TopLevel.createIsolate 范式)。
@@ -27,6 +29,15 @@ import org.htmlunit.corejs.javascript.TopLevel
  */
 class ScriptBindings : TopLevel(newIsolateGlobal()) {
 
+    /**
+     * 本次求值注入的命名绑定(键 → 已 jsToJava 包装后的值)。
+     *
+     * 供 [DynamicBindingLayer] 在「共享 jsLib 函数内部」按线程取回本次求值的绑定:
+     * jsLib 函数被规则脚本裸调用时,其 `this` 是共享作用域的 globalThis,取不到本次
+     * 注入的 java/source 等,需经原型链上的动态层回落到本表。
+     */
+    private val ownBindings = HashMap<String, Any?>()
+
     init {
         copyBuiltins(root, false)
         copyAssociatedValue(root)
@@ -37,9 +48,28 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
      * 全新标准对象)对本作用域可读,写入仍落本作用域。
      */
     fun chainTo(parent: TopLevel) {
+        // 若父层是另一个 ScriptBindings(书源共享 jsLib 作用域),先确保它挂有动态绑定层:
+        // 共享 jsLib 函数被裸调用时其内部 `this` 是该共享 globalThis,需要一层按线程
+        // 回落到本次求值注入值(java/source 等),否则 `const {java}=this` 会取到
+        // NativeJavaPackage。幂等且同步,首次规则求值链上时安装一次。
+        if (parent is ScriptBindings && parent !== this) {
+            ensureDynamicBindingLayer(parent)
+        }
         globalThis.prototype = parent.globalThis
         copyBuiltins(parent, false)
         copyAssociatedValue(parent)
+    }
+
+    private fun ensureDynamicBindingLayer(shared: ScriptBindings) {
+        val sharedGlobal = shared.globalThis
+        synchronized(sharedGlobal) {
+            if (sharedGlobal.getPrototype() is DynamicBindingLayer) {
+                return
+            }
+            sharedGlobal.setPrototype(
+                DynamicBindingLayer(sharedGlobal.getPrototype(), shared)
+            )
+        }
     }
 
     operator fun set(key: String, value: Any?) {
@@ -49,6 +79,9 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
             // WrapFactory 内部状态异常),单个绑定失败不能让整轮注入中断——否则后续
             // java/source 等绑定缺失,规则脚本 this.xxx 回落到 NativeJavaPackage。
             val jsValue = wrapValue(key, value)
+            // 同步记录到自有绑定表:即便反射写 globalThis 失败,共享 jsLib 函数内部的
+            // this.xxx 也能经 DynamicBindingLayer 取到本次注入值。
+            ownBindings[key] = jsValue
             try {
                 put(key, this, jsValue)
             } catch (e: Throwable) {
@@ -148,9 +181,49 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
         set(key, value)
     }
 
+    /**
+     * 取本次求值注入的命名绑定;不存在时返回 [Scriptable.NOT_FOUND]。
+     * 只查自有表,不沿原型链,避免与 DynamicBindingLayer 形成递归。
+     */
+    internal fun ownBinding(name: String): Any? =
+        if (ownBindings.containsKey(name)) ownBindings[name] else Scriptable.NOT_FOUND
+
     companion object {
 
         private const val TAG = "ScriptBindings"
+
+        /**
+         * 当前线程正在执行的求值绑定作用域。
+         *
+         * 规则脚本执行时指向 per-call [ScriptBindings];jsLib 编译/加载阶段指向共享
+         * 作用域自身。DynamicBindingLayer 据此在共享层缺名时回落到本次求值注入值。
+         */
+        private val evalScopeLocal = ThreadLocal<ScriptBindings?>()
+
+        internal fun currentEval(): ScriptBindings? = evalScopeLocal.get()
+
+        /** 进入一次求值:记录 [scope](仅当其本身是 [ScriptBindings]),返回旧值用于恢复 */
+        internal fun pushEval(scope: VarScope): ScriptBindings? {
+            val prev = evalScopeLocal.get()
+            if (scope is ScriptBindings) {
+                evalScopeLocal.set(scope)
+            }
+            return prev
+        }
+
+        internal fun popEval(prev: ScriptBindings?) {
+            evalScopeLocal.set(prev)
+        }
+
+        /** 在 [scope] 作为「当前求值绑定」的语义下执行 [block],结束后恢复 */
+        internal inline fun <T> withCurrentEval(scope: VarScope, block: () -> T): T {
+            val prev = pushEval(scope)
+            try {
+                return block()
+            } finally {
+                popEval(prev)
+            }
+        }
 
         @Volatile
         private var isExtensibleField: java.lang.reflect.Field? = null

@@ -25,6 +25,7 @@
 package com.script.rhino
 
 import com.script.CompiledScript
+import com.script.ScriptBindings
 import com.script.ScriptEngine
 import com.script.ScriptException
 import kotlinx.coroutines.Job
@@ -69,8 +70,10 @@ internal class RhinoCompiledScript(
         val result: Any?
         try {
             cx.checkRecursive()
-            val ret = NestedScriptScope.enter(cx, scope).use {
-                script.exec(cx, scope, engine.topLevelThis(scope))
+            val ret = ScriptBindings.withCurrentEval(scope) {
+                NestedScriptScope.enter(cx, scope).use {
+                    script.exec(cx, scope, engine.topLevelThis(scope))
+                }
             }
             result = engine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
@@ -95,8 +98,10 @@ internal class RhinoCompiledScript(
             try {
                 cx.checkRecursive()
                 try {
-                    ret = NestedScriptScope.enter(cx, scope).use {
-                        cx.executeScriptWithContinuations(script, scope)
+                    ret = ScriptBindings.withCurrentEval(scope) {
+                        NestedScriptScope.enter(cx, scope).use {
+                            cx.executeScriptWithContinuations(script, scope)
+                        }
                     }
                 } catch (e: ContinuationPending) {
                     var pending = e
@@ -106,8 +111,10 @@ internal class RhinoCompiledScript(
                             val suspendFunction = pending.applicationState as suspend () -> Any?
                             val functionResult = suspendFunction()
                             val continuation = pending.continuation
-                            ret = NestedScriptScope.enter(cx, scope).use {
-                                cx.resumeContinuation(continuation, scope, functionResult)
+                            ret = ScriptBindings.withCurrentEval(scope) {
+                                NestedScriptScope.enter(cx, scope).use {
+                                    cx.resumeContinuation(continuation, scope, functionResult)
+                                }
                             }
                             break
                         } catch (e: ContinuationPending) {
