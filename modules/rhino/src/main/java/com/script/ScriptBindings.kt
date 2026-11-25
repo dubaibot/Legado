@@ -15,6 +15,11 @@ import org.htmlunit.corejs.javascript.TopLevel
  * 两套查找路径均能命中绑定。各实例的 globalThis 相互独立,写入互不可见;
  * 父层定义(jsLib/CryptoJS 共享库或标准对象)经 globalThis 原型链回落可读。
  *
+ * SharedJsScope 在 jsLib 求值后对 globalThis 调用 preventExtensions(),
+ * 此后 globalThis.put 对新属性静默失败(不抛异常,不写入)。宿主注入的绑定
+ * 必须始终落到 globalThis 才能保证规则脚本 `this.xxx` 解析正确,故 [set]
+ * 在 globalThis 不可扩展时临时恢复可扩展性完成写入后再重新锁定。
+ *
  * 不自定义 globalThis.get 回落:新版 Rhino TopLevel.get 已内置
  * getProperty(globalThis) 回落,自定义回落会与该内置回落形成原型链自环,
  * 导致 StackOverflowError。
@@ -41,7 +46,7 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
         try {
             val jsValue = Context.javaToJS(value, this)
             put(key, this, jsValue)
-            globalThis.put(key, globalThis, jsValue)
+            writeGlobalThis(key, jsValue)
         } finally {
             Context.exit()
         }
@@ -52,9 +57,36 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
         try {
             val jsValue = Context.javaToJS(value, this)
             put(index, this, jsValue)
-            globalThis.put(index, globalThis, jsValue)
+            writeGlobalThis(index, jsValue)
         } finally {
             Context.exit()
+        }
+    }
+
+    private fun writeGlobalThis(key: String, jsValue: Any) {
+        val gt = globalThis
+        if (gt.isExtensible) {
+            gt.put(key, gt, jsValue)
+            return
+        }
+        withUnlockedGlobal(gt) { gt.put(key, gt, jsValue) }
+    }
+
+    private fun writeGlobalThis(index: Int, jsValue: Any) {
+        val gt = globalThis
+        if (gt.isExtensible) {
+            gt.put(index, gt, jsValue)
+            return
+        }
+        withUnlockedGlobal(gt) { gt.put(index, gt, jsValue) }
+    }
+
+    private inline fun withUnlockedGlobal(gt: ScriptableObject, block: () -> Unit) {
+        isExtensibleField.setBoolean(gt, true)
+        try {
+            block()
+        } finally {
+            isExtensibleField.setBoolean(gt, false)
         }
     }
 
@@ -63,6 +95,11 @@ class ScriptBindings : TopLevel(newIsolateGlobal()) {
     }
 
     companion object {
+
+        private val isExtensibleField by lazy {
+            ScriptableObject::class.java.getDeclaredField("isExtensible")
+                .apply { isAccessible = true }
+        }
 
         private val root: TopLevel by lazy {
             RhinoScriptEngine // 先装配全局 ContextFactory 再进 Context
