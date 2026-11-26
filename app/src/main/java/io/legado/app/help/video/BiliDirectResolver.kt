@@ -39,12 +39,19 @@ object BiliDirectResolver {
     }
 
     /**
-     * aid → 可直播的媒体地址：先 view 取 cid，再 playurl 取 durl[0].url（mp4/flv 直链）。
+     * aid → 可直播的媒体地址：优先用调用方传入的 cid（通常来自 pageUrl），
+     * 没有才回退 view 接口取 cid，再 playurl 取 durl[0].url（mp4/flv 直链）。
      * 失败返回 null。
      */
-    suspend fun resolve(aid: String, referer: String = DEFAULT_REFERER): String? {
-        val cid = runCatching { fetchCid(aid, referer) }.getOrNull() ?: return null
-        return runCatching { fetchPlayUrl(aid, cid, referer) }.getOrNull()
+    suspend fun resolve(
+        aid: String,
+        cid: String? = null,
+        referer: String = DEFAULT_REFERER
+    ): String? {
+        val realCid = cid?.takeIf { it.isNotBlank() }
+            ?: runCatching { fetchCid(aid, referer) }.getOrNull()
+            ?: return null
+        return runCatching { fetchPlayUrl(aid, realCid, referer) }.getOrNull()
     }
 
     /** view 接口取 cid：优先单 P 的 cid，其次 pages[0].cid。 */

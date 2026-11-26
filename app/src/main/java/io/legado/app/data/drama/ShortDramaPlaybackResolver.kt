@@ -28,6 +28,7 @@ object ShortDramaPlaybackResolver {
 
     private const val RESOLVE_TIMEOUT_MS = 10_000L
     private const val RESOLVE_PAGE_TIMEOUT_MS = 25_000L
+    private val CID_REGEX = Regex("cid=(\\d+)")
 
     /** 线路名：优先取 flag，其次取 name 中「·」前缀（与主播放器 groupPyPlayLines 一致）。 */
     private fun routeOf(line: PlayLine): String =
@@ -142,7 +143,10 @@ object ShortDramaPlaybackResolver {
                 }
                 val chapter = chapters.first()
                 BiliDirectResolver.parsePseudoUrl(chapter.url)?.let { aid ->
-                    BiliDirectResolver.resolve(aid)?.let { url ->
+                    BiliDirectResolver.resolve(
+                        aid,
+                        cid = CID_REGEX.find(candidate.pageUrl)?.groupValues?.get(1)
+                    )?.let { url ->
                         return@withTimeoutOrNull DramaPlayable(
                             url = url,
                             headers = mapOf("Referer" to chapter.url),
@@ -177,7 +181,10 @@ object ShortDramaPlaybackResolver {
                     )
                 }
                 BiliDirectResolver.parsePseudoUrl(body)?.let { aid ->
-                    BiliDirectResolver.resolve(aid)?.let { url ->
+                    BiliDirectResolver.resolve(
+                        aid,
+                        cid = CID_REGEX.find(candidate.pageUrl)?.groupValues?.get(1)
+                    )?.let { url ->
                         return@withTimeoutOrNull DramaPlayable(
                             url = url,
                             headers = referer,
