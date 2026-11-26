@@ -3,8 +3,12 @@ package io.legado.app.data.drama
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.video.SourceType
 import io.legado.app.data.video.VideoSourceRegistry
+import io.legado.app.help.source.exploreKindsJson
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.putPrefStringSet
 import io.legado.app.utils.removePref
@@ -75,9 +79,38 @@ object ShortDramaSourceStore {
         return listOf(DEFAULT_PUSH) + custom.map { DramaSourceRef(DramaSourceKind.PUSH, it, it) }
     }
 
-    /** 取推送源对应的发现 URL：内置源返回 B 站 feed 地址，自定义源直接用其 key 作为 URL。 */
-    fun pushUrl(ref: DramaSourceRef): String =
-        if (ref.key == DEFAULT_PUSH.key) BILI_FEED_URL else ref.key
+    /**
+     * 取推送源对应的发现 URL：优先从书源探索分类里找「推送视频/推荐/rcmd/feed」分类
+     * 的 URL 模板（保留 `{{page}}` 占位供翻页替换）；找不到才回落内置 feed 地址（带页码占位）。
+     * 自定义源直接用其 key 作为 URL。
+     */
+    suspend fun pushUrl(ref: DramaSourceRef): String =
+        pushExploreUrl(ref) ?: if (ref.key == DEFAULT_PUSH.key) BILI_FEED_URL + "?{{page}}" else ref.key
+
+    /**
+     * 从书源探索分类里找「推送视频/推荐/rcmd/feed」分类的 URL 模板。
+     *
+     * 按 ref.key 查库取真实书源，找不到则匹配已启用的 B 站源（url 含 bilibili 或名称含 B 站）；
+     * 解析 exploreKindsJson 后取首个命中关键词的 url 类型分类，返回其 URL 模板（保留 `{{page}}`
+     * 占位，翻页时由 AnalyzeUrl 替换）。查库失败或无匹配返回 null。
+     */
+    suspend fun pushExploreUrl(ref: DramaSourceRef): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val source = appDb.bookSourceDao.getBookSource(ref.key)
+                ?: appDb.bookSourceDao.allEnabled.firstOrNull {
+                    it.bookSourceUrl.contains("bilibili", ignoreCase = true) ||
+                        it.bookSourceName.contains("B站", ignoreCase = true)
+                } ?: return@runCatching null
+            val json = source.exploreKindsJson()
+            if (json.isBlank()) return@runCatching null
+            val kinds = GSON.fromJsonArray<ExploreKind>(json).getOrNull() ?: return@runCatching null
+            kinds.firstOrNull {
+                it.type == ExploreKind.Type.url && !it.url.isNullOrBlank() &&
+                    (it.title.contains("推送视频") || it.title.contains("推荐") ||
+                        it.url.contains("rcmd", ignoreCase = true) || it.url.contains("feed", ignoreCase = true))
+            }?.url
+        }.getOrNull()
+    }
 
     suspend fun availableAll(): Map<DramaSourceKind, List<DramaSourceRef>> =
         DramaSourceKind.entries.associateWith { available(it) }

@@ -585,15 +585,15 @@ object ShortDramaCandidateProvider {
     }
 
     /**
-     * PUSH 推送源直通加载：请求后端推送流，按返回顺序产出候选。
+     * PUSH 推送源直通加载：按页请求后端推送流，按返回顺序产出候选。
      *
      * 不走 [load] 的候选池/rank/去重/截断链路——推送顺序由后端算法决定，
      * 本地筛选会打乱顺序、去重会误杀新推送。这里只做请求 + 映射，保持后端顺序。
      *
-     * 分页说明：B 站 `feed/rcmd` 是静态 URL，是否每次返回新内容取决于后端；
-     * 跨批去重由调用方（VM 的 loadMore）按 seriesId 过滤已展示项完成。
+     * 分页说明：page 真递增（1→2→3…），URL 模板保留 `{{page}}` 占位由 AnalyzeUrl 替换，
+     * 每页直接取列表后面内容；调用方（VM 的 loadMore）按页码推进，不再靠 seriesId 去重找"新"内容。
      */
-    suspend fun loadPush(sources: List<DramaSourceRef>): List<DramaCandidate> =
+    suspend fun loadPush(sources: List<DramaSourceRef>, page: Int = 1): List<DramaCandidate> =
         withContext(Dispatchers.IO) {
             val refs = sources.filter { it.kind == DramaSourceKind.PUSH }
             if (refs.isEmpty()) return@withContext emptyList()
@@ -605,7 +605,7 @@ object ShortDramaCandidateProvider {
                                 val source = pushBookSource(ref)
                                     ?: return@withTimeoutOrNull emptyList()
                                 val url = ShortDramaSourceStore.pushUrl(ref)
-                                WebBook.exploreBookAwait(source, url, 1)
+                                WebBook.exploreBookAwait(source, url, page)
                                     .map { it.toPushCandidate(ref) }
                             } ?: emptyList()
                         }.onFailure {
@@ -674,6 +674,7 @@ object ShortDramaCandidateProvider {
             bookSourceType = BookSourceType.default,
             engineType = 0,
             enabledExplore = true,
+            exploreUrl = ShortDramaSourceStore.BILI_FEED_URL + "?{{page}}",
             ruleExplore = ExploreRule(
                 bookList = "$.data.item[*]",
                 name = "$.title",

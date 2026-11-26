@@ -36,8 +36,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -613,14 +611,7 @@ private fun DramaPage(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 12.dp, bottom = bottomPaddingDp + 12.dp),
-                liked = liked,
                 inBookshelf = inBookshelf,
-                onLike = {
-                    val next = !liked
-                    liked = next
-                    onToggleLike(next)
-                    toast(if (next) "已加强推荐" else "已取消推荐")
-                },
                 onBookshelf = {
                     val add = !inBookshelf
                     inBookshelf = add
@@ -629,7 +620,6 @@ private fun DramaPage(
                     onToggleBookshelf(add, index, chapterTitle, total)
                     toast(if (add) "已加入书架 · 第${index}集" else "已移出书架")
                 },
-                onSkip = onSkip,
                 onShowEpisodes = openEpisodes,
                 onMore = { showMore = true },
             )
@@ -855,38 +845,21 @@ private fun DramaVideoPlayer(
     }
 }
 
-/** 右侧竖排操作栏：爱心（加权）/ 收藏（加书架）/ 更多。 */
+/** 右侧竖排操作栏：收藏（加书架）/ 选集 / 更多。 */
 @Composable
 private fun DramaActionRail(
     modifier: Modifier = Modifier,
-    liked: Boolean,
     inBookshelf: Boolean,
-    onLike: () -> Unit,
     onBookshelf: () -> Unit,
-    onSkip: () -> Unit,
     onShowEpisodes: () -> Unit,
     onMore: () -> Unit,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         RailAction(
-            icon = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            label = "喜欢",
-            tint = if (liked) Color(0xFFFF4D6A) else Color.White,
-            onClick = onLike,
-        )
-        Spacer(Modifier.height(18.dp))
-        RailAction(
             icon = if (inBookshelf) Icons.Filled.Star else Icons.Filled.StarBorder,
             label = "收藏",
             tint = if (inBookshelf) Color(0xFFFFD54F) else Color.White,
             onClick = onBookshelf,
-        )
-        Spacer(Modifier.height(18.dp))
-        RailAction(
-            icon = Icons.Filled.Cancel,
-            label = "不感兴趣",
-            tint = Color.White,
-            onClick = onSkip,
         )
         Spacer(Modifier.height(18.dp))
         RailAction(

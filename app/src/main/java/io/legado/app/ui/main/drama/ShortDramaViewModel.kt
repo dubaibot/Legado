@@ -59,6 +59,9 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    /** PUSH 推送翻页页码：真递增（1→2→3…），loadMore 时自增后请求对应页。 */
+    private var pushPage = 1
+
     private val sessionExposed = LinkedHashSet<String>()
     private val sessionSkips = HashSet<String>()
     private var candidatePool: List<DramaCandidate> = emptyList()
@@ -139,9 +142,10 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
             // 纯推送模式：每次进入强制重新请求推送流，不走候选池/rank/曝光去重。
             // 推送顺序由后端算法决定，本地筛选会打乱顺序、去重会误杀新推送。
             if (pushSources.isNotEmpty() && normalSources.isEmpty()) {
-                val batch = ShortDramaCandidateProvider.loadPush(pushSources)
+                pushPage = 1
+                val batch = ShortDramaCandidateProvider.loadPush(pushSources, pushPage)
                 AppLog.put(
-                    "ShortDrama.refresh[push]: 源=${pushSources.size}, 批次=${batch.size}"
+                    "ShortDrama.refresh[push]: 源=${pushSources.size}, 页=$pushPage, 批次=${batch.size}"
                 )
                 _state.update {
                     it.copy(
@@ -236,18 +240,17 @@ class ShortDramaViewModel(application: Application) : AndroidViewModel(applicati
         if (pushSources.isNotEmpty()) {
             viewModelScope.launch {
                 _state.update { it.copy(loadingMore = true, ended = false) }
-                val fresh = ShortDramaCandidateProvider.loadPush(pushSources)
-                val shown = _state.value.feed.mapTo(HashSet()) { it.seriesId }
-                val newOnes = fresh.filter { it.seriesId !in shown }
+                pushPage += 1
+                val fresh = ShortDramaCandidateProvider.loadPush(pushSources, pushPage)
                 AppLog.put(
-                    "ShortDrama.loadMore[push]: 请求=${fresh.size}, 新增=${newOnes.size}, " +
-                        "feedAfter=${_state.value.feed.size + newOnes.size}"
+                    "ShortDrama.loadMore[push]: 页=$pushPage, 本页=${fresh.size}, " +
+                        "feedAfter=${_state.value.feed.size + fresh.size}"
                 )
                 _state.update {
                     it.copy(
                         loadingMore = false,
-                        feed = it.feed + newOnes,
-                        ended = newOnes.isEmpty(),
+                        feed = it.feed + fresh,
+                        ended = fresh.isEmpty(),
                     )
                 }
             }
