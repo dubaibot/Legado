@@ -82,10 +82,27 @@ object ShortDramaSourceStore {
     /**
      * 取推送源对应的发现 URL：优先从书源探索分类里找「推送视频/推荐/rcmd/feed」分类
      * 的 URL 模板（保留 `{{page}}` 占位供翻页替换）；找不到才回落内置 feed 地址（带页码占位）。
-     * 自定义源直接用其 key 作为 URL。
+     * 自定义源直接用其 key 作为 URL。对 feed/rcmd 类接口若模板缺页码占位，自动补 fresh_idx 游标。
      */
-    suspend fun pushUrl(ref: DramaSourceRef): String =
-        pushExploreUrl(ref) ?: if (ref.key == DEFAULT_PUSH.key) BILI_FEED_URL + "?{{page}}" else ref.key
+    suspend fun pushUrl(ref: DramaSourceRef): String {
+        val template = pushExploreUrl(ref)
+            ?: if (ref.key == DEFAULT_PUSH.key) BILI_FEED_URL + "?{{page}}" else ref.key
+        return ensurePageCursor(template)
+    }
+
+    /**
+     * 推送流翻页依赖页码游标：模板已含 `{{page}}` 或 `<...>` 占位时原样返回；
+     * 否则对 feed/rcmd 类接口补 `fresh_idx={{page}}`，保证每页 URL 不同、翻页生效。
+     */
+    private fun ensurePageCursor(template: String): String {
+        val hasPlaceholder = template.contains("{{page}}") || template.contains("<...>")
+        if (hasPlaceholder) return template
+        val isFeedApi = template.contains("rcmd", ignoreCase = true) ||
+            template.contains("feed", ignoreCase = true)
+        if (!isFeedApi) return template
+        return if (template.contains("?")) template + "&fresh_idx={{page}}"
+        else template + "?fresh_idx={{page}}"
+    }
 
     /**
      * 从书源探索分类里找「推送视频/推荐/rcmd/feed」分类的 URL 模板。

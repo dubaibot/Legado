@@ -149,22 +149,7 @@ object ShortDramaCandidateProvider {
                 if (source.bookSourceType != BookSourceType.video) return@withTimeoutOrNull emptyList()
                 WebBook.searchBookAwait(source, key, 1)
                     .take(BOOK_PER_SOURCE)
-                    .map { book ->
-                        DramaCandidate(
-                            seriesId = "book:${ref.key}:${book.bookUrl}",
-                            source = ref,
-                            title = book.name,
-                            author = book.author,
-                            cover = book.coverUrl.orEmpty(),
-                            intro = book.intro.orEmpty(),
-                            tags = book.kind?.split(',', '，', '/')
-                                ?.map { it.trim() }
-                                ?.filter { it.isNotEmpty() }
-                                ?.take(4) ?: emptyList(),
-                            pageUrl = book.bookUrl,
-                            publishedAt = 0L,
-                        )
-                    }
+                    .map { it.toBookCandidate(ref) }
             } ?: emptyList()
         }.onFailure {
             LogUtils.d("ShortDramaProvider", "searchBookSource(${ref.key}) failed: ${it.message}")
@@ -232,13 +217,22 @@ object ShortDramaCandidateProvider {
         limit: Int = 60,
     ): List<DramaCandidate> = withContext(Dispatchers.IO) {
         val refs = sources.filter {
-            it.kind == DramaSourceKind.PY || it.kind == DramaSourceKind.TVBOX
+            it.kind == DramaSourceKind.PY || it.kind == DramaSourceKind.TVBOX ||
+                it.kind == DramaSourceKind.BOOK || it.kind == DramaSourceKind.PUSH
         }
         if (refs.isEmpty()) return@withContext emptyList()
         val results = coroutineScope {
             refs.map { ref ->
                 async {
-                    runCatching { expandVideoSource(ref, existing) }
+                    runCatching {
+                        when (ref.kind) {
+                            DramaSourceKind.PY, DramaSourceKind.TVBOX ->
+                                expandVideoSource(ref, existing)
+                            DramaSourceKind.BOOK -> expandBookSource(ref, existing)
+                            DramaSourceKind.PUSH -> expandPushSource(ref, existing)
+                            else -> emptyList()
+                        }
+                    }
                         .onFailure {
                             LogUtils.d(
                                 "ShortDramaProvider",
@@ -405,6 +399,95 @@ object ShortDramaCandidateProvider {
         return fresh
     }
 
+    /**
+     * BOOK 视频书源扩容：按发现分类 URL 模板逐页拉取，复用 [loadPush] 的 page 透传，
+     * 把 page 作为参数传给 [WebBook.exploreBookAwait]（模板保留 `{{page}}` 占位由 AnalyzeUrl 替换），
+     * 解决 BOOK 源此前被 [expand] 过滤、池子卡在首页 20 条的问题。
+     */
+    private suspend fun expandBookSource(
+        ref: DramaSourceRef,
+        existing: Set<String>,
+    ): List<DramaCandidate> {
+        val source = appDb.bookSourceDao.getBookSource(ref.key) ?: return emptyList()
+        if (source.bookSourceType != BookSourceType.video) return emptyList()
+        val template = source.exploreKindsJson().let { json ->
+            if (json.isBlank()) null
+            else GSON.fromJsonArray<ExploreKind>(json).getOrNull()
+                ?.firstOrNull { it.type == ExploreKind.Type.url && !it.url.isNullOrBlank() }
+                ?.url
+        } ?: return emptyList()
+        val items = ArrayList<SearchBook>()
+        val startedAt = System.currentTimeMillis()
+        for (page in 1..VIDEO_HOME_PAGE_FALLBACK_PAGES) {
+            if (items.size >= VIDEO_MAX_PER_SOURCE) break
+            if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+            val pageItems = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                runCatching { WebBook.exploreBookAwait(source, template, page) }
+                    .onFailure {
+                        AppLog.put(
+                            "ShortDramaProvider.expand(${ref.key}) book explore pg=$page 失败: ${it.message}"
+                        )
+                    }
+                    .getOrDefault(emptyList())
+            }.orEmpty()
+            AppLog.put(
+                "ShortDramaProvider.expand(${ref.key}) book explore pg=$page -> ${pageItems.size}"
+            )
+            if (pageItems.isEmpty()) break
+            items.addAll(pageItems)
+        }
+        return items
+            .distinctBy { it.bookUrl }
+            .map { it.toBookCandidate(ref) }
+            .filter { it.seriesId !in existing }
+    }
+
+    /**
+     * PUSH 推送源扩容：复用 [loadPush] 的 page 透传逐页拉取，单源上限 [VIDEO_MAX_PER_SOURCE]。
+     */
+    private suspend fun expandPushSource(
+        ref: DramaSourceRef,
+        existing: Set<String>,
+    ): List<DramaCandidate> {
+        val items = ArrayList<DramaCandidate>()
+        val startedAt = System.currentTimeMillis()
+        for (page in 1..VIDEO_HOME_PAGE_FALLBACK_PAGES) {
+            if (items.size >= VIDEO_MAX_PER_SOURCE) break
+            if (System.currentTimeMillis() - startedAt > VIDEO_EXPAND_TOTAL_BUDGET_MS) break
+            val pageItems = withTimeoutOrNull(VIDEO_EXPAND_PAGE_TIMEOUT_MS) {
+                runCatching { loadPush(listOf(ref), page) }
+                    .onFailure {
+                        AppLog.put(
+                            "ShortDramaProvider.expand(${ref.key}) push pg=$page 失败: ${it.message}"
+                        )
+                    }
+                    .getOrDefault(emptyList())
+            }.orEmpty()
+            AppLog.put("ShortDramaProvider.expand(${ref.key}) push pg=$page -> ${pageItems.size}")
+            if (pageItems.isEmpty()) break
+            items.addAll(pageItems)
+        }
+        return items.filter { it.seriesId !in existing }
+    }
+
+    /** SearchBook → 短剧候选（BOOK 源统一映射）。 */
+    private fun SearchBook.toBookCandidate(ref: DramaSourceRef): DramaCandidate {
+        return DramaCandidate(
+            seriesId = "book:${ref.key}:${bookUrl}",
+            source = ref,
+            title = name,
+            author = author,
+            cover = coverUrl.orEmpty(),
+            intro = intro.orEmpty(),
+            tags = kind?.split(',', '，', '/')
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.take(4) ?: emptyList(),
+            pageUrl = bookUrl,
+            publishedAt = 0L,
+        )
+    }
+
     private class LoadedVideoSource(
         val source: VideoSource,
         val categories: List<VideoCategory>,
@@ -552,22 +635,7 @@ object ShortDramaCandidateProvider {
                 val exploreUrl = firstExploreUrl(source) ?: return@withTimeoutOrNull emptyList()
                 WebBook.exploreBookAwait(source, exploreUrl, 1)
                     .take(BOOK_PER_SOURCE)
-                    .map { book ->
-                        DramaCandidate(
-                            seriesId = "book:${ref.key}:${book.bookUrl}",
-                            source = ref,
-                            title = book.name,
-                            author = book.author,
-                            cover = book.coverUrl.orEmpty(),
-                            intro = book.intro.orEmpty(),
-                            tags = book.kind?.split(',', '，', '/')
-                                ?.map { it.trim() }
-                                ?.filter { it.isNotEmpty() }
-                                ?.take(4) ?: emptyList(),
-                            pageUrl = book.bookUrl,
-                            publishedAt = 0L,
-                        )
-                    }
+                    .map { it.toBookCandidate(ref) }
             } ?: emptyList()
         }.onFailure {
             LogUtils.d("ShortDramaProvider", "loadBookSource(${ref.key}) failed: ${it.message}")
@@ -687,7 +755,7 @@ object ShortDramaCandidateProvider {
                 preUpdateJs = tocPreJs,
                 chapterList = "$[*]",
                 chapterName = "$.title",
-                chapterUrl = "https://www.bilibili.com/video/{{$.bvid}}",
+                chapterUrl = "https://www.bilibili.com/video/{{$.bvid}}?cid={{$.cid}}",
             ),
             ruleContent = ContentRule(
                 content = "$..playurl",

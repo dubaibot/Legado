@@ -7,6 +7,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.video.PlayLine
 import io.legado.app.data.video.VideoSourceRegistry
+import io.legado.app.help.video.BiliDirectResolver
 import io.legado.app.help.video.VideoUrlExtractor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
@@ -140,6 +141,15 @@ object ShortDramaPlaybackResolver {
                     return@withTimeoutOrNull null
                 }
                 val chapter = chapters.first()
+                BiliDirectResolver.parsePseudoUrl(chapter.url)?.let { aid ->
+                    BiliDirectResolver.resolve(aid)?.let { url ->
+                        return@withTimeoutOrNull DramaPlayable(
+                            url = url,
+                            headers = mapOf("Referer" to chapter.url),
+                            title = chapter.title.ifBlank { candidate.title },
+                        )
+                    }
+                }
                 if (VideoUrlExtractor.isDirectVideoStreamUrl(chapter.url)) {
                     return@withTimeoutOrNull DramaPlayable(
                         url = chapter.url,
@@ -165,6 +175,15 @@ object ShortDramaPlaybackResolver {
                         headers = referer,
                         title = chapter.title.ifBlank { candidate.title },
                     )
+                }
+                BiliDirectResolver.parsePseudoUrl(body)?.let { aid ->
+                    BiliDirectResolver.resolve(aid)?.let { url ->
+                        return@withTimeoutOrNull DramaPlayable(
+                            url = url,
+                            headers = referer,
+                            title = chapter.title.ifBlank { candidate.title },
+                        )
+                    }
                 }
                 AppLog.put("ShortDrama[$sid] extractPrecise no media hit, fallback sniff")
                 val sniffed = VideoUrlExtractor.extractVideoUrlForEpisode(chapter.url, source, book)
@@ -254,7 +273,10 @@ object ShortDramaPlaybackResolver {
                     }
                     chapters.mapIndexed { i, c ->
                         DramaEpisode(i, c.title.ifBlank { "第${i + 1}集" }, c.url)
-                    }.filter { VideoUrlExtractor.isDirectVideoStreamUrl(it.url) }
+                    }.filter {
+                        VideoUrlExtractor.isDirectVideoStreamUrl(it.url) ||
+                            BiliDirectResolver.parsePseudoUrl(it.url) != null
+                    }
                 }
             }.onFailure {
                 AppLog.put("ShortDrama[$sid] resolveEpisodes failed", it)
