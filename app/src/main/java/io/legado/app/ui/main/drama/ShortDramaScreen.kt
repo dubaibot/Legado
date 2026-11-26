@@ -3,6 +3,7 @@ package io.legado.app.ui.main.drama
 import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +37,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -114,6 +116,8 @@ import io.legado.app.data.drama.DramaSeriesPlaylist
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.exoplayer.mediaMimeTypeOfUrl
 import io.legado.app.help.http.videoStreamClient
+import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -691,6 +695,9 @@ private fun DramaPage(
             onCleanScreen = onSetCleanScreen,
             onAutoSlide = onSetAutoSlide,
             onAutoNext = onSetAutoNext,
+            onShowLog = {
+                (context as? AppCompatActivity)?.showDialogFragment<AppLogDialog>()
+            },
         )
     }
 }
@@ -1240,6 +1247,7 @@ private fun DramaMoreSheet(
     onCleanScreen: (Boolean) -> Unit,
     onAutoSlide: (Boolean) -> Unit,
     onAutoNext: (Boolean) -> Unit,
+    onShowLog: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -1273,6 +1281,25 @@ private fun DramaMoreSheet(
             )
             SwitchRow("自动上滑", autoSlide, onAutoSlide)
             SwitchRow("短剧自动续播", autoNext, onAutoNext)
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onShowLog() },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.List,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "日志",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
     }

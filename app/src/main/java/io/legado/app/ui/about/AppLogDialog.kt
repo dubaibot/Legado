@@ -17,6 +17,7 @@ import io.legado.app.databinding.ItemAppLogBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -50,6 +51,17 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
+            R.id.menu_copy -> {
+                val text = AppLog.logs.joinToString(separator = "\n") { entry ->
+                    val head = "${LogUtils.logTimeFormat.format(Date(entry.time))}  ${entry.message}"
+                    if (entry.throwable != null) {
+                        "$head\n${entry.throwable.stackTraceToString()}"
+                    } else {
+                        head
+                    }
+                }
+                requireContext().sendToClip(text)
+            }
             R.id.menu_clear -> {
                 AppLog.clear()
                 adapter.clearItems()
