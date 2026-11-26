@@ -191,20 +191,28 @@ object BookChapterList {
         if (!formatJs.isNullOrBlank()) {
             Context.enter().use {
                 val bindings = ScriptBindings()
+                RhinoScriptEngine.getRuntimeScope(bindings)
                 bindings["gInt"] = 0
-                list.forEachIndexed { index, bookChapter ->
-                    bindings["index"] = index + 1
-                    bindings["chapter"] = bookChapter
-                    bindings["title"] = bookChapter.title
-                    RhinoScriptEngine.runCatching {
-                        eval(formatJs, bindings)?.toString()?.let {
-                            bookChapter.title = it
-                            //标题已变化, 重置标题MD5缓存, 避免getFileName使用旧标题
-                            bookChapter.titleMD5 = null
+                val compiledScript = RhinoScriptEngine.runCatching {
+                    RhinoScriptEngine.compile(formatJs)
+                }.getOrNull()
+                if (compiledScript != null) {
+                    list.forEachIndexed { index, bookChapter ->
+                        bindings["index"] = index + 1
+                        bindings["chapter"] = bookChapter
+                        bindings["title"] = bookChapter.title
+                        RhinoScriptEngine.runCatching {
+                            compiledScript.eval(bindings)?.toString()?.let {
+                                bookChapter.title = it
+                                //标题已变化, 重置标题MD5缓存, 避免getFileName使用旧标题
+                                bookChapter.titleMD5 = null
+                            }
+                        }.onFailure {
+                            Debug.log(book.origin, "格式化标题出错, ${it.localizedMessage}")
                         }
-                    }.onFailure {
-                        Debug.log(book.origin, "格式化标题出错, ${it.localizedMessage}")
                     }
+                } else {
+                    Debug.log(book.origin, "格式化标题编译出错")
                 }
             }
         }
@@ -504,20 +512,28 @@ object BookChapterList {
         if (!formatJs.isNullOrBlank()) {
             Context.enter().use {
                 val bindings = ScriptBindings()
+                RhinoScriptEngine.getRuntimeScope(bindings)
                 bindings["gInt"] = 0
-                list.forEachIndexed { index, bookChapter ->
-                    bindings["index"] = index + 1
-                    bindings["chapter"] = bookChapter
-                    bindings["title"] = bookChapter.title
-                    RhinoScriptEngine.runCatching {
-                        eval(formatJs, bindings)?.toString()?.let {
-                            bookChapter.title = it
-                            //标题已变化, 重置标题MD5缓存, 避免getFileName使用旧标题
-                            bookChapter.titleMD5 = null
+                val compiledScript = RhinoScriptEngine.runCatching {
+                    RhinoScriptEngine.compile(formatJs)
+                }.getOrNull()
+                if (compiledScript != null) {
+                    list.forEachIndexed { index, bookChapter ->
+                        bindings["index"] = index + 1
+                        bindings["chapter"] = bookChapter
+                        bindings["title"] = bookChapter.title
+                        RhinoScriptEngine.runCatching {
+                            compiledScript.eval(bindings)?.toString()?.let {
+                                bookChapter.title = it
+                                //标题已变化, 重置标题MD5缓存, 避免getFileName使用旧标题
+                                bookChapter.titleMD5 = null
+                            }
+                        }.onFailure {
+                            Debug.log(book.origin, "格式化标题出错, ${it.localizedMessage}")
                         }
-                    }.onFailure {
-                        Debug.log(book.origin, "格式化标题出错, ${it.localizedMessage}")
                     }
+                } else {
+                    Debug.log(book.origin, "格式化标题编译出错")
                 }
             }
         }
