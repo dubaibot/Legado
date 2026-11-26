@@ -1,5 +1,6 @@
 package io.legado.app.help.video
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.http.getProxyClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -51,11 +52,16 @@ object BiliDirectResolver {
         val realCid = cid?.takeIf { it.isNotBlank() }
             ?: runCatching { fetchCid(aid, referer) }.getOrNull()
             ?: return null
+        AppLog.put("BiliDirect: resolve aid=$aid cid=$realCid")
         return runCatching { fetchPlayUrl(aid, realCid, referer) }.getOrNull()
+            ?.also {
+                AppLog.put("BiliDirect: 命中直链 len=${it.length} 域名=${it.split('/').getOrNull(2)}")
+            }
     }
 
     /** view 接口取 cid：优先单 P 的 cid，其次 pages[0].cid。 */
     private suspend fun fetchCid(aid: String, referer: String): String? {
+        AppLog.put("BiliDirect: fetchCid aid=$aid")
         val json = getJson("$VIEW_URL?aid=$aid", referer) ?: return null
         val data = json.optJSONObject("data") ?: return null
         data.optString("cid").takeIf { it.isNotBlank() }?.let { return it }
@@ -65,10 +71,15 @@ object BiliDirectResolver {
 
     /** playurl 接口取直链：优先 durl[0].url，其次 dash 视频流 baseUrl。 */
     private suspend fun fetchPlayUrl(aid: String, cid: String, referer: String): String? {
+        AppLog.put("BiliDirect: fetchPlayUrl aid=$aid cid=$cid")
         val json = getJson(
             "$PLAYURL_URL?avid=$aid&cid=$cid&qn=64&fnval=0&fnver=0&fourk=0",
             referer
         ) ?: return null
+        if (json.optInt("code", -1) != 0) {
+            AppLog.put("BiliDirect: playurl 业务码=${json.optInt("code", -1)} ${json.optString("message")}")
+            return null
+        }
         val data = json.optJSONObject("data") ?: return null
         data.optJSONArray("durl")?.optJSONObject(0)?.optString("url")
             ?.takeIf { it.isNotBlank() }?.let { return it }
@@ -76,21 +87,36 @@ object BiliDirectResolver {
             ?.takeIf { it.isNotBlank() }
     }
 
-    /** GET 请求并解析 JSON；非 2xx 或解析失败返回 null。 */
+    /** GET 请求并解析 JSON；先走带代理的客户端，失败再用标准 OkHttpClient 直连兜底。 */
     private suspend fun getJson(url: String, referer: String): JSONObject? {
         return withContext(Dispatchers.IO) {
-            runCatching {
-                val request = Request.Builder()
-                    .url(url)
-                    .header("Referer", referer)
-                    .header("User-Agent", USER_AGENT)
-                    .get()
-                    .build()
-                getProxyClient().newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) null
-                    else resp.body?.string()?.let { JSONObject(it) }
-                }
-            }.getOrNull()
+            val request = Request.Builder()
+                .url(url)
+                .header("Referer", referer)
+                .header("User-Agent", USER_AGENT)
+                .get()
+                .build()
+            val clients = listOf(getProxyClient(), okhttp3.OkHttpClient())
+            for (client in clients) {
+                val result = runCatching {
+                    client.newCall(request).execute().use { resp ->
+                        if (!resp.isSuccessful) {
+                            AppLog.put("BiliDirect: HTTP ${resp.code} ${url.take(60)}")
+                            null
+                        } else {
+                            resp.body?.string()?.let { txt ->
+                                runCatching { JSONObject(txt) }.onFailure {
+                                    AppLog.put("BiliDirect: JSON 解析失败, 前80字=${txt.take(80)}")
+                                }.getOrNull()
+                            }
+                        }
+                    }
+                }.onFailure {
+                    AppLog.put("BiliDirect: GET 失败 ${url.take(60)}: ${it.message}")
+                }.getOrNull()
+                if (result != null) return@withContext result
+            }
+            null
         }
     }
 }
