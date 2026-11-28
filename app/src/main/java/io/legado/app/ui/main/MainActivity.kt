@@ -997,7 +997,12 @@ class MainActivity :
     }
 
     fun setMainBottomNavigationVisible(visible: Boolean) {
-        binding.bottomNavigationGlass.visibility = if (visible) View.VISIBLE else View.GONE
+        // 发现页作为相邻页在冷启动首帧被预创建，其 startHtml 回调会把整栏设为 GONE，
+        // 但此时发现页并不可见，会导致用户停留在书架页却看不到底栏且不自愈。
+        // 仅当发现页为当前可见页时才允许隐藏，否则强制恢复可见。
+        val discoverVisible = binding.viewPagerMain.currentItem == realPositions.indexOf(idExplore)
+        val effectiveVisible = if (visible) true else discoverVisible
+        binding.bottomNavigationGlass.visibility = if (effectiveVisible) View.VISIBLE else View.GONE
         refreshMainContentBottomPadding()
     }
 
