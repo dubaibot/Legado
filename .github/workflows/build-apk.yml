@@ -31,7 +31,7 @@ jobs:
           cp .github/workflows/readingd-debug.keystore ~/.android/debug.keystore
 
       - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug -x :app:installAppDebugPythonRequirements --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
